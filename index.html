@@ -439,7 +439,7 @@
 
   <!-- EXPENSES -->
   <div class="pg" id="page-expenses">
-    <div class="ph"><div><div class="pt">Expenses</div><div class="ps">Track costs; totals roll into the dashboard when you use operational records</div></div><button type="button" class="btn btn-p" id="btn-add-expense">+ Add expense</button></div>
+    <div class="ph"><div><div class="pt">Expenses</div><div class="ps">Expenses added from the dashboard transaction log appear here</div></div></div>
     <div class="card">
       <div id="expenses-empty" style="font-size:13px;color:var(--text3);padding:8px 0;">No expenses yet.</div>
       <table class="dt" id="expenses-table" style="display:none;">
@@ -802,6 +802,7 @@
   });
 </script>
 <script type="module" src="/assets/auth-gate.js"></script>
+<script src="/assets/tx-expense-sync.js"></script>
 <script src="/assets/date-filter.js"></script>
 </body>
 </html>
