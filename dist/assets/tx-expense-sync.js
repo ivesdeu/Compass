@@ -90,11 +90,13 @@
 
     saveWorkspace(id, ws);
 
-    // Ask the dashboard filter layer to recalc KPIs/charts/tables from the
-    // updated workspace snapshot, if it's loaded.
-    if (typeof window.bizdashRefreshDashboard === 'function') {
-      window.bizdashRefreshDashboard();
-    }
+    // Force a lightweight full-page reload so the main bundle + date filter
+    // re-hydrate cleanly from the updated workspace snapshot. This avoids any
+    // in-memory state drift that can cause the UI to hang while still giving
+    // you up-to-date expense charts and tables.
+    try {
+      window.location.reload();
+    } catch (_) {}
   }
 
   function wire() {
