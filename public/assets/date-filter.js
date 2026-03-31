@@ -406,6 +406,14 @@
     }
 
     refreshDashboard();
+
+    // Expose a safe, debounced entry point for other scripts (like tx-expense-sync)
+    // to request a dashboard refresh without knowing internals.
+    window.bizdashRefreshDashboard = function () {
+      if (!_refreshing) {
+        refreshDashboard();
+      }
+    };
   }
 
   // Wait until the main bundle has initialised Chart.js instances before running.
