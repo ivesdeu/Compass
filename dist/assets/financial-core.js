@@ -271,6 +271,7 @@ var revExpChart = null;
 var projTypeChart = null;
 var projMonthlyChart = null;
 var revTrendChart = null;
+var verticalChart = null;
 
   function renderExpenseChart(c) {
     var canvas = document.getElementById('cExp');
@@ -576,6 +577,63 @@ var revTrendChart = null;
     renderExpensesTable(c);
     renderRevenueVsExpenses(c);
     renderIncomeSection(c);
+    renderRevenueByVertical(c);
+  }
+
+  function renderRevenueByVertical(c) {
+    var canvas = document.getElementById('cVert');
+    if (!canvas || !window.Chart) return;
+
+    var byVertical = {};
+    c.txs.forEach(function (tx) {
+      if (tx.category !== 'svc' && tx.category !== 'ret') return;
+      var amt = +tx.amount || 0;
+      if (amt <= 0) return;
+
+      var industry = 'Uncategorized';
+      if (tx.clientId) {
+        var cl = clients.find(function (cc) { return cc.id === tx.clientId; });
+        if (cl && cl.industry && cl.industry.trim()) {
+          industry = cl.industry.trim();
+        }
+      }
+      byVertical[industry] = (byVertical[industry] || 0) + amt;
+    });
+
+    var labels = Object.keys(byVertical);
+    var data = labels.map(function (k) { return byVertical[k]; });
+
+    if (!labels.length) {
+      labels = ['No data'];
+      data = [1];
+    }
+
+    var colors = ['#e8501a', '#3366aa', '#4a8a4a', '#a86e28', '#c8c7c2',
+                  '#7b2d8e', '#2d8e7b', '#8e2d3a', '#5a5a9e', '#9e8a2d'];
+
+    if (!verticalChart) {
+      verticalChart = new Chart(canvas, {
+        type: 'doughnut',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: data,
+            backgroundColor: colors,
+            borderWidth: 0,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '60%',
+          plugins: { legend: { display: true, position: 'bottom' } },
+        },
+      });
+    } else {
+      verticalChart.data.labels = labels;
+      verticalChart.data.datasets[0].data = data;
+      verticalChart.update('none');
+    }
   }
 
   // ---------- Projects rendering ----------
@@ -1420,6 +1478,7 @@ var revTrendChart = null;
           $('client-company').value = client.companyName || '';
           $('client-contact').value = client.contactName || '';
           $('client-status').value = client.status || '';
+          $('client-industry').value = client.industry || '';
           $('client-email').value = client.email || '';
           $('client-phone').value = client.phone || '';
           $('client-notes').value = client.notes || '';
@@ -1577,6 +1636,7 @@ var revTrendChart = null;
       $('client-company').value = '';
       $('client-contact').value = '';
       $('client-status').value = '';
+      $('client-industry').value = '';
       $('client-email').value = '';
       $('client-phone').value = '';
       $('client-notes').value = '';
@@ -1606,6 +1666,7 @@ var revTrendChart = null;
               companyName: company,
               contactName: $('client-contact').value.trim(),
               status: $('client-status').value.trim(),
+              industry: $('client-industry').value.trim(),
               email: $('client-email').value.trim(),
               phone: $('client-phone').value.trim(),
               notes: $('client-notes').value.trim(),
@@ -1619,6 +1680,7 @@ var revTrendChart = null;
             companyName: company,
             contactName: $('client-contact').value.trim(),
             status: $('client-status').value.trim(),
+            industry: $('client-industry').value.trim(),
             email: $('client-email').value.trim(),
             phone: $('client-phone').value.trim(),
             notes: $('client-notes').value.trim(),

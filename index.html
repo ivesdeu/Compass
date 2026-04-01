@@ -172,6 +172,12 @@
   body.internal-mode #workspace-current-label { display: none !important; }
   body.internal-mode #cloud-sidebar-section { display: none !important; }
 
+  /* Public dashboard: hide workspace/cloud controls visually */
+  #btn-workspaces,
+  #cloud-sidebar-section {
+    display:none !important;
+  }
+
   /* Auth gate: app hidden until authenticated */
   #auth-loading {
     display:flex;
@@ -183,18 +189,22 @@
   }
   #auth-login-shell {
     display:none;
+    flex:1;
+    width:100%;
     align-items:center;
     justify-content:center;
-    padding:40px 0;
+    min-height:100vh;
+    padding:40px 20px;
+    box-sizing:border-box;
   }
   #auth-login-shell .gate-card {
     background:var(--bg2);
     border:1px solid var(--border);
     border-radius:12px;
-    padding:28px 32px;
-    max-width:420px;
+    padding:32px 40px;
+    max-width:520px;
     width:100%;
-    box-shadow:0 20px 60px rgba(0,0,0,0.08);
+    box-shadow:0 20px 60px rgba(0,0,0,0.1);
   }
   #app-shell {
     display:none;
@@ -706,6 +716,7 @@
       <div class="fgp" style="grid-column:1/-1;"><label class="fl">Company name *</label><input class="fi" id="client-company" /></div>
       <div class="fgp"><label class="fl">Contact name</label><input class="fi" id="client-contact" /></div>
       <div class="fgp"><label class="fl">Status</label><input class="fi" id="client-status" placeholder="e.g. Active, Lead" /></div>
+      <div class="fgp"><label class="fl">Industry / Vertical</label><input class="fi" id="client-industry" placeholder="e.g. Home services, Restaurants" /></div>
       <div class="fgp"><label class="fl">Email</label><input class="fi" id="client-email" type="email" /></div>
       <div class="fgp"><label class="fl">Phone</label><input class="fi" id="client-phone" /></div>
       <div class="fgp" style="grid-column:1/-1;"><label class="fl">Notes</label><textarea class="fi" id="client-notes" rows="2" style="min-height:56px;resize:vertical;"></textarea></div>
