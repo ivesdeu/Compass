@@ -16,6 +16,10 @@
   var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   window.supabaseClient = supabase;
 
+  function setCurrentUser(user) {
+    window.currentUser = user || null;
+  }
+
   function $(id) {
     return document.getElementById(id);
   }
@@ -56,6 +60,11 @@
         avatarEl.textContent = user.email.charAt(0).toUpperCase();
       }
     }
+
+    // Once the app shell is visible, let the data layer pull from Supabase.
+    if (window.initDataFromSupabase) {
+      window.initDataFromSupabase();
+    }
   }
 
   async function bootstrapSession() {
@@ -64,13 +73,15 @@
       var result = await supabase.auth.getSession();
       var session = result.data.session;
       if (session && session.user) {
-        window.currentUser = session.user;
+        setCurrentUser(session.user);
         showApp(session.user);
       } else {
+        setCurrentUser(null);
         showLogin();
       }
     } catch (err) {
       console.error('Error checking session', err);
+      setCurrentUser(null);
       showLogin();
     }
   }
@@ -103,7 +114,7 @@
             setError(res.error.message || 'Could not sign in.');
             return;
           }
-          window.currentUser = res.data.user;
+          setCurrentUser(res.data.user);
           showApp(res.data.user);
         } catch (err) {
           console.error('signIn error', err);

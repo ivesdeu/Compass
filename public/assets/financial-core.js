@@ -4,6 +4,10 @@
 (function () {
   'use strict';
 
+  // Supabase client/user (set by supabase-auth.js when available)
+  var supabase = window.supabaseClient || null;
+  var currentUser = window.currentUser || null;
+
   var STORAGE_KEY = 'bizdash:transactions:v1';
 
   // ---------- Data model ----------
@@ -28,7 +32,7 @@
   }
 
   var state = {
-    transactions: loadTransactions(),
+    transactions: [],
     filter: { mode: 'all', start: null, end: null }, // all | month | range
     computed: null,
   };
@@ -52,7 +56,7 @@
     } catch (_) {}
   }
 
-  var clients = loadClients();
+  var clients = [];
 
   // Project statuses (for Manage statuses modal)
   var STATUS_KEY = 'bizdash:project-statuses:v1';
@@ -96,7 +100,7 @@
     } catch (_) {}
   }
 
-  var projects = loadProjects();
+  var projects = [];
 
   // Invoices store
   var INVOICES_KEY = 'bizdash:invoices:v1';
@@ -116,7 +120,7 @@
     } catch (_) {}
   }
 
-  var invoices = loadInvoices();
+  var invoices = [];
 
   function getInvoiceByIncomeTxId(txId) {
     return invoices.find(function (inv) { return inv.incomeTxId === txId; }) || null;
@@ -134,6 +138,201 @@
   }
 
   // ---------- Shared helpers ----------
+
+  async function persistTransactionToSupabase(tx) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser) {
+      // Still keep local cache in sync.
+      saveTransactions(state.transactions);
+      return;
+    }
+
+    var payload = {
+      id: tx.id,
+      user_id: currentUser.id,
+      date: tx.date,
+      category: tx.category,
+      amount: tx.amount,
+      note: tx.note || tx.description || null,
+      client_id: tx.clientId || null,
+      project_id: tx.projectId || null,
+      other_label: tx.otherLabel || null,
+      other_type: tx.otherType || null,
+      source: tx.source || null,
+    };
+
+    try {
+      var result = await supabase
+        .from('transactions')
+        .upsert(payload, { onConflict: 'id' });
+      if (result.error) {
+        console.error('upsert transaction error', result.error);
+      }
+    } catch (err) {
+      console.error('persistTransactionToSupabase error', err);
+    }
+  }
+
+  async function deleteTransactionRemote(id) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser) {
+      saveTransactions(state.transactions);
+      return;
+    }
+    try {
+      var result = await supabase
+        .from('transactions')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', currentUser.id);
+      if (result.error) {
+        console.error('delete transaction error', result.error);
+      }
+    } catch (err) {
+      console.error('deleteTransactionRemote error', err);
+    }
+  }
+
+  async function persistClientToSupabase(client) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser) {
+      saveClients(clients);
+      return;
+    }
+
+    var payload = {
+      id: client.id,
+      user_id: currentUser.id,
+      company_name: client.companyName,
+      contact_name: client.contactName,
+      status: client.status,
+      industry: client.industry,
+      email: client.email,
+      phone: client.phone,
+      notes: client.notes,
+      total_revenue: client.totalRevenue || 0,
+      created_at: client.createdAt ? new Date(client.createdAt).toISOString() : new Date().toISOString(),
+    };
+
+    try {
+      var result = await supabase
+        .from('clients')
+        .upsert(payload, { onConflict: 'id' });
+      if (result.error) {
+        console.error('upsert client error', result.error);
+      }
+    } catch (err) {
+      console.error('persistClientToSupabase error', err);
+    }
+  }
+
+  async function deleteClientRemote(id) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser) {
+      saveClients(clients);
+      return;
+    }
+    try {
+      var result = await supabase
+        .from('clients')
+        .delete()
+        .eq('id', id)
+        .eq('user_id', currentUser.id);
+      if (result.error) {
+        console.error('delete client error', result.error);
+      }
+    } catch (err) {
+      console.error('deleteClientRemote error', err);
+    }
+  }
+
+  // Load data from Supabase (or fall back to localStorage) for the signed-in user.
+
+  async function fetchTransactionsFromSupabase() {
+    // If Supabase or user is not ready, fall back to local cache.
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser) {
+      return loadTransactions();
+    }
+
+    try {
+      var result = await supabase
+        .from('transactions')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('date', { ascending: false });
+
+      if (result.error) {
+        console.error('load transactions error', result.error);
+        return loadTransactions();
+      }
+
+      return (result.data || []).map(function (row) {
+        return {
+          id: row.id,
+          userId: row.user_id,
+          date: row.date,
+          category: row.category,
+          amount: Number(row.amount || 0),
+          description: row.note || row.description || '',
+          note: row.note || '',
+          clientId: row.client_id || null,
+          projectId: row.project_id || null,
+          otherLabel: row.other_label || '',
+          otherType: row.other_type || '',
+          source: row.source || '',
+          createdAt: row.created_at || null,
+        };
+      });
+    } catch (err) {
+      console.error('fetchTransactionsFromSupabase error', err);
+      return loadTransactions();
+    }
+  }
+
+  async function fetchClientsFromSupabase() {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser) {
+      return loadClients();
+    }
+
+    try {
+      var result = await supabase
+        .from('clients')
+        .select('*')
+        .eq('user_id', currentUser.id)
+        .order('created_at', { ascending: true });
+
+      if (result.error) {
+        console.error('load clients error', result.error);
+        return loadClients();
+      }
+
+      return (result.data || []).map(function (row) {
+        return {
+          id: row.id,
+          companyName: row.company_name || '',
+          contactName: row.contact_name || '',
+          status: row.status || '',
+          industry: row.industry || '',
+          email: row.email || '',
+          phone: row.phone || '',
+          notes: row.notes || '',
+          totalRevenue: Number(row.total_revenue || 0),
+          createdAt: row.created_at || null,
+        };
+      });
+    } catch (err) {
+      console.error('fetchClientsFromSupabase error', err);
+      return loadClients();
+    }
+  }
 
   function populateProjectClientOptions() {
     var select = $('project-client');
@@ -262,6 +461,27 @@
   function fmtCurrency(n) {
     var v = Math.round(n);
     return '$' + v.toLocaleString();
+  }
+
+  function fmtCurrencyPrecise(n) {
+    var v = Number(n || 0);
+    return '$' + v.toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  function fmtDateDisplay(iso) {
+    if (!iso) return '—';
+    var d = new Date(iso);
+    if (isNaN(d.getTime())) return iso;
+    return d.toLocaleDateString('en-US');
+  }
+
+  function esc(v) {
+    return String(v == null ? '' : v)
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;')
+      .replace(/'/g, '&#39;');
   }
 
   // ---------- Charts ----------
@@ -811,6 +1031,9 @@ var verticalChart = null;
               (inv
                 ? '<button type="button" class="btn" data-income-invoice-edit="' + tx.id + '" style="font-size:11px;padding:4px 10px;margin-right:6px;">Edit invoice</button>'
                 : '<button type="button" class="btn" data-income-invoice-create="' + tx.id + '" style="font-size:11px;padding:4px 10px;margin-right:6px;">Create invoice</button>') +
+              (inv
+                ? '<button type="button" class="btn" data-income-invoice-view="' + tx.id + '" style="font-size:11px;padding:4px 10px;margin-right:6px;">View invoice</button>'
+                : '') +
               (inv && inv.status !== 'paid'
                 ? '<button type="button" class="btn" data-income-invoice-paid="' + tx.id + '" style="font-size:11px;padding:4px 10px;margin-right:6px;">Mark received</button>'
                 : '') +
@@ -1090,6 +1313,7 @@ var verticalChart = null;
     state.transactions.push(tx);
     saveTransactions(state.transactions);
     recomputeAndRender();
+    persistTransactionToSupabase(tx);
   }
 
   function deleteTransaction(id) {
@@ -1098,6 +1322,7 @@ var verticalChart = null;
     saveTransactions(state.transactions);
     saveInvoices(invoices);
     recomputeAndRender();
+    deleteTransactionRemote(id);
   }
 
   // ---------- UI wiring ----------
@@ -1238,57 +1463,146 @@ var verticalChart = null;
     if (!tx) return;
     var existing = getInvoiceByIncomeTxId(txId);
     var today = new Date().toISOString().slice(0, 10);
-    var defaultIssue = existing && existing.dateIssued ? existing.dateIssued : (tx.date || today);
-    var issueDate = prompt('Invoice issue date (YYYY-MM-DD):', defaultIssue);
-    if (!issueDate) return;
-    var defaultDue = existing && existing.dueDate
+    var issueDefault = existing && existing.dateIssued ? existing.dateIssued : (tx.date || today);
+    var dueDefault = existing && existing.dueDate
       ? existing.dueDate
-      : new Date(new Date(issueDate).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    var dueDate = prompt('Invoice due date (YYYY-MM-DD):', defaultDue);
-    if (!dueDate) return;
-    var defaultNumber = existing && existing.number ? existing.number : nextInvoiceNumber();
-    var number = prompt('Invoice number:', defaultNumber);
-    if (!number) return;
-    var defaultAmount = existing && existing.amount ? String(existing.amount) : String(tx.amount || 0);
-    var amountRaw = prompt('Invoice amount:', defaultAmount);
-    if (!amountRaw) return;
-    var amount = parseFloat(amountRaw);
-    if (!amount || amount <= 0) {
-      alert('Invoice amount must be greater than 0.');
+      : new Date(new Date(issueDefault).getTime() + 30 * 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    var numberDefault = existing && existing.number ? existing.number : nextInvoiceNumber();
+    var amountDefault = existing && existing.amount ? String(existing.amount) : String(tx.amount || 0);
+
+    var modal = $('invoiceModal');
+    if (!modal) return;
+    var incomeIdInput = $('invoice-income-id');
+    var numInput = $('invoice-number');
+    var issueInput = $('invoice-issue-date');
+    var dueInput = $('invoice-due-date');
+    var amountInput = $('invoice-amount');
+    var ctx = $('invoice-context');
+    var title = $('invoice-modal-title');
+
+    if (incomeIdInput) incomeIdInput.value = txId;
+    if (numInput) numInput.value = numberDefault;
+    if (issueInput) issueInput.value = issueDefault;
+    if (dueInput) dueInput.value = dueDefault;
+    if (amountInput) amountInput.value = amountDefault;
+
+    if (ctx) {
+      var clientLabel = 'No client';
+      if (tx.clientId) {
+        var cl = clients.find(function (c) { return c.id === tx.clientId; });
+        if (cl && cl.companyName) clientLabel = cl.companyName;
+      }
+      var desc = tx.description || '';
+      ctx.textContent = (clientLabel ? clientLabel + ' • ' : '') + desc;
+    }
+    if (title) title.textContent = isEdit ? 'Edit invoice' : 'Create invoice';
+
+    modal.classList.add('on');
+  }
+
+  function buildInvoiceMarkup(tx, inv) {
+    var client = null;
+    if (tx && tx.clientId) {
+      client = clients.find(function (c) { return c.id === tx.clientId; }) || null;
+    }
+    var fromName = 'ives deutschmann marketing';
+    var fromAddress1 = 'Business Dashboard';
+    var fromAddress2 = 'United States';
+    var toName = client && client.companyName ? client.companyName : (tx.description || 'Client');
+    var issueDate = inv && inv.dateIssued ? inv.dateIssued : todayISO();
+    var dueDate = inv && inv.dueDate ? inv.dueDate : issueDate;
+    var number = inv && inv.number ? inv.number : nextInvoiceNumber();
+    var amount = Number(inv && inv.amount != null ? inv.amount : (tx && tx.amount ? tx.amount : 0));
+    var taxRate = 0.10;
+    var subtotal = amount;
+    var tax = subtotal * taxRate;
+    var total = subtotal + tax;
+    var serviceLabel = tx && tx.description ? tx.description : 'Project consulting';
+
+    return '' +
+      '<div style="max-width:860px;margin:0 auto;background:#fff;border-radius:16px;padding:54px 58px;color:#1f1f1f;font-family:Inter,system-ui,-apple-system,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,0.08);">' +
+        '<div style="display:flex;justify-content:space-between;gap:24px;margin-bottom:36px;">' +
+          '<div>' +
+            '<div style="font-size:42px;line-height:0.9;font-weight:700;letter-spacing:0.02em;margin-bottom:14px;">IDM</div>' +
+            '<div style="font-size:30px;line-height:1.05;font-weight:500;">Invoice</div>' +
+          '</div>' +
+          '<div style="text-align:right;">' +
+            '<div style="font-size:44px;font-weight:700;letter-spacing:0.02em;">INVOICE</div>' +
+            '<div style="margin-top:16px;font-size:16px;line-height:1.45;">' +
+              '<div style="font-weight:600;">' + esc(fromName) + '</div>' +
+              '<div>' + esc(fromAddress1) + '</div>' +
+              '<div>' + esc(fromAddress2) + '</div>' +
+            '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:space-between;gap:30px;margin-bottom:30px;">' +
+          '<div style="font-size:16px;line-height:1.45;">' +
+            '<div style="font-weight:700;margin-bottom:6px;">Bill To</div>' +
+            '<div style="font-weight:600;">' + esc(toName) + '</div>' +
+            (client && client.contactName ? '<div>' + esc(client.contactName) + '</div>' : '') +
+            (client && client.email ? '<div>' + esc(client.email) + '</div>' : '') +
+            (client && client.phone ? '<div>' + esc(client.phone) + '</div>' : '') +
+          '</div>' +
+          '<div style="font-size:32px;font-weight:700;text-align:right;line-height:1.2;">' +
+            '<div style="font-size:16px;font-weight:600;">Invoice # ' + esc(number) + '</div>' +
+            '<div style="font-size:15px;font-weight:500;color:#4c4c4c;margin-top:12px;">Issue date: ' + esc(fmtDateDisplay(issueDate)) + '</div>' +
+            '<div style="font-size:15px;font-weight:500;color:#4c4c4c;">Due date: ' + esc(fmtDateDisplay(dueDate)) + '</div>' +
+          '</div>' +
+        '</div>' +
+        '<div style="border-radius:14px;background:#f5f5f5;padding:16px 18px;margin-bottom:18px;">' +
+          '<table style="width:100%;border-collapse:collapse;font-size:14px;">' +
+            '<thead><tr style="color:#6d6d6d;text-align:left;">' +
+              '<th style="padding:8px 0;font-weight:500;">Product</th>' +
+              '<th style="padding:8px 0;font-weight:500;">Rate</th>' +
+              '<th style="padding:8px 0;font-weight:500;">Qty</th>' +
+              '<th style="padding:8px 0;font-weight:500;">Tax</th>' +
+              '<th style="padding:8px 0;font-weight:500;text-align:right;">Amount</th>' +
+            '</tr></thead>' +
+            '<tbody><tr>' +
+              '<td style="padding:10px 0 8px;font-size:28px;font-weight:500;line-height:1.2;">' + esc(serviceLabel) + '</td>' +
+              '<td style="padding:10px 0 8px;font-size:28px;font-weight:500;">' + esc(fmtCurrencyPrecise(subtotal)) + '</td>' +
+              '<td style="padding:10px 0 8px;font-size:28px;font-weight:500;">1</td>' +
+              '<td style="padding:10px 0 8px;font-size:28px;font-weight:500;">10%</td>' +
+              '<td style="padding:10px 0 8px;font-size:28px;font-weight:500;text-align:right;">' + esc(fmtCurrencyPrecise(subtotal)) + '</td>' +
+            '</tr></tbody>' +
+          '</table>' +
+        '</div>' +
+        '<div style="display:flex;justify-content:flex-end;">' +
+          '<div style="width:320px;font-size:20px;line-height:1.65;">' +
+            '<div style="display:flex;justify-content:space-between;"><span style="font-weight:600;">Subtotal:</span><span>' + esc(fmtCurrencyPrecise(subtotal)) + '</span></div>' +
+            '<div style="display:flex;justify-content:space-between;"><span style="font-weight:600;">Tax:</span><span>' + esc(fmtCurrencyPrecise(tax)) + '</span></div>' +
+            '<div style="display:flex;justify-content:space-between;"><span style="font-weight:700;">Invoice total:</span><span style="font-weight:700;">' + esc(fmtCurrencyPrecise(total)) + '</span></div>' +
+          '</div>' +
+        '</div>' +
+      '</div>';
+  }
+
+  function openInvoicePreviewForIncomeTx(txId) {
+    var tx = state.transactions.find(function (t) { return t.id === txId; });
+    if (!tx) return;
+    var inv = getInvoiceByIncomeTxId(txId);
+    if (!inv) {
+      alert('Create the invoice first.');
       return;
     }
+    var body = $('invoice-preview-body');
+    var modal = $('invoicePreviewModal');
+    if (!body || !modal) return;
+    body.innerHTML = buildInvoiceMarkup(tx, inv);
+    modal.classList.add('on');
+  }
 
-    if (existing) {
-      invoices = invoices.map(function (inv) {
-        if (inv.incomeTxId !== txId) return inv;
-        return {
-          id: inv.id,
-          incomeTxId: txId,
-          number: number,
-          dateIssued: issueDate,
-          dueDate: dueDate,
-          amount: amount,
-          status: inv.status || 'sent',
-          paidAt: inv.paidAt || null,
-        };
-      });
-    } else {
-      invoices.push({
-        id: uuid(),
-        incomeTxId: txId,
-        number: number,
-        dateIssued: issueDate,
-        dueDate: dueDate,
-        amount: amount,
-        status: 'sent',
-        paidAt: null,
-      });
-    }
-    saveInvoices(invoices);
-    recomputeAndRender();
-    if (!isEdit) {
-      alert('Invoice created.');
-    }
+  function printCurrentInvoicePreview() {
+    var body = $('invoice-preview-body');
+    if (!body) return;
+    var html = body.innerHTML;
+    if (!html) return;
+    var w = window.open('', '_blank', 'width=1100,height=900');
+    if (!w) return;
+    w.document.write('<!doctype html><html><head><meta charset="utf-8"><title>Invoice</title><style>body{margin:0;background:#fff;padding:24px;}*{box-sizing:border-box;}@media print{body{padding:0;}}</style></head><body>' + html + '</body></html>');
+    w.document.close();
+    w.focus();
+    w.print();
   }
 
   function mapExpenseCategory(raw) {
@@ -1411,6 +1725,92 @@ var verticalChart = null;
     }
   }
 
+  function wireInvoiceModal() {
+    var modal = $('invoiceModal');
+    if (!modal) return;
+    var btnCancel = $('btn-invoice-cancel');
+    var btnSave = $('btn-invoice-save');
+
+    function closeInvoiceModal() {
+      if (modal) modal.classList.remove('on');
+    }
+
+    if (btnCancel) btnCancel.addEventListener('click', closeInvoiceModal);
+    if (btnSave) {
+      btnSave.addEventListener('click', function () {
+        var txId = $('invoice-income-id') ? $('invoice-income-id').value : '';
+        if (!txId) {
+          closeInvoiceModal();
+          return;
+        }
+        var issueDate = $('invoice-issue-date') ? $('invoice-issue-date').value : '';
+        var dueDate = $('invoice-due-date') ? $('invoice-due-date').value : '';
+        var number = $('invoice-number') ? $('invoice-number').value.trim() : '';
+        var amountRaw = $('invoice-amount') ? $('invoice-amount').value : '';
+        var amount = parseFloat(amountRaw || '0');
+
+        if (!number) {
+          alert('Invoice number is required.');
+          return;
+        }
+        if (!issueDate || !dueDate) {
+          alert('Issue and due dates are required.');
+          return;
+        }
+        if (!amount || amount <= 0) {
+          alert('Invoice amount must be greater than 0.');
+          return;
+        }
+
+        var existing = getInvoiceByIncomeTxId(txId);
+        if (existing) {
+          invoices = invoices.map(function (inv) {
+            if (inv.incomeTxId !== txId) return inv;
+            return {
+              id: inv.id,
+              incomeTxId: txId,
+              number: number,
+              dateIssued: issueDate,
+              dueDate: dueDate,
+              amount: amount,
+              status: inv.status || 'sent',
+              paidAt: inv.paidAt || null,
+            };
+          });
+        } else {
+          invoices.push({
+            id: uuid(),
+            incomeTxId: txId,
+            number: number,
+            dateIssued: issueDate,
+            dueDate: dueDate,
+            amount: amount,
+            status: 'sent',
+            paidAt: null,
+          });
+        }
+        saveInvoices(invoices);
+        recomputeAndRender();
+        closeInvoiceModal();
+      });
+    }
+  }
+
+  function wireInvoicePreviewModal() {
+    var modal = $('invoicePreviewModal');
+    if (!modal) return;
+    var btnClose = $('btn-invoice-preview-close');
+    var btnPrint = $('btn-invoice-preview-print');
+    function closePreview() {
+      modal.classList.remove('on');
+    }
+    if (btnClose) btnClose.addEventListener('click', closePreview);
+    if (btnPrint) btnPrint.addEventListener('click', printCurrentInvoicePreview);
+    modal.addEventListener('click', function (ev) {
+      if (ev.target === modal) closePreview();
+    });
+  }
+
   function wireDeleteHandlers() {
     var txTable = $('transaction-log-table');
     if (txTable) {
@@ -1494,6 +1894,7 @@ var verticalChart = null;
           clients = clients.filter(function (c) { return c.id !== id; });
           saveClients(clients);
           renderClients();
+          deleteClientRemote(id);
         }
       });
     }
@@ -1557,6 +1958,14 @@ var verticalChart = null;
           var editTxId = editInvBtn.getAttribute('data-income-invoice-edit');
           if (!editTxId) return;
           createOrEditInvoiceForIncomeTx(editTxId, true);
+          return;
+        }
+
+        var viewInvBtn = ev.target.closest('[data-income-invoice-view]');
+        if (viewInvBtn) {
+          var viewTxId = viewInvBtn.getAttribute('data-income-invoice-view');
+          if (!viewTxId) return;
+          openInvoicePreviewForIncomeTx(viewTxId);
           return;
         }
 
@@ -1658,10 +2067,11 @@ var verticalChart = null;
           return;
         }
         var existingId = $('client-edit-id') ? $('client-edit-id').value : '';
+        var client;
         if (existingId) {
           clients = clients.map(function (c) {
             if (c.id !== existingId) return c;
-            return {
+            client = {
               id: c.id,
               companyName: company,
               contactName: $('client-contact').value.trim(),
@@ -1673,9 +2083,10 @@ var verticalChart = null;
               totalRevenue: c.totalRevenue || 0,
               createdAt: c.createdAt || Date.now(),
             };
+            return client;
           });
         } else {
-          var client = {
+          client = {
             id: uuid(),
             companyName: company,
             contactName: $('client-contact').value.trim(),
@@ -1691,6 +2102,7 @@ var verticalChart = null;
         }
         saveClients(clients);
         renderClients();
+        if (client) persistClientToSupabase(client);
         // Keep project / income dropdowns in sync with new client list
         populateProjectClientOptions();
         populateIncomeClientOptions();
@@ -1903,19 +2315,68 @@ var verticalChart = null;
     endInput.addEventListener('change', applyFilter);
   }
 
-  function init() {
-    state.transactions = loadTransactions();
-    state.filter = { mode: 'all', start: null, end: null };
-    state.computed = compute(state.filter);
-    renderAll();
-    if (typeof renderClients === 'function') {
-      renderClients();
+  // Initialize dashboard data from Supabase when available, falling back to local storage.
+  async function initDataFromSupabase() {
+    try {
+      supabase = window.supabaseClient || supabase;
+      currentUser = window.currentUser || currentUser;
+
+      if (supabase && currentUser) {
+        state.transactions = await fetchTransactionsFromSupabase();
+        clients = await fetchClientsFromSupabase();
+
+        // Cache in localStorage so existing browser keeps a copy.
+        saveTransactions(state.transactions);
+        saveClients(clients);
+      } else {
+        // No Supabase session yet; use whatever is local.
+        state.transactions = loadTransactions();
+        clients = loadClients();
+      }
+
+      // Projects/invoices remain local-only for now.
+      projects = loadProjects();
+      invoices = loadInvoices();
+
+      // Ensure dropdowns reflect latest clients/projects.
+      populateProjectClientOptions();
+      populateIncomeClientOptions();
+
+      state.computed = compute(state.filter);
+      renderAll();
+      if (typeof renderClients === 'function') {
+        renderClients();
+      }
+      renderProjects();
+      wireDeleteHandlers();
+    } catch (err) {
+      console.error('initDataFromSupabase error', err);
+      // Fallback in case anything goes wrong.
+      state.transactions = loadTransactions();
+      clients = loadClients();
+      projects = loadProjects();
+      invoices = loadInvoices();
+      state.computed = compute(state.filter);
+      renderAll();
+      if (typeof renderClients === 'function') {
+        renderClients();
+      }
+      renderProjects();
+      wireDeleteHandlers();
     }
-    renderProjects();
+  }
+
+  // Expose so supabase-auth.js can trigger a reload after login.
+  window.initDataFromSupabase = initDataFromSupabase;
+
+  function init() {
+    state.filter = { mode: 'all', start: null, end: null };
     wireTransactionForm();
     wireIncomeExpenseForms();
     wireDeleteHandlers();
     wireClientForm();
+    wireInvoiceModal();
+    wireInvoicePreviewModal();
     wireProjectsAndStatuses();
     wireFilter();
 
@@ -1940,6 +2401,11 @@ var verticalChart = null;
         if (sideItem) sideItem.classList.add('active');
       }
     };
+
+    // After wiring UI, load data from Supabase (or local fallback)
+    if (typeof initDataFromSupabase === 'function') {
+      initDataFromSupabase();
+    }
   }
 
   if (document.readyState === 'loading') {

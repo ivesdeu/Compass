@@ -641,6 +641,41 @@
   </div>
 </div>
 
+<!-- Invoice create/edit -->
+<div class="mo" id="invoiceModal">
+  <div class="md" style="max-width:560px;">
+    <div class="mt" id="invoice-modal-title">Create invoice</div>
+    <input type="hidden" id="invoice-income-id" value="" />
+    <div style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:18px;" id="invoice-context">
+      <!-- Filled from JS with client/project summary for this income line -->
+    </div>
+    <div class="fg" style="margin-bottom:16px;">
+      <div class="fgp"><label class="fl">Invoice number</label><input class="fi" id="invoice-number" placeholder="e.g. 1001" /></div>
+      <div class="fgp"><label class="fl">Issue date</label><input class="fi" id="invoice-issue-date" type="date" /></div>
+      <div class="fgp"><label class="fl">Due date</label><input class="fi" id="invoice-due-date" type="date" /></div>
+      <div class="fgp"><label class="fl">Amount</label><input class="fi" id="invoice-amount" type="number" min="0" step="0.01" placeholder="0.00" /></div>
+    </div>
+    <div class="mf" style="border-top:none;padding-top:0;margin-top:0;">
+      <button type="button" class="btn" id="btn-invoice-cancel">Cancel</button>
+      <button type="button" class="btn btn-p" id="btn-invoice-save">Save invoice</button>
+    </div>
+  </div>
+</div>
+
+<!-- Invoice preview -->
+<div class="mo" id="invoicePreviewModal">
+  <div class="md" style="max-width:960px;max-height:92vh;padding:0;overflow:hidden;">
+    <div style="display:flex;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--border);background:var(--bg2);">
+      <div style="font-size:15px;font-weight:600;">Invoice preview</div>
+      <div style="display:flex;gap:8px;">
+        <button type="button" class="btn" id="btn-invoice-preview-print">Print</button>
+        <button type="button" class="btn" id="btn-invoice-preview-close">Close</button>
+      </div>
+    </div>
+    <div id="invoice-preview-body" style="background:#f3f3f3;padding:20px;max-height:calc(92vh - 64px);overflow:auto;"></div>
+  </div>
+</div>
+
 <!-- MODAL -->
 <div class="mo" id="inputModal">
   <div class="md">
