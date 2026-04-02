@@ -150,10 +150,26 @@
   // Marketing campaigns (local only)
   var CAMPAIGNS_KEY = 'bizdash:campaigns:v1';
 
+  var CAMPAIGN_STATUS_PIPELINE = 'pipeline';
+  var CAMPAIGN_STATUS_WON = 'won';
+  var CAMPAIGN_STATUS_LOST = 'lost';
+
+  function normalizeCampaign(c) {
+    if (!c || typeof c !== 'object') return null;
+    var next = Object.assign({}, c);
+    if (!next.status || [CAMPAIGN_STATUS_PIPELINE, CAMPAIGN_STATUS_WON, CAMPAIGN_STATUS_LOST].indexOf(next.status) === -1) {
+      next.status = CAMPAIGN_STATUS_PIPELINE;
+    }
+    next.pipelineValue = Math.max(0, Number(next.pipelineValue) || 0);
+    return next;
+  }
+
   function loadCampaigns() {
     try {
       var raw = localStorage.getItem(CAMPAIGNS_KEY);
-      return raw ? JSON.parse(raw) : [];
+      var arr = raw ? JSON.parse(raw) : [];
+      if (!Array.isArray(arr)) return [];
+      return arr.map(normalizeCampaign).filter(Boolean);
     } catch (_) {
       return [];
     }
@@ -590,6 +606,25 @@
     select.innerHTML = opts.join('');
   }
 
+  /** Options HTML for the inline status select in Active Projects (same labels as the modal). */
+  function buildProjectRowStatusOptionsHtml(currentStatus) {
+    var cur = String(currentStatus || '').trim();
+    var opts = [];
+    var seen = {};
+    if (!cur) {
+      opts.push('<option value="" selected>—</option>');
+    }
+    projectStatuses.forEach(function (label) {
+      seen[label] = true;
+      var selected = label === cur ? ' selected' : '';
+      opts.push('<option value="' + esc(label) + '"' + selected + '>' + esc(label) + '</option>');
+    });
+    if (cur && !seen[cur]) {
+      opts.unshift('<option value="' + esc(cur) + '" selected>' + esc(cur) + '</option>');
+    }
+    return opts.join('');
+  }
+
   function populateIncomeClientOptions() {
     var select = $('income-client');
     if (!select) return;
@@ -637,6 +672,15 @@
       return true;
     }
     return true;
+  }
+
+  /** Month, day, and full year for chart labels/tooltips (avoids "Mar 26" reading as month + day when 26 is the year). */
+  function chartPointDateLabel(isoDateStr, fallbackYear, fallbackMonthIndex0) {
+    var d = isoDateStr ? parseDate(isoDateStr) : null;
+    if (!d || isNaN(d.getTime())) {
+      d = new Date(fallbackYear, fallbackMonthIndex0, 1);
+    }
+    return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
   }
 
   // ---------- Compute ----------
@@ -728,6 +772,7 @@ var projTypeChart = null;
 var projMonthlyChart = null;
 var revTrendChart = null;
 var verticalChart = null;
+var leadSourceChart = null;
 
   function renderExpenseChart(c) {
     var canvas = document.getElementById('cExp');
@@ -997,6 +1042,69 @@ var verticalChart = null;
     }).join('');
   }
 
+  function renderDashAR() {
+    var empty = $('dash-ar-empty');
+    var table = $('dash-ar-table');
+    var tbody = $('dash-ar-body');
+    if (!tbody) return;
+
+    var now = new Date();
+    var nowTs = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
+
+    var outstanding = invoices.filter(function (inv) {
+      return inv.status !== 'paid' && (+inv.amount || 0) > 0;
+    }).sort(function (a, b) {
+      return (a.dueDate || '').localeCompare(b.dueDate || '');
+    });
+
+    if (!outstanding.length) {
+      tbody.innerHTML = '';
+      if (empty) empty.style.display = 'block';
+      if (table) table.style.display = 'none';
+      setText('kpi-ar', '$0');
+      return;
+    }
+
+    if (empty) empty.style.display = 'none';
+    if (table) table.style.display = 'table';
+
+    var total = 0;
+    tbody.innerHTML = outstanding.map(function (inv) {
+      var amt = +inv.amount || 0;
+      total += amt;
+
+      var clientName = '—';
+      var tx = state.transactions && state.transactions.find(function (t) { return t.id === inv.incomeTxId; });
+      if (tx && tx.clientId) {
+        var cl = clients.find(function (c) { return c.id === tx.clientId; });
+        if (cl) clientName = esc(cl.companyName || cl.contactName || '—');
+      }
+      if (clientName === '—' && inv.clientName) clientName = esc(inv.clientName);
+
+      var dueStr = inv.dueDate || '—';
+      var statusLabel = inv.status === 'sent' ? 'Sent' : inv.status === 'draft' ? 'Draft' : (inv.status || 'Unpaid');
+      var statusClass = inv.status === 'sent' ? 'pg-b' : 'pg-a';
+
+      var overdue = '';
+      if (inv.dueDate) {
+        var dueTs = new Date(inv.dueDate).getTime();
+        if (!isNaN(dueTs) && dueTs < nowTs) {
+          var days = Math.floor((nowTs - dueTs) / (1000 * 60 * 60 * 24));
+          overdue = ' <span class="pl pg-r" style="font-size:10px;">' + days + 'd overdue</span>';
+        }
+      }
+
+      return '<tr>' +
+        '<td class="tdp">' + clientName + (inv.number ? '<br><span style="font-size:11px;color:var(--text3);font-weight:400;">' + esc(inv.number) + '</span>' : '') + '</td>' +
+        '<td>' + fmtCurrency(amt) + '</td>' +
+        '<td>' + esc(dueStr) + overdue + '</td>' +
+        '<td><span class="pl ' + statusClass + '">' + esc(statusLabel) + '</span></td>' +
+        '</tr>';
+    }).join('');
+
+    setText('kpi-ar', fmtCurrency(total));
+  }
+
   function renderAll() {
     var c = state.computed;
     if (!c) return;
@@ -1009,6 +1117,8 @@ var verticalChart = null;
     renderIncomeSection(c);
     renderRevenueByVertical(c);
     renderMarketing();
+    renderDashAR();
+    renderClients();
   }
 
   function renderRevenueByVertical(c) {
@@ -1067,29 +1177,101 @@ var verticalChart = null;
     }
   }
 
+  function renderLeadSourcesChart(activePipeline) {
+    var canvas = document.getElementById('cLead');
+    if (!canvas || !window.Chart) return;
+
+    var byChannel = {};
+    (activePipeline || []).forEach(function (c) {
+      var ch = (c.channel || '').trim() || 'Unspecified';
+      byChannel[ch] = (byChannel[ch] || 0) + 1;
+    });
+
+    var pairs = Object.keys(byChannel).map(function (k) {
+      return [k, byChannel[k]];
+    }).sort(function (a, b) { return b[1] - a[1]; });
+
+    var labels = [];
+    var data = [];
+    var colors = ['#e8501a', '#3366aa', '#a86e28', '#2d8a6e', '#7c6f9c', '#c0bfb8', '#c94a4a'];
+
+    if (!pairs.length) {
+      labels = ['No active pipeline'];
+      data = [1];
+    } else {
+      pairs.forEach(function (p) {
+        labels.push(p[0]);
+        data.push(p[1]);
+      });
+    }
+
+    var bg = !pairs.length
+      ? ['#e8e6e1']
+      : labels.map(function (_, i) { return colors[i % colors.length]; });
+
+    if (!leadSourceChart) {
+      leadSourceChart = new Chart(canvas, {
+        type: 'doughnut',
+        data: {
+          labels: labels,
+          datasets: [{
+            data: data,
+            backgroundColor: bg,
+            borderWidth: 0,
+          }],
+        },
+        options: {
+          responsive: true,
+          maintainAspectRatio: false,
+          cutout: '68%',
+          plugins: { legend: { display: false } },
+        },
+      });
+    } else {
+      leadSourceChart.data.labels = labels;
+      leadSourceChart.data.datasets[0].data = data;
+      leadSourceChart.data.datasets[0].backgroundColor = bg;
+      leadSourceChart.update('none');
+    }
+  }
+
   function renderMarketing() {
     var empty = $('campaigns-empty');
     var pipe = $('marketing-pipeline');
     if (!empty || !pipe) return;
 
+    var activePipeline = campaigns.filter(function (c) {
+      return (c.status || CAMPAIGN_STATUS_PIPELINE) === CAMPAIGN_STATUS_PIPELINE;
+    });
+
     if (!campaigns.length) {
       empty.style.display = 'block';
+      empty.textContent = 'No campaigns yet. Use + New Campaign to add one.';
       pipe.style.display = 'none';
       pipe.innerHTML = '';
     } else {
       empty.style.display = 'none';
       pipe.style.display = 'flex';
-      pipe.innerHTML = campaigns.slice().sort(function (a, b) {
-        return (b.startDate || '').localeCompare(a.startDate || '');
-      }).map(function (c) {
-        return '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg2);">' +
-          '<div><div style="font-weight:600;font-size:14px;">' + (c.name || 'Untitled') + '</div>' +
-          '<div style="font-size:12px;color:var(--text2);margin-top:4px;">' + (c.channel || '—') + ' · ' + (c.startDate || '—') + '</div>' +
-          (c.notes ? '<div style="font-size:12px;color:var(--text3);margin-top:6px;">' + c.notes + '</div>' : '') +
-          '</div>' +
-          '<button type="button" class="btn" data-campaign-del="' + c.id + '" style="font-size:11px;padding:4px 10px;color:var(--red);flex-shrink:0;">Delete</button>' +
-          '</div>';
-      }).join('');
+      if (!activePipeline.length) {
+        pipe.innerHTML = '<div style="font-size:13px;color:var(--text3);line-height:1.5;padding:8px 0;">No active pipeline. Won or lost campaigns are hidden here—edit a campaign and set status to Pipeline to show it, or add a new campaign.</div>';
+      } else {
+        pipe.innerHTML = activePipeline.slice().sort(function (a, b) {
+          return (b.startDate || '').localeCompare(a.startDate || '');
+        }).map(function (c) {
+          var val = fmtCurrency(c.pipelineValue || 0);
+          return '<div style="display:flex;justify-content:space-between;align-items:flex-start;gap:12px;padding:12px;border:1px solid var(--border);border-radius:var(--r);background:var(--bg2);">' +
+            '<div style="min-width:0;">' +
+            '<div style="font-weight:600;font-size:14px;">' + esc(c.name || 'Untitled') + '</div>' +
+            '<div style="font-size:12px;color:var(--text2);margin-top:4px;">' + esc(c.channel || '—') + ' · ' + esc(c.startDate || '—') + '</div>' +
+            '<div style="font-size:12px;color:var(--text);margin-top:6px;font-weight:500;">' + val + ' pipeline</div>' +
+            (c.notes ? '<div style="font-size:12px;color:var(--text3);margin-top:6px;">' + esc(c.notes) + '</div>' : '') +
+            '</div>' +
+            '<div style="display:flex;flex-direction:column;gap:6px;flex-shrink:0;align-items:flex-end;">' +
+            '<button type="button" class="btn" data-campaign-edit="' + esc(c.id) + '" style="font-size:11px;padding:4px 10px;">Edit</button>' +
+            '<button type="button" class="btn" data-campaign-del="' + esc(c.id) + '" style="font-size:11px;padding:4px 10px;color:var(--red);">Delete</button>' +
+            '</div></div>';
+        }).join('');
+      }
     }
 
     var now = new Date();
@@ -1101,21 +1283,57 @@ var verticalChart = null;
       return d.getFullYear() + '-' + d.getMonth() === monthKey;
     }).length;
     setText('mkt-kpi-1', String(startedThisMonth));
+
+    var won = campaigns.filter(function (c) { return c.status === CAMPAIGN_STATUS_WON; }).length;
+    var lost = campaigns.filter(function (c) { return c.status === CAMPAIGN_STATUS_LOST; }).length;
+    var closed = won + lost;
+    if (closed < 1) {
+      setText('mkt-kpi-2', '—');
+    } else {
+      setText('mkt-kpi-2', Math.round(won / closed * 100) + '%');
+    }
+
+    var pipeSum = activePipeline.reduce(function (acc, c) {
+      return acc + (Number(c.pipelineValue) || 0);
+    }, 0);
+    setText('mkt-kpi-3', fmtCurrency(pipeSum));
+
+    renderLeadSourcesChart(activePipeline);
   }
 
-  function openCampaignModal() {
+  function openCampaignModal(editId) {
     var m = $('campaignModal');
     if (!m) return;
-    if ($('campaign-name')) $('campaign-name').value = '';
-    if ($('campaign-channel')) $('campaign-channel').value = '';
-    if ($('campaign-start')) $('campaign-start').value = todayISO();
-    if ($('campaign-notes')) $('campaign-notes').value = '';
+    var hid = $('campaign-edit-id');
+    if (hid) hid.value = editId || '';
+    var titleEl = $('campaign-modal-title');
+    if (editId) {
+      var camp = campaigns.find(function (c) { return c.id === editId; });
+      if (!camp) return;
+      if (titleEl) titleEl.textContent = 'Edit campaign';
+      if ($('campaign-name')) $('campaign-name').value = camp.name || '';
+      if ($('campaign-channel')) $('campaign-channel').value = camp.channel || '';
+      if ($('campaign-start')) $('campaign-start').value = camp.startDate || todayISO();
+      if ($('campaign-pipeline-value')) $('campaign-pipeline-value').value = camp.pipelineValue != null ? String(camp.pipelineValue) : '';
+      if ($('campaign-status')) $('campaign-status').value = camp.status || CAMPAIGN_STATUS_PIPELINE;
+      if ($('campaign-notes')) $('campaign-notes').value = camp.notes || '';
+    } else {
+      if (titleEl) titleEl.textContent = 'New campaign';
+      if ($('campaign-name')) $('campaign-name').value = '';
+      if ($('campaign-channel')) $('campaign-channel').value = '';
+      if ($('campaign-start')) $('campaign-start').value = todayISO();
+      if ($('campaign-pipeline-value')) $('campaign-pipeline-value').value = '';
+      if ($('campaign-status')) $('campaign-status').value = CAMPAIGN_STATUS_PIPELINE;
+      if ($('campaign-notes')) $('campaign-notes').value = '';
+    }
     m.classList.add('on');
   }
 
   function closeCampaignModal() {
     var m = $('campaignModal');
     if (m) m.classList.remove('on');
+    var hid = $('campaign-edit-id');
+    if (hid) hid.value = '';
   }
 
   function wireMarketingCampaign() {
@@ -1123,7 +1341,7 @@ var verticalChart = null;
     var modal = $('campaignModal');
     var btnCancel = $('btn-campaign-cancel');
     var btnSave = $('btn-campaign-save');
-    if (btn) btn.addEventListener('click', openCampaignModal);
+    if (btn) btn.addEventListener('click', function () { openCampaignModal(''); });
     if (btnCancel) btnCancel.addEventListener('click', closeCampaignModal);
     if (btnSave) {
       btnSave.addEventListener('click', function () {
@@ -1132,14 +1350,41 @@ var verticalChart = null;
           alert('Campaign name is required.');
           return;
         }
-        campaigns.push({
-          id: uuid(),
-          name: name,
-          channel: ($('campaign-channel') && $('campaign-channel').value || '').trim(),
-          startDate: ($('campaign-start') && $('campaign-start').value) || todayISO(),
-          notes: ($('campaign-notes') && $('campaign-notes').value || '').trim(),
-          createdAt: Date.now(),
-        });
+        var channel = ($('campaign-channel') && $('campaign-channel').value || '').trim();
+        var startDate = ($('campaign-start') && $('campaign-start').value) || todayISO();
+        var notes = ($('campaign-notes') && $('campaign-notes').value || '').trim();
+        var pipelineVal = Math.max(0, parseFloat(($('campaign-pipeline-value') && $('campaign-pipeline-value').value) || '0') || 0);
+        var statusRaw = ($('campaign-status') && $('campaign-status').value) || CAMPAIGN_STATUS_PIPELINE;
+        var status = [CAMPAIGN_STATUS_PIPELINE, CAMPAIGN_STATUS_WON, CAMPAIGN_STATUS_LOST].indexOf(statusRaw) === -1
+          ? CAMPAIGN_STATUS_PIPELINE
+          : statusRaw;
+        var existingId = ($('campaign-edit-id') && $('campaign-edit-id').value) || '';
+        if (existingId) {
+          campaigns = campaigns.map(function (c) {
+            if (c.id !== existingId) return c;
+            return normalizeCampaign({
+              id: c.id,
+              name: name,
+              channel: channel,
+              startDate: startDate,
+              notes: notes,
+              pipelineValue: pipelineVal,
+              status: status,
+              createdAt: c.createdAt || Date.now(),
+            });
+          });
+        } else {
+          campaigns.push(normalizeCampaign({
+            id: uuid(),
+            name: name,
+            channel: channel,
+            startDate: startDate,
+            notes: notes,
+            pipelineValue: pipelineVal,
+            status: status,
+            createdAt: Date.now(),
+          }));
+        }
         saveCampaigns(campaigns);
         closeCampaignModal();
         renderMarketing();
@@ -1177,7 +1422,11 @@ var verticalChart = null;
           '<td>' + (p.description || '—') + '</td>' +
           '<td>' + (p.dueDate || '—') + '</td>' +
           '<td>' + fmtCurrency(p.value || 0) + '</td>' +
-          '<td>' + (p.status || '—') + '</td>' +
+          '<td style="min-width:140px;">' +
+            '<select class="fi project-row-status" data-project-status-id="' + esc(p.id) + '" ' +
+            'style="font-size:12px;padding:4px 8px;width:100%;max-width:200px;box-sizing:border-box;">' +
+            buildProjectRowStatusOptionsHtml(p.status) +
+            '</select></td>' +
           '<td style="white-space:nowrap;">' +
             '<button type="button" class="btn" data-project-edit="' + p.id + '" style="font-size:11px;padding:4px 10px;margin-right:6px;">Edit</button>' +
             '<button type="button" class="btn" data-project-del="' + p.id + '" style="font-size:11px;padding:4px 10px;color:var(--red);">Delete</button>' +
@@ -1205,12 +1454,17 @@ var verticalChart = null;
 
     // Group by month for Revenue Trend
     var revByMonth = {};
+    var revMonthLatestTxDate = {};
 
     revTxs.forEach(function (tx) {
       var d = parseDate(tx.date);
       if (!d) return;
       var key = d.getFullYear() + '-' + d.getMonth();
       revByMonth[key] = (revByMonth[key] || 0) + (+tx.amount || 0);
+      var ds = (tx.date || '').trim();
+      if (ds && (!revMonthLatestTxDate[key] || ds > revMonthLatestTxDate[key])) {
+        revMonthLatestTxDate[key] = ds;
+      }
       if (key === thisMonthKey) {
         collectedThisMonth += (+tx.amount || 0);
       }
@@ -1347,35 +1601,53 @@ var verticalChart = null;
     if (canvas && window.Chart) {
       var monthKeys = Object.keys(revByMonth);
       if (monthKeys.length) {
-        monthKeys.sort();
+        monthKeys.sort(function (a, b) {
+          var pa = a.split('-').map(Number);
+          var pb = b.split('-').map(Number);
+          if (pa[0] !== pb[0]) return pa[0] - pb[0];
+          return pa[1] - pb[1];
+        });
         if (monthKeys.length > 6) {
           monthKeys = monthKeys.slice(monthKeys.length - 6);
         }
       }
       var labels = monthKeys.map(function (key) {
         var parts = key.split('-').map(Number);
-        return new Date(parts[0], parts[1], 1).toLocaleString('en-US', {
-          month: 'short',
-          year: '2-digit',
-        });
+        var y = parts[0];
+        var m0 = parts[1];
+        return chartPointDateLabel(revMonthLatestTxDate[key], y, m0);
       });
       var data = monthKeys.map(function (k) { return revByMonth[k] || 0; });
 
+      if (revTrendChart && revTrendChart.config && revTrendChart.config.type !== 'line') {
+        revTrendChart.destroy();
+        revTrendChart = null;
+      }
+
       if (!revTrendChart) {
         revTrendChart = new Chart(canvas, {
-          type: 'bar',
+          type: 'line',
           data: {
             labels: labels,
             datasets: [{
               label: 'Revenue',
               data: data,
-              backgroundColor: '#e8501a',
-              borderRadius: 4,
+              borderColor: '#e8501a',
+              backgroundColor: 'rgba(232, 80, 26, 0.12)',
+              borderWidth: 2,
+              fill: true,
+              tension: 0.35,
+              pointBackgroundColor: '#e8501a',
+              pointBorderColor: '#ffffff',
+              pointBorderWidth: 2,
+              pointRadius: 4,
+              pointHoverRadius: 6,
             }],
           },
           options: {
             responsive: true,
             maintainAspectRatio: false,
+            interaction: { intersect: false, mode: 'index' },
             plugins: {
               legend: { display: false },
             },
@@ -1385,6 +1657,7 @@ var verticalChart = null;
                 ticks: { color: '#aaa99f', font: { size: 11 } },
               },
               y: {
+                beginAtZero: true,
                 grid: { color: 'rgba(0,0,0,0.05)' },
                 ticks: {
                   color: '#aaa99f',
@@ -1407,6 +1680,7 @@ var verticalChart = null;
     var totalDelivered = 0;
     var byType = {};
     var byMonth = {};
+    var deliverMonthLatestDue = {};
     var totalDurationDays = 0;
     var durationCount = 0;
     var onTimeCount = 0;
@@ -1424,6 +1698,10 @@ var verticalChart = null;
       if (due && !isNaN(due)) {
         var key = due.getFullYear() + '-' + String(due.getMonth() + 1).padStart(2, '0');
         byMonth[key] = (byMonth[key] || 0) + 1;
+        var dueStr = (p.dueDate || '').trim();
+        if (dueStr && (!deliverMonthLatestDue[key] || dueStr > deliverMonthLatestDue[key])) {
+          deliverMonthLatestDue[key] = dueStr;
+        }
       }
 
       if (status.indexOf('complete') !== -1) {
@@ -1498,7 +1776,9 @@ var verticalChart = null;
       }
       var monthLabels = monthKeys.map(function (key) {
         var parts = key.split('-').map(Number);
-        return new Date(parts[0], parts[1] - 1, 1).toLocaleString('en-US', { month: 'short', year: '2-digit' });
+        var y = parts[0];
+        var m1 = parts[1];
+        return chartPointDateLabel(deliverMonthLatestDue[key], y, m1 - 1);
       });
       var monthCounts = monthKeys.map(function (k) { return byMonth[k] || 0; });
 
@@ -1546,13 +1826,31 @@ var verticalChart = null;
 
   // ---------- Clients rendering ----------
 
+  /** Sum of recorded income (svc + ret) for a client from transactions (source of truth for this app). */
+  function clientRevenueFromTransactions(clientId) {
+    if (!clientId) return 0;
+    var sum = 0;
+    (state.transactions || []).forEach(function (tx) {
+      if (tx.clientId !== clientId) return;
+      if (tx.category !== 'svc' && tx.category !== 'ret') return;
+      var amt = +tx.amount || 0;
+      if (amt > 0) sum += amt;
+    });
+    return sum;
+  }
+
+  function clientProjectCount(clientId) {
+    if (!clientId) return 0;
+    return projects.filter(function (p) { return p.clientId === clientId; }).length;
+  }
+
   function computeClientKpis() {
     var total = clients.length;
     var activeRetainers = clients.filter(function (c) {
       return (c.status || '').toLowerCase().indexOf('retain') !== -1;
     }).length;
     var totalRevenue = clients.reduce(function (sum, c) {
-      return sum + (c.totalRevenue || 0);
+      return sum + clientRevenueFromTransactions(c.id);
     }, 0);
     var avgValue = total ? totalRevenue / total : 0;
     return {
@@ -1576,14 +1874,16 @@ var verticalChart = null;
       if (empty) empty.style.display = 'none';
       if (table) table.style.display = 'table';
       tbody.innerHTML = clients.map(function (c) {
+        var rev = clientRevenueFromTransactions(c.id);
+        var pcount = clientProjectCount(c.id);
         return '<tr>' +
           '<td class="tdp">' + (c.companyName || '—') + '</td>' +
           '<td>' + (c.contactName || '—') + '</td>' +
           '<td>' + (c.email || '—') + '</td>' +
           '<td>' + (c.phone || '—') + '</td>' +
           '<td>' + (c.status || '—') + '</td>' +
-          '<td>—</td>' +
-          '<td>' + fmtCurrency(c.totalRevenue || 0) + '</td>' +
+          '<td>' + (pcount ? String(pcount) : '—') + '</td>' +
+          '<td>' + fmtCurrency(rev) + '</td>' +
           '<td style="white-space:nowrap;">' +
             '<button type="button" class="btn" data-client-edit="' + c.id + '" style="font-size:11px;padding:4px 10px;margin-right:6px;">Edit</button>' +
             '<button type="button" class="btn" data-client-del="' + c.id + '" style="font-size:11px;padding:4px 10px;color:var(--red);">Delete</button>' +
@@ -2173,6 +2473,12 @@ var verticalChart = null;
     var mktPipe = $('marketing-pipeline');
     if (mktPipe) {
       mktPipe.addEventListener('click', function (ev) {
+        var editBtn = ev.target.closest('[data-campaign-edit]');
+        if (editBtn) {
+          var eid = editBtn.getAttribute('data-campaign-edit');
+          if (eid) openCampaignModal(eid);
+          return;
+        }
         var delBtn = ev.target.closest('[data-campaign-del]');
         if (!delBtn) return;
         var id = delBtn.getAttribute('data-campaign-del');
@@ -2222,6 +2528,19 @@ var verticalChart = null;
 
     var projTable = $('projects-table');
     if (projTable) {
+      projTable.addEventListener('change', function (ev) {
+        var sel = ev.target;
+        if (!sel || !sel.classList || !sel.classList.contains('project-row-status')) return;
+        var pid = sel.getAttribute('data-project-status-id');
+        if (!pid) return;
+        var proj = projects.find(function (p) { return p.id === pid; });
+        if (!proj) return;
+        var next = sel.value || '';
+        if ((proj.status || '') === next) return;
+        proj.status = next;
+        saveProjects(projects);
+        renderProjectKpisAndCharts();
+      });
       projTable.addEventListener('click', function (ev) {
         var editBtn = ev.target.closest('[data-project-edit]');
         if (editBtn) {
@@ -2244,6 +2563,7 @@ var verticalChart = null;
           $('project-value').value = proj.value != null ? String(proj.value) : '';
           $('project-desc').value = proj.description || '';
           $('project-notes').value = proj.notes || '';
+          if ($('project-satisfaction')) $('project-satisfaction').value = typeof proj.satisfaction === 'number' ? String(proj.satisfaction) : '';
           var archived = $('project-archived');
           if (archived) archived.checked = !!proj.archived;
           m.classList.add('on');
@@ -2473,6 +2793,7 @@ var verticalChart = null;
       $('project-value').value = '';
       $('project-desc').value = '';
       $('project-notes').value = '';
+      if ($('project-satisfaction')) $('project-satisfaction').value = '';
       var archived = $('project-archived');
       if (archived) archived.checked = false;
       populateProjectClientOptions();
@@ -2518,6 +2839,9 @@ var verticalChart = null;
         var desc = $('project-desc').value.trim();
         var notes = $('project-notes').value.trim();
         var archived = $('project-archived') && $('project-archived').checked;
+        var satRaw = $('project-satisfaction') ? $('project-satisfaction').value.trim() : '';
+        var satNum = satRaw !== '' ? Math.min(10, Math.max(1, parseInt(satRaw, 10))) : null;
+        var satisfaction = (!isNaN(satNum) && satNum !== null) ? satNum : null;
 
         var existingId = $('project-edit-id') ? $('project-edit-id').value : '';
         if (existingId) {
@@ -2534,6 +2858,7 @@ var verticalChart = null;
               value: value,
               description: desc,
               notes: notes,
+              satisfaction: satisfaction,
               archived: !!archived,
               createdAt: p.createdAt || Date.now(),
             };
@@ -2550,6 +2875,7 @@ var verticalChart = null;
             value: value,
             description: desc,
             notes: notes,
+            satisfaction: satisfaction,
             archived: !!archived,
             createdAt: Date.now(),
           };
@@ -2572,6 +2898,8 @@ var verticalChart = null;
         saveStatuses(projectStatuses);
         statusInput.value = '';
         renderStatusList();
+        populateProjectStatusOptions();
+        renderProjects();
       });
     }
 
@@ -2584,6 +2912,8 @@ var verticalChart = null;
         projectStatuses.splice(idx, 1);
         saveStatuses(projectStatuses);
         renderStatusList();
+        populateProjectStatusOptions();
+        renderProjects();
       });
     }
   }
@@ -2685,9 +3015,6 @@ var verticalChart = null;
 
       state.computed = compute(state.filter);
       renderAll();
-      if (typeof renderClients === 'function') {
-        renderClients();
-      }
       renderProjects();
       wireDeleteHandlers();
     } catch (err) {
@@ -2700,9 +3027,6 @@ var verticalChart = null;
       campaigns = loadCampaigns();
       state.computed = compute(state.filter);
       renderAll();
-      if (typeof renderClients === 'function') {
-        renderClients();
-      }
       renderProjects();
       wireDeleteHandlers();
     }
@@ -2726,6 +3050,8 @@ var verticalChart = null;
     // Simple page navigation wiring to replace the original bundle's nav().
     // Exposed globally so existing onclick="nav('dashboard', this)" continues to work.
     window.nav = function (pageId, el) {
+      document.body.classList.remove('mobile-nav-open');
+
       // Switch visible page
       var pages = document.querySelectorAll('.pg');
       pages.forEach(function (pg) {
@@ -2743,7 +3069,27 @@ var verticalChart = null;
         var sideItem = document.querySelector('.ni[data-nav="' + pageId + '"]');
         if (sideItem) sideItem.classList.add('active');
       }
+
+      var mobileTitle = document.getElementById('mobile-title');
+      if (mobileTitle) {
+        var titles = {
+          dashboard: 'Business Performance',
+          customers: 'Customers',
+          revenue: 'Income',
+          expenses: 'Expenses',
+          performance: 'Projects',
+          retention: 'Retention',
+          insights: 'Insights',
+          marketing: 'Marketing',
+          settings: 'Settings',
+        };
+        mobileTitle.textContent = titles[pageId] || 'Dashboard';
+      }
     };
+
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key === 'Escape') document.body.classList.remove('mobile-nav-open');
+    });
 
     // After wiring UI, load data from Supabase (or local fallback)
     if (typeof initDataFromSupabase === 'function') {

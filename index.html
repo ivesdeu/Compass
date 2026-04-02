@@ -53,11 +53,13 @@
   .sb-user:hover { color:rgba(255,255,255,0.65); }
   .avatar { width:28px; height:28px; border-radius:50%; background:var(--coral); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; color:#fff; flex-shrink:0; }
 
-  /* Remove extra mobile chrome (top bar, overlay, floating action bar) */
+  /* Mobile chrome hidden on desktop; enabled inside @media (max-width: 960px) below */
   .mobile-topbar,
-  .mobile-nav-overlay,
+  .mobile-nav-overlay {
+    display: none;
+  }
   .mobile-actions {
-    display:none !important;
+    display: none;
   }
 
   /* MAIN */
@@ -166,17 +168,6 @@
   body.internal-mode .ui-public-facing { display: none !important; }
   body.internal-mode .ui-internal-facing { display: block !important; }
   body.internal-mode .nav-public-facing { display: none !important; }
-  /* Hidden for internal-only mode. Do not delete (sidebar chrome returns when INTERNAL_MODE is false). */
-  body.internal-mode #btn-workspaces { display: none !important; }
-  body.internal-mode #sidebar-workspace-label { display: none !important; }
-  body.internal-mode #workspace-current-label { display: none !important; }
-  body.internal-mode #cloud-sidebar-section { display: none !important; }
-
-  /* Public dashboard: hide workspace/cloud controls visually */
-  #btn-workspaces,
-  #cloud-sidebar-section {
-    display:none !important;
-  }
 
   /* Auth gate: app hidden until authenticated */
   #auth-loading {
@@ -221,41 +212,166 @@
 
   /* Mobile layout */
   @media (max-width: 960px) {
-    body { flex-direction:column; height:100vh; }
-    #app-shell { flex-direction:column; }
-    .main { flex:1; height:100%; }
-    .pg { padding:18px 16px 24px; }
-    .ph { flex-direction:column; align-items:flex-start; gap:10px; }
-    .pt { font-size:20px; }
-    .hr { width:100%; justify-content:flex-start; flex-wrap:wrap; }
-    .hr > * { flex-shrink:0; }
-    .kg { grid-template-columns:1fr; }
-    .g2, .g3, .gm { grid-template-columns:1fr; }
-    .cw { height:200px; }
-    .card { padding:18px 16px; }
-    .fg { grid-template-columns:1fr; }
-    .md {
-      width:100%;
-      max-width:100vw;
-      max-height:100vh;
-      height:100vh;
-      border-radius:0;
-      padding:20px 16px 16px;
+    body { flex-direction: column; height: 100vh; height: 100dvh; overflow: hidden; }
+
+    #app-shell {
+      flex-direction: column;
+      flex: 1;
+      min-height: 0;
+      position: relative;
     }
-    .mt { font-size:18px; margin-bottom:16px; }
+
+    /* Top bar + full-width content (sidebar is off-canvas) */
+    .mobile-topbar {
+      display: flex !important;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+      padding: 10px 12px;
+      background: var(--bg2);
+      border-bottom: 1px solid var(--border);
+      z-index: 160;
+    }
+    .mobile-topbar-title {
+      font-size: 16px;
+      font-weight: 600;
+      letter-spacing: -0.02em;
+      flex: 1;
+      min-width: 0;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .mobile-menu-btn {
+      flex-shrink: 0;
+      width: 42px;
+      height: 42px;
+      border: 1px solid var(--border);
+      border-radius: var(--r);
+      background: var(--bg3);
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+    }
+    .mobile-menu-btn span {
+      display: block;
+      width: 18px;
+      height: 2px;
+      background: var(--text);
+      border-radius: 1px;
+      box-shadow: 0 -6px 0 var(--text), 0 6px 0 var(--text);
+    }
+
+    .mobile-nav-overlay {
+      display: block !important;
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.4);
+      z-index: 140;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    body.mobile-nav-open .mobile-nav-overlay {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    body.mobile-nav-open {
+      overflow: hidden;
+    }
+
+    .sb {
+      position: fixed;
+      top: 0;
+      left: 0;
+      bottom: 0;
+      width: min(288px, 88vw);
+      max-height: 100dvh;
+      z-index: 200;
+      transform: translateX(-100%);
+      transition: transform 0.22s ease;
+      box-shadow: none;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+    }
+    body.mobile-nav-open .sb {
+      transform: translateX(0);
+      box-shadow: 8px 0 32px rgba(0, 0, 0, 0.35);
+    }
+
+    .main {
+      flex: 1;
+      min-height: 0;
+      width: 100%;
+      overflow-y: auto;
+      -webkit-overflow-scrolling: touch;
+      padding-bottom: 76px;
+    }
+
+    #app-shell.on ~ .mobile-actions {
+      display: flex !important;
+      position: fixed;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      z-index: 45;
+      flex-wrap: wrap;
+      gap: 6px;
+      padding: 10px 12px calc(10px + env(safe-area-inset-bottom, 0px));
+      background: rgba(246, 245, 242, 0.96);
+      border-top: 1px solid var(--border);
+      backdrop-filter: blur(8px);
+      justify-content: center;
+    }
+    #app-shell.on ~ .mobile-actions .btn {
+      font-size: 12px;
+      padding: 7px 12px;
+      flex: 1 1 auto;
+      min-width: 0;
+    }
+
+    .pg { padding: 18px 16px 24px; }
+    .ph { flex-direction: column; align-items: flex-start; gap: 10px; }
+    .pt { font-size: 20px; }
+    .hr { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
+    .hr > * { flex-shrink: 0; max-width: 100%; }
+    .fi[style*="width:160px"],
+    .fi[style*="width:200px"] {
+      width: 100% !important;
+      max-width: 100%;
+    }
+    .kg { grid-template-columns: 1fr !important; }
+    .g2, .g3, .gm { grid-template-columns: 1fr; }
+    .cw { height: 200px; }
+    .card { padding: 18px 16px; }
+    .fg { grid-template-columns: 1fr; }
+    .md {
+      width: 100%;
+      max-width: 100vw;
+      max-height: 100vh;
+      max-height: 100dvh;
+      height: auto;
+      min-height: 0;
+      border-radius: 0;
+      padding: 20px 16px 16px;
+    }
+    .mt { font-size: 18px; margin-bottom: 16px; }
     .mf {
-      position:sticky;
-      bottom:0;
-      background:var(--bg2);
-      padding-top:12px;
-      margin-top:16px;
+      position: sticky;
+      bottom: 0;
+      background: var(--bg2);
+      padding-top: 12px;
+      margin-top: 16px;
     }
     .dt {
-      display:block;
-      width:100%;
-      overflow-x:auto;
-      -webkit-overflow-scrolling:touch;
-      white-space:nowrap;
+      display: block;
+      width: 100%;
+      overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
+      white-space: nowrap;
     }
   }
 </style>
@@ -289,19 +405,6 @@
 <div class="sb">
     <div class="sb-logo">
     <img class="sb-brand-img" src="/idm-logo.png" width="400" height="120" alt="ives deutschmann marketing" loading="eager" decoding="async" />
-  </div>
-  <div style="padding:0 18px 14px;border-bottom:1px solid rgba(255,255,255,0.07);">
-    <div id="sidebar-workspace-label" style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:rgba(255,255,255,0.25);margin-bottom:6px;">Workspace</div>
-    <div style="font-size:12px;color:rgba(255,255,255,0.5);margin-bottom:8px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" id="workspace-current-label">—</div>
-    <button type="button" class="btn" id="btn-workspaces" style="width:100%;justify-content:center;font-size:12px;padding:7px 12px;border-color:rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.85);font-family:inherit;">Switch or add workspace</button>
-    <div id="cloud-sidebar-section" style="margin-top:10px;padding-top:10px;border-top:1px solid rgba(255,255,255,0.08);">
-      <div id="cloud-section-label" style="font-size:10px;text-transform:uppercase;letter-spacing:0.08em;color:rgba(255,255,255,0.25);margin-bottom:6px;">Cloud</div>
-      <div id="cloud-status" style="font-size:11px;color:rgba(255,255,255,0.45);margin-bottom:7px;">Cloud: not configured</div>
-      <div style="display:flex;gap:6px;">
-        <button type="button" class="btn" id="btn-cloud-auth" style="flex:1;font-size:11px;padding:6px 10px;border-color:rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.85);font-family:inherit;">Sign in</button>
-        <button type="button" class="btn" id="btn-cloud-sync" style="flex:1;font-size:11px;padding:6px 10px;border-color:rgba(255,255,255,0.15);background:rgba(255,255,255,0.05);color:rgba(255,255,255,0.85);font-family:inherit;" disabled>Sync</button>
-      </div>
-    </div>
   </div>
   <nav class="sb-nav">
     <div class="nav-lbl">Overview</div>
@@ -432,7 +535,7 @@
     <div class="kg" style="grid-template-columns:repeat(3,1fr);">
       <div class="kc"><div class="kl">Total Clients</div><div class="kv" id="cust-kpi-1">0</div><div class="kb bn" id="cust-kpi-1b">—</div></div>
       <div class="kc hi"><div class="kl">Active Retainers</div><div class="kv" id="cust-kpi-2">0</div><div class="kb bn" id="cust-kpi-2b">—</div></div>
-      <div class="kc"><div class="kl">Avg. Project Value</div><div class="kv" id="cust-kpi-3">$0</div><div class="kb bn" id="cust-kpi-3b">—</div></div>
+      <div class="kc"><div class="kl">Avg. revenue / client</div><div class="kv" id="cust-kpi-3">$0</div><div class="kb bn" id="cust-kpi-3b">—</div></div>
     </div>
     <div class="card">
       <div id="customers-empty" style="font-size:13px;color:var(--text3);padding:8px 0;">No customers yet.</div>
@@ -778,6 +881,7 @@
       <div class="fgp"><label class="fl">Due date</label><input class="fi" id="project-due" type="date" /></div>
       <div class="fgp"><label class="fl">Value / revenue ($)</label><input class="fi" id="project-value" type="number" min="0" step="0.01" /></div>
       <div class="fgp" style="grid-column:1/-1;"><label class="fl">Description</label><textarea class="fi" id="project-desc" rows="2" style="min-height:56px;resize:vertical;"></textarea></div>
+      <div class="fgp"><label class="fl">Client satisfaction (1–10)</label><input class="fi" id="project-satisfaction" type="number" min="1" max="10" step="1" placeholder="e.g. 8" /></div>
       <div class="fgp" style="grid-column:1/-1;"><label class="fl">Notes</label><textarea class="fi" id="project-notes" rows="2" style="min-height:56px;resize:vertical;"></textarea></div>
       <div class="fgp" style="grid-column:1/-1;display:flex;align-items:center;gap:8px;">
         <input type="checkbox" id="project-archived" /><label class="fl" for="project-archived" style="margin:0;">Archived / closed</label>
@@ -816,11 +920,18 @@
 <!-- Marketing campaign -->
 <div class="mo" id="campaignModal">
   <div class="md" style="max-width:480px;">
-    <div class="mt">New campaign</div>
+    <div class="mt" id="campaign-modal-title">New campaign</div>
+    <input type="hidden" id="campaign-edit-id" value="" />
     <div class="fg" style="margin-bottom:16px;">
       <div class="fgp" style="grid-column:1/-1;"><label class="fl">Campaign name *</label><input class="fi" id="campaign-name" placeholder="e.g. Q2 lead gen" /></div>
       <div class="fgp"><label class="fl">Channel</label><input class="fi" id="campaign-channel" placeholder="e.g. Paid search, Email" /></div>
       <div class="fgp"><label class="fl">Start date</label><input class="fi" id="campaign-start" type="date" /></div>
+      <div class="fgp"><label class="fl">Pipeline value</label><input class="fi" id="campaign-pipeline-value" type="number" min="0" step="1" placeholder="0" /></div>
+      <div class="fgp"><label class="fl">Status</label><select class="fi" id="campaign-status">
+        <option value="pipeline">Pipeline</option>
+        <option value="won">Won</option>
+        <option value="lost">Lost</option>
+      </select></div>
       <div class="fgp" style="grid-column:1/-1;"><label class="fl">Notes</label><textarea class="fi" id="campaign-notes" rows="2" style="min-height:56px;resize:vertical;"></textarea></div>
     </div>
     <div class="mf" style="border-top:none;padding-top:0;margin-top:0;">
@@ -905,6 +1016,6 @@
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/assets/supabase-auth.js"></script>
-<script src="/assets/financial-core.js?v=20260402-revexp"></script>
+<script src="/assets/financial-core.js?v=20260402-chartdates"></script>
 </body>
 </html>
