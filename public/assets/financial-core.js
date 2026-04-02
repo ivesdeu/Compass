@@ -27,8 +27,20 @@
     } catch (_) {}
   }
 
+  function isUuid(v) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v || ''));
+  }
+
   function uuid() {
-    return 'tx-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2, 10);
+    if (window.crypto && typeof window.crypto.randomUUID === 'function') {
+      return window.crypto.randomUUID();
+    }
+    // RFC4122-ish fallback for older browsers.
+    return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function (c) {
+      var r = Math.random() * 16 | 0;
+      var v = c === 'x' ? r : (r & 0x3 | 0x8);
+      return v.toString(16);
+    });
   }
 
   var state = {
@@ -139,6 +151,18 @@
 
   // ---------- Shared helpers ----------
 
+  // Match Supabase `transactions` table: id, user_id, date, amount, category, description, created_at.
+  function transactionRowForDb(tx, userId) {
+    return {
+      id: tx.id,
+      user_id: userId,
+      date: tx.date,
+      category: tx.category,
+      amount: tx.amount,
+      description: tx.description || tx.note || null,
+    };
+  }
+
   async function persistTransactionToSupabase(tx) {
     supabase = window.supabaseClient || supabase;
     currentUser = window.currentUser || currentUser;
@@ -148,19 +172,11 @@
       return;
     }
 
-    var payload = {
-      id: tx.id,
-      user_id: currentUser.id,
-      date: tx.date,
-      category: tx.category,
-      amount: tx.amount,
-      note: tx.note || tx.description || null,
-      client_id: tx.clientId || null,
-      project_id: tx.projectId || null,
-      other_label: tx.otherLabel || null,
-      other_type: tx.otherType || null,
-      source: tx.source || null,
-    };
+    var payload = transactionRowForDb(tx, currentUser.id);
+
+    // #region agent log
+    fetch('http://127.0.0.1:7475/ingest/507d12bf-babb-4204-8816-34a6e29c9b5b', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c7d7dd' }, body: JSON.stringify({ sessionId: 'c7d7dd', runId: 'run1', hypothesisId: 'H1', location: 'financial-core.js:persistTransactionToSupabase', message: 'tx upsert payload shape', data: { keys: Object.keys(payload), hasClientIdKey: Object.prototype.hasOwnProperty.call(payload, 'client_id') }, timestamp: Date.now() }) }).catch(function () {});
+    // #endregion
 
     try {
       var result = await supabase
@@ -252,6 +268,152 @@
 
   // Load data from Supabase (or fall back to localStorage) for the signed-in user.
 
+  function normalizeLocalIdsForSupabase() {
+    var changed = false;
+    var clientIdMap = {};
+    var txIdMap = {};
+
+    clients = (clients || []).map(function (c) {
+      var oldId = c && c.id;
+      if (isUuid(oldId)) return c;
+      var newId = uuid();
+      clientIdMap[oldId || ''] = newId;
+      changed = true;
+      return Object.assign({}, c, { id: newId });
+    });
+
+    state.transactions = (state.transactions || []).map(function (tx) {
+      var oldTxId = tx && tx.id;
+      var next = Object.assign({}, tx);
+      if (!isUuid(oldTxId)) {
+        var newTxId = uuid();
+        txIdMap[oldTxId || ''] = newTxId;
+        next.id = newTxId;
+        changed = true;
+      }
+      if (next.clientId && clientIdMap[next.clientId]) {
+        next.clientId = clientIdMap[next.clientId];
+        changed = true;
+      }
+      return next;
+    });
+
+    projects = (projects || []).map(function (p) {
+      if (!p) return p;
+      if (p.clientId && clientIdMap[p.clientId]) {
+        changed = true;
+        return Object.assign({}, p, { clientId: clientIdMap[p.clientId] });
+      }
+      return p;
+    });
+
+    invoices = (invoices || []).map(function (inv) {
+      if (!inv) return inv;
+      var next = Object.assign({}, inv);
+      if (!isUuid(next.id)) {
+        next.id = uuid();
+        changed = true;
+      }
+      if (next.incomeTxId && txIdMap[next.incomeTxId]) {
+        next.incomeTxId = txIdMap[next.incomeTxId];
+        changed = true;
+      }
+      return next;
+    });
+
+    if (changed) {
+      saveTransactions(state.transactions);
+      saveClients(clients);
+      saveProjects(projects);
+      saveInvoices(invoices);
+    }
+  }
+
+  async function uploadTransactionsToSupabase(list) {
+    if (!supabase || !currentUser || !Array.isArray(list) || !list.length) return false;
+    var payload = list.map(function (tx) {
+      return transactionRowForDb(tx, currentUser.id);
+    });
+    // #region agent log
+    fetch('http://127.0.0.1:7475/ingest/507d12bf-babb-4204-8816-34a6e29c9b5b', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c7d7dd' }, body: JSON.stringify({ sessionId: 'c7d7dd', runId: 'run1', hypothesisId: 'H1', location: 'financial-core.js:uploadTransactionsToSupabase', message: 'bulk tx upsert first row keys', data: { count: payload.length, firstKeys: payload[0] ? Object.keys(payload[0]) : [], firstHasClientId: payload[0] ? Object.prototype.hasOwnProperty.call(payload[0], 'client_id') : null }, timestamp: Date.now() }) }).catch(function () {});
+    // #endregion
+    try {
+      var result = await supabase.from('transactions').upsert(payload, { onConflict: 'id' });
+      if (result.error) {
+        console.error('bulk upsert transactions error', result.error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('uploadTransactionsToSupabase error', err);
+      return false;
+    }
+  }
+
+  async function uploadClientsToSupabase(list) {
+    if (!supabase || !currentUser || !Array.isArray(list) || !list.length) return false;
+    var payload = list.map(function (client) {
+      return {
+        id: client.id,
+        user_id: currentUser.id,
+        company_name: client.companyName,
+        contact_name: client.contactName,
+        status: client.status,
+        industry: client.industry,
+        email: client.email,
+        phone: client.phone,
+        notes: client.notes,
+        total_revenue: client.totalRevenue || 0,
+        created_at: client.createdAt ? new Date(client.createdAt).toISOString() : new Date().toISOString(),
+      };
+    });
+    try {
+      var result = await supabase.from('clients').upsert(payload, { onConflict: 'id' });
+      if (result.error) {
+        console.error('bulk upsert clients error', result.error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('uploadClientsToSupabase error', err);
+      return false;
+    }
+  }
+
+  function mapTransactionRow(row) {
+    return {
+      id: row.id,
+      userId: row.user_id,
+      date: row.date,
+      category: row.category,
+      amount: Number(row.amount || 0),
+      description: row.description || row.note || '',
+      note: row.note || row.description || '',
+      clientId: row.client_id || null,
+      projectId: row.project_id || null,
+      otherLabel: row.other_label || '',
+      otherType: row.other_type || '',
+      source: row.source || '',
+      createdAt: row.created_at || null,
+    };
+  }
+
+  async function claimUnassignedTransactions(ids) {
+    if (!supabase || !currentUser || !ids || !ids.length) return;
+    try {
+      var res = await supabase
+        .from('transactions')
+        .update({ user_id: currentUser.id })
+        .in('id', ids)
+        .is('user_id', null);
+      if (res.error) {
+        console.warn('Could not assign user_id to legacy rows (RLS may block). Run SQL in Supabase to set user_id, or add an UPDATE policy for unassigned rows.', res.error);
+      }
+    } catch (e) {
+      console.warn('claimUnassignedTransactions error', e);
+    }
+  }
+
   async function fetchTransactionsFromSupabase() {
     // If Supabase or user is not ready, fall back to local cache.
     supabase = window.supabaseClient || supabase;
@@ -272,26 +434,59 @@
         return loadTransactions();
       }
 
-      return (result.data || []).map(function (row) {
-        return {
-          id: row.id,
-          userId: row.user_id,
-          date: row.date,
-          category: row.category,
-          amount: Number(row.amount || 0),
-          description: row.note || row.description || '',
-          note: row.note || '',
-          clientId: row.client_id || null,
-          projectId: row.project_id || null,
-          otherLabel: row.other_label || '',
-          otherType: row.other_type || '',
-          source: row.source || '',
-          createdAt: row.created_at || null,
-        };
-      });
+      var rows = result.data || [];
+
+      // Legacy rows were often inserted with user_id NULL; .eq(user_id) returns nothing on other devices.
+      if (!rows.length) {
+        var legacy = await supabase
+          .from('transactions')
+          .select('*')
+          .is('user_id', null)
+          .order('date', { ascending: false });
+        if (legacy.error) {
+          console.error('load legacy transactions error', legacy.error);
+        } else if (legacy.data && legacy.data.length) {
+          rows = legacy.data;
+          var ids = rows.map(function (r) { return r.id; }).filter(Boolean);
+          claimUnassignedTransactions(ids);
+        }
+      }
+
+      return rows.map(mapTransactionRow);
     } catch (err) {
       console.error('fetchTransactionsFromSupabase error', err);
       return loadTransactions();
+    }
+  }
+
+  function mapClientRow(row) {
+    return {
+      id: row.id,
+      companyName: row.company_name || '',
+      contactName: row.contact_name || '',
+      status: row.status || '',
+      industry: row.industry || '',
+      email: row.email || '',
+      phone: row.phone || '',
+      notes: row.notes || '',
+      totalRevenue: Number(row.total_revenue || 0),
+      createdAt: row.created_at || null,
+    };
+  }
+
+  async function claimUnassignedClients(ids) {
+    if (!supabase || !currentUser || !ids || !ids.length) return;
+    try {
+      var res = await supabase
+        .from('clients')
+        .update({ user_id: currentUser.id })
+        .in('id', ids)
+        .is('user_id', null);
+      if (res.error) {
+        console.warn('Could not assign user_id to legacy clients (RLS).', res.error);
+      }
+    } catch (e) {
+      console.warn('claimUnassignedClients error', e);
     }
   }
 
@@ -314,20 +509,24 @@
         return loadClients();
       }
 
-      return (result.data || []).map(function (row) {
-        return {
-          id: row.id,
-          companyName: row.company_name || '',
-          contactName: row.contact_name || '',
-          status: row.status || '',
-          industry: row.industry || '',
-          email: row.email || '',
-          phone: row.phone || '',
-          notes: row.notes || '',
-          totalRevenue: Number(row.total_revenue || 0),
-          createdAt: row.created_at || null,
-        };
-      });
+      var rows = result.data || [];
+
+      if (!rows.length) {
+        var legacy = await supabase
+          .from('clients')
+          .select('*')
+          .is('user_id', null)
+          .order('created_at', { ascending: true });
+        if (legacy.error) {
+          console.error('load legacy clients error', legacy.error);
+        } else if (legacy.data && legacy.data.length) {
+          rows = legacy.data;
+          var ids = rows.map(function (r) { return r.id; }).filter(Boolean);
+          claimUnassignedClients(ids);
+        }
+      }
+
+      return rows.map(mapClientRow);
     } catch (err) {
       console.error('fetchClientsFromSupabase error', err);
       return loadClients();
@@ -2321,22 +2520,41 @@ var verticalChart = null;
       supabase = window.supabaseClient || supabase;
       currentUser = window.currentUser || currentUser;
 
+      // Start from local cache so we can migrate/backfill if remote is empty.
+      state.transactions = loadTransactions();
+      clients = loadClients();
+      projects = loadProjects();
+      invoices = loadInvoices();
+      normalizeLocalIdsForSupabase();
+
       if (supabase && currentUser) {
-        state.transactions = await fetchTransactionsFromSupabase();
-        clients = await fetchClientsFromSupabase();
+        var remoteTxs = await fetchTransactionsFromSupabase();
+        var remoteClients = await fetchClientsFromSupabase();
+
+        // One-time backfill: if remote is empty but local has data, upload local records.
+        if (!remoteTxs.length && state.transactions.length) {
+          await uploadTransactionsToSupabase(state.transactions);
+          remoteTxs = await fetchTransactionsFromSupabase();
+        }
+        if (!remoteClients.length && clients.length) {
+          await uploadClientsToSupabase(clients);
+          remoteClients = await fetchClientsFromSupabase();
+        }
+
+        // Prefer remote when available; otherwise keep local fallback.
+        if (remoteTxs.length) state.transactions = remoteTxs;
+        if (remoteClients.length) clients = remoteClients;
+
+        // #region agent log
+        fetch('http://127.0.0.1:7475/ingest/507d12bf-babb-4204-8816-34a6e29c9b5b', { method: 'POST', headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c7d7dd' }, body: JSON.stringify({ sessionId: 'c7d7dd', runId: 'run1', hypothesisId: 'H2', location: 'financial-core.js:initDataFromSupabase', message: 'after remote load', data: { remoteTxCount: remoteTxs.length, remoteClientCount: remoteClients.length, appliedRemoteTx: !!remoteTxs.length, appliedRemoteClients: !!remoteClients.length }, timestamp: Date.now() }) }).catch(function () {});
+        // #endregion
 
         // Cache in localStorage so existing browser keeps a copy.
         saveTransactions(state.transactions);
         saveClients(clients);
-      } else {
-        // No Supabase session yet; use whatever is local.
-        state.transactions = loadTransactions();
-        clients = loadClients();
       }
 
       // Projects/invoices remain local-only for now.
-      projects = loadProjects();
-      invoices = loadInvoices();
 
       // Ensure dropdowns reflect latest clients/projects.
       populateProjectClientOptions();

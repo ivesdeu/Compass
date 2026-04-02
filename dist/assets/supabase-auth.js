@@ -16,6 +16,21 @@
   var supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
   window.supabaseClient = supabase;
 
+  // OAuth and token refresh can resolve after the first getSession(); reload data when auth settles.
+  supabase.auth.onAuthStateChange(function (event, session) {
+    if (event === 'SIGNED_OUT') {
+      setCurrentUser(null);
+      showLogin();
+      return;
+    }
+    if (session && session.user) {
+      setCurrentUser(session.user);
+      if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
+        showApp(session.user);
+      }
+    }
+  });
+
   function setCurrentUser(user) {
     window.currentUser = user || null;
   }
