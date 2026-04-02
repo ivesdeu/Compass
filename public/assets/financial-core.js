@@ -284,6 +284,8 @@
       notes: client.notes,
       total_revenue: client.totalRevenue || 0,
       created_at: client.createdAt ? new Date(client.createdAt).toISOString() : new Date().toISOString(),
+      // Requires column: is_retainer boolean (see Supabase clients table). Omit if not migrated yet.
+      is_retainer: client.retainer === true,
     };
 
     try {
@@ -418,6 +420,7 @@
         notes: client.notes,
         total_revenue: client.totalRevenue || 0,
         created_at: client.createdAt ? new Date(client.createdAt).toISOString() : new Date().toISOString(),
+        is_retainer: client.retainer === true,
       };
     });
     try {
@@ -513,18 +516,61 @@
   }
 
   function mapClientRow(row) {
+    var st = row.status || '';
+    var fromStatus = st.toLowerCase().indexOf('retain') !== -1;
+    var ex = row.is_retainer;
+    var retainer = ex === true || ex === false ? ex : fromStatus;
     return {
       id: row.id,
       companyName: row.company_name || '',
       contactName: row.contact_name || '',
-      status: row.status || '',
+      status: st,
       industry: row.industry || '',
       email: row.email || '',
       phone: row.phone || '',
       notes: row.notes || '',
       totalRevenue: Number(row.total_revenue || 0),
       createdAt: row.created_at || null,
+      retainer: retainer,
     };
+  }
+
+  /** After remote fetch, keep explicit local retainer checkbox when user has set it before. */
+  function mergeClientsPreserveRetainer(prevList, remoteList) {
+    var prevById = {};
+    (prevList || []).forEach(function (c) {
+      if (c && c.id) prevById[c.id] = c;
+    });
+    return (remoteList || []).map(function (c) {
+      var prev = prevById[c.id];
+      var next = Object.assign({}, c);
+      if (prev && typeof prev.retainer === 'boolean') next.retainer = prev.retainer;
+      return next;
+    });
+  }
+
+  function clientIsRetainer(c) {
+    if (!c) return false;
+    if (c.retainer === true) return true;
+    return (c.status || '').toLowerCase().indexOf('retain') !== -1;
+  }
+
+  var TX_RECURRENCE_KEYS = ['recurrence', 'recurrenceSeriesId', 'expenseRecurringLead', 'expenseRecurrenceInstance', 'recurring'];
+
+  function mergeTransactionsPreserveRecurrence(prevList, remoteList) {
+    var prevById = {};
+    (prevList || []).forEach(function (t) {
+      if (t && t.id) prevById[t.id] = t;
+    });
+    return (remoteList || []).map(function (t) {
+      var p = prevById[t.id];
+      if (!p) return t;
+      var next = Object.assign({}, t);
+      TX_RECURRENCE_KEYS.forEach(function (k) {
+        if (Object.prototype.hasOwnProperty.call(p, k)) next[k] = p[k];
+      });
+      return next;
+    });
   }
 
   async function claimUnassignedClients(ids) {
@@ -707,6 +753,9 @@
         case 'oth':
           expenseByCat[tx.category] += amt;
           break;
+        case 'own':
+          // Owner equity injection: tracked in ledger but excluded from revenue / expense / net.
+          break;
       }
     });
 
@@ -859,9 +908,10 @@ var leadSourceChart = null;
       return;
     }
 
-    var labels = ['Revenue', 'Expenses'];
-    var revData = [revTotal, null];
-    var expData = [null, expTotal];
+    // Single x category so both bars group side-by-side (not one bar per axis slot).
+    var labels = [''];
+    var revData = [revTotal];
+    var expData = [expTotal];
 
     if (!revExpChart) {
       revExpChart = new Chart(canvas, {
@@ -889,10 +939,16 @@ var leadSourceChart = null;
           plugins: {
             legend: { display: true, position: 'bottom' },
           },
+          datasets: {
+            bar: {
+              categoryPercentage: 0.45,
+              barPercentage: 0.9,
+            },
+          },
           scales: {
             x: {
               grid: { display: false },
-              ticks: { color: '#aaa99f', font: { size: 11 } },
+              ticks: { display: false },
             },
             y: {
               grid: { color: 'rgba(0,0,0,0.05)' },
@@ -984,6 +1040,7 @@ var leadSourceChart = null;
       var catLabel = {
         svc: 'Services',
         ret: 'Retainers',
+        own: 'Owner investment',
         lab: 'Labor',
         sw: 'Software',
         ads: 'Ads',
@@ -1033,7 +1090,7 @@ var leadSourceChart = null;
         '<td>' + label + '</td>' +
         '<td>' + fmtCurrency(tx.amount) + '</td>' +
         '<td>' + vendorText + '</td>' +
-        '<td>No</td>' +
+        '<td>' + (tx.expenseRecurringLead ? '<span class="pl pg-c">Series</span>' : tx.expenseRecurrenceInstance ? '<span class="pl pg-c">Yes</span>' : 'No') + '</td>' +
         '<td style="white-space:nowrap;">' +
           '<button type="button" class="btn" data-exp-edit="' + tx.id + '" style="font-size:11px;padding:4px 10px;margin-right:6px;">Edit</button>' +
           '<button type="button" class="btn" data-exp-del="' + tx.id + '" style="font-size:11px;padding:4px 10px;color:var(--red);">Delete</button>' +
@@ -1846,9 +1903,7 @@ var leadSourceChart = null;
 
   function computeClientKpis() {
     var total = clients.length;
-    var activeRetainers = clients.filter(function (c) {
-      return (c.status || '').toLowerCase().indexOf('retain') !== -1;
-    }).length;
+    var activeRetainers = clients.filter(clientIsRetainer).length;
     var totalRevenue = clients.reduce(function (sum, c) {
       return sum + clientRevenueFromTransactions(c.id);
     }, 0);
@@ -1881,7 +1936,9 @@ var leadSourceChart = null;
           '<td>' + (c.contactName || '—') + '</td>' +
           '<td>' + (c.email || '—') + '</td>' +
           '<td>' + (c.phone || '—') + '</td>' +
-          '<td>' + (c.status || '—') + '</td>' +
+          '<td>' + esc(c.status || '—') +
+            (clientIsRetainer(c) ? ' <span style="font-size:10px;font-weight:600;color:var(--coral);white-space:nowrap;">Retainer</span>' : '') +
+          '</td>' +
           '<td>' + (pcount ? String(pcount) : '—') + '</td>' +
           '<td>' + fmtCurrency(rev) + '</td>' +
           '<td style="white-space:nowrap;">' +
@@ -1921,7 +1978,28 @@ var leadSourceChart = null;
     deleteTransactionRemote(id);
   }
 
+  function deleteTransactionsByIds(ids) {
+    if (!ids || !ids.length) return;
+    var remove = {};
+    ids.forEach(function (id) { remove[id] = true; });
+    state.transactions = state.transactions.filter(function (tx) { return !remove[tx.id]; });
+    invoices = invoices.filter(function (inv) { return !remove[inv.incomeTxId]; });
+    saveTransactions(state.transactions);
+    saveInvoices(invoices);
+    recomputeAndRender();
+    ids.forEach(function (id) { deleteTransactionRemote(id); });
+  }
+
   // ---------- UI wiring ----------
+
+  function syncTransactionModalOtherFields() {
+    var cat = $('tx-category') ? $('tx-category').value : '';
+    var w1 = $('tx-other-wrapper');
+    var w2 = $('tx-other-type-wrapper');
+    var show = cat === 'oth';
+    if (w1) w1.style.display = show ? '' : 'none';
+    if (w2) w2.style.display = show ? '' : 'none';
+  }
 
   function openTransactionModal() {
     var modal = $('transactionModal');
@@ -1934,6 +2012,7 @@ var leadSourceChart = null;
     var otherType = $('tx-other-type');
     if (otherLabel) otherLabel.value = '';
     if (otherType) otherType.value = '';
+    syncTransactionModalOtherFields();
     modal.classList.add('on');
   }
 
@@ -1951,6 +2030,8 @@ var leadSourceChart = null;
     if (btnOpen1) btnOpen1.addEventListener('click', openTransactionModal);
     if (btnOpen2) btnOpen2.addEventListener('click', openTransactionModal);
     if (btnCancel) btnCancel.addEventListener('click', closeTransactionModal);
+    var txCat = $('tx-category');
+    if (txCat) txCat.addEventListener('change', syncTransactionModalOtherFields);
     // "Other expense" helpers are always visible; we just read their values when category is 'oth'.
     if (btnSave) {
       btnSave.addEventListener('click', function () {
@@ -1993,7 +2074,292 @@ var leadSourceChart = null;
     return new Date().toISOString().slice(0, 10);
   }
 
+  function dateYMD(d) {
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
+
+  function parseYMD(iso) {
+    var p = (iso || '').split('-');
+    if (p.length < 3) return new Date(NaN);
+    return new Date(+p[0], +p[1] - 1, +p[2], 12, 0, 0, 0);
+  }
+
+  function daysInMonth(y, m0) {
+    return new Date(y, m0 + 1, 0).getDate();
+  }
+
+  function addMonthsKeepDom(y, m0, dom, deltaMonths) {
+    var dt = new Date(y, m0 + deltaMonths, 1, 12, 0, 0, 0);
+    var dim = daysInMonth(dt.getFullYear(), dt.getMonth());
+    dt.setDate(Math.min(dom, dim));
+    return dt;
+  }
+
+  function calendarDaysFromTo(start, d) {
+    var ua = Date.UTC(start.getFullYear(), start.getMonth(), start.getDate());
+    var ub = Date.UTC(d.getFullYear(), d.getMonth(), d.getDate());
+    return Math.round((ub - ua) / 86400000);
+  }
+
+  function generateMonthlyOccurrenceDates(rule, startStr, horizonEndStr) {
+    var start = parseYMD(rule.startDate || startStr);
+    var end = parseYMD(horizonEndStr);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return [];
+    var dom = rule.dayOfMonth != null ? Math.min(31, Math.max(1, +rule.dayOfMonth)) : start.getDate();
+    var interval = Math.max(1, parseInt(rule.interval, 10) || 1);
+    var y0 = start.getFullYear();
+    var m0 = start.getMonth();
+    var out = [];
+    var step;
+    for (step = 0; step < 240; step++) {
+      var dt = addMonthsKeepDom(y0, m0, dom, step * interval);
+      if (dt > end) break;
+      if (dt >= start) out.push(dateYMD(dt));
+    }
+    return out;
+  }
+
+  function generateWeeklyOccurrenceDates(rule, startStr, horizonEndStr) {
+    var start = parseYMD(rule.startDate || startStr);
+    var end = parseYMD(horizonEndStr);
+    if (isNaN(start.getTime()) || isNaN(end.getTime())) return [];
+    var weekdays = (rule.weekdays && rule.weekdays.length) ? rule.weekdays.slice().sort(function (a, b) { return a - b; }) : [start.getDay()];
+    var interval = Math.max(1, parseInt(rule.interval, 10) || 1);
+    var seen = {};
+    var out = [];
+    var d = new Date(start.getTime());
+    var guard = 0;
+    while (d <= end && guard < 800) {
+      guard++;
+      if (weekdays.indexOf(d.getDay()) !== -1) {
+        var daysFrom = calendarDaysFromTo(start, d);
+        if (daysFrom >= 0) {
+          var weeksFrom = Math.floor(daysFrom / 7);
+          if (weeksFrom % interval === 0) {
+            var iso = dateYMD(d);
+            if (!seen[iso]) {
+              seen[iso] = true;
+              out.push(iso);
+            }
+          }
+        }
+      }
+      d.setDate(d.getDate() + 1);
+    }
+    return out;
+  }
+
+  function expandRecurringExpenseInstances() {
+    var leads = (state.transactions || []).filter(function (t) {
+      return t && t.expenseRecurringLead && t.recurrence && t.recurrenceSeriesId &&
+        ['lab', 'sw', 'ads', 'oth'].indexOf(t.category) !== -1;
+    });
+    if (!leads.length) return;
+    var today = new Date();
+    var horizon = new Date(today.getFullYear(), today.getMonth(), today.getDate(), 12, 0, 0, 0);
+    horizon.setMonth(horizon.getMonth() + 24);
+    var horizonStr = dateYMD(horizon);
+    var added = false;
+
+    leads.forEach(function (lead) {
+      var rule = Object.assign({}, lead.recurrence);
+      rule.startDate = rule.startDate || lead.date;
+      var endCap = horizonStr;
+      if (rule.endDate && String(rule.endDate).trim() && rule.endDate < endCap) endCap = rule.endDate;
+      var dates = rule.repeat === 'weekly'
+        ? generateWeeklyOccurrenceDates(rule, rule.startDate, endCap)
+        : generateMonthlyOccurrenceDates(rule, rule.startDate, endCap);
+      var existing = {};
+      state.transactions.forEach(function (t) {
+        if (t.recurrenceSeriesId === lead.recurrenceSeriesId && t.date) existing[t.date] = true;
+      });
+      dates.forEach(function (iso) {
+        if (existing[iso]) return;
+        existing[iso] = true;
+        added = true;
+        var clone = {
+          id: uuid(),
+          date: iso,
+          title: lead.title,
+          vendor: lead.vendor,
+          notes: lead.notes,
+          description: lead.description,
+          amount: lead.amount,
+          category: lead.category,
+          recurrenceSeriesId: lead.recurrenceSeriesId,
+          expenseRecurrenceInstance: true,
+        };
+        state.transactions.push(clone);
+        persistTransactionToSupabase(clone);
+      });
+    });
+    if (added) saveTransactions(state.transactions);
+  }
+
+  function syncExpenseRecurrenceRepeatRows() {
+    var rep = $('expense-recurrence-repeat');
+    var mode = rep ? rep.value : 'monthly';
+    var monthlyRow = $('expense-recurrence-monthly-row');
+    var weeklyRow = $('expense-recurrence-weekly-row');
+    var label = $('expense-recurrence-interval-label');
+    if (monthlyRow) monthlyRow.style.display = mode === 'monthly' ? '' : 'none';
+    if (weeklyRow) weeklyRow.style.display = mode === 'weekly' ? '' : 'none';
+    if (label) label.textContent = mode === 'weekly' ? 'week(s)' : 'month(s)';
+    var endDate = $('expense-recurrence-end-date');
+    var endMode = $('expense-recurrence-end-mode');
+    if (endDate) endDate.style.display = endMode && endMode.value === 'on' ? '' : 'none';
+  }
+
+  function updateExpenseRecurrenceSummary() {
+    var el = $('expense-recurrence-summary');
+    if (!el) return;
+    var chk = $('expense-recurring');
+    if (!chk || !chk.checked) {
+      el.textContent = '';
+      return;
+    }
+    var startStr = ($('expense-date') && $('expense-date').value) || todayISO();
+    var rep = ($('expense-recurrence-repeat') && $('expense-recurrence-repeat').value) || 'monthly';
+    var n = Math.max(1, parseInt($('expense-recurrence-interval') && $('expense-recurrence-interval').value, 10) || 1);
+    var endMode = $('expense-recurrence-end-mode') && $('expense-recurrence-end-mode').value;
+    var endPart = endMode === 'on' && $('expense-recurrence-end-date') && $('expense-recurrence-end-date').value
+      ? ' until ' + fmtDateDisplay($('expense-recurrence-end-date').value) + '.'
+      : '.';
+    var startPretty = fmtDateDisplay(startStr);
+    if (rep === 'monthly') {
+      var dom = Math.min(31, Math.max(1, parseInt($('expense-recurrence-dom') && $('expense-recurrence-dom').value, 10) || 1));
+      var unit = n === 1 ? 'month' : n + ' months';
+      el.innerHTML = 'Occurs on day <strong>' + dom + '</strong> every <strong>' + unit + '</strong>, starting <strong>' + startPretty + '</strong>' + endPart;
+      return;
+    }
+    var names = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var sel = [];
+    var modal = $('expenseModal');
+    if (modal) {
+      modal.querySelectorAll('.exp-rec-dow.on').forEach(function (b) {
+        var dow = parseInt(b.getAttribute('data-dow'), 10);
+        if (!isNaN(dow)) sel.push(names[dow]);
+      });
+    }
+    var sdW = parseYMD(startStr);
+    var dayPart = sel.length ? sel.join(', ') : names[isNaN(sdW.getTime()) ? 0 : sdW.getDay()];
+    var wunit = n === 1 ? 'week' : n + ' weeks';
+    el.innerHTML = 'Occurs every <strong>' + dayPart + '</strong> (every <strong>' + wunit + '</strong>), starting <strong>' + startPretty + '</strong>' + endPart;
+  }
+
+  function resetExpenseRecurrenceUiDefaults() {
+    var rep = $('expense-recurrence-repeat');
+    if (rep) rep.value = 'monthly';
+    var intv = $('expense-recurrence-interval');
+    if (intv) intv.value = '1';
+    var dom = $('expense-recurrence-dom');
+    var dStr = ($('expense-date') && $('expense-date').value) || todayISO();
+    var pd = parseYMD(dStr);
+    if (dom && !isNaN(pd.getTime())) dom.value = String(pd.getDate());
+    var endMode = $('expense-recurrence-end-mode');
+    if (endMode) endMode.value = 'never';
+    var endDate = $('expense-recurrence-end-date');
+    if (endDate) endDate.value = '';
+    var modal = $('expenseModal');
+    if (modal) {
+      modal.querySelectorAll('.exp-rec-dow').forEach(function (b) {
+        b.classList.remove('on');
+        b.setAttribute('aria-pressed', 'false');
+      });
+    }
+    syncExpenseRecurrenceRepeatRows();
+    updateExpenseRecurrenceSummary();
+  }
+
+  function readExpenseRecurrenceRuleFromUi(expenseDateIso) {
+    var repeat = ($('expense-recurrence-repeat') && $('expense-recurrence-repeat').value) || 'monthly';
+    var interval = Math.max(1, parseInt($('expense-recurrence-interval') && $('expense-recurrence-interval').value, 10) || 1);
+    var endMode = $('expense-recurrence-end-mode') && $('expense-recurrence-end-mode').value;
+    var endDate = endMode === 'on' && $('expense-recurrence-end-date') && $('expense-recurrence-end-date').value
+      ? $('expense-recurrence-end-date').value
+      : null;
+    var rule = {
+      repeat: repeat,
+      interval: interval,
+      startDate: expenseDateIso,
+      endDate: endDate,
+    };
+    if (repeat === 'weekly') {
+      var wds = [];
+      var modal = $('expenseModal');
+      if (modal) {
+        modal.querySelectorAll('.exp-rec-dow.on').forEach(function (b) {
+          var dow = parseInt(b.getAttribute('data-dow'), 10);
+          if (!isNaN(dow)) wds.push(dow);
+        });
+      }
+      if (!wds.length) {
+        var sd0 = parseYMD(expenseDateIso);
+        wds.push(isNaN(sd0.getTime()) ? 0 : sd0.getDay());
+      }
+      rule.weekdays = wds;
+    } else {
+      rule.dayOfMonth = Math.min(31, Math.max(1, parseInt($('expense-recurrence-dom') && $('expense-recurrence-dom').value, 10) || 1));
+    }
+    return rule;
+  }
+
+  function toggleExpenseRecurrencePanelVisible() {
+    var panel = $('expense-recurrence-panel');
+    var chk = $('expense-recurring');
+    if (panel && chk) panel.style.display = chk.checked ? 'block' : 'none';
+    if (chk && chk.checked) {
+      var domIn = $('expense-recurrence-dom');
+      var fDate = $('expense-date');
+      var rep = $('expense-recurrence-repeat');
+      if (domIn && fDate && rep && rep.value === 'monthly') {
+        var pd = parseYMD(fDate.value || todayISO());
+        if (!isNaN(pd.getTime())) domIn.value = String(pd.getDate());
+      }
+      syncExpenseRecurrenceRepeatRows();
+    }
+    updateExpenseRecurrenceSummary();
+  }
+
+  function wireExpenseRecurrenceControls() {
+    var modal = $('expenseModal');
+    if (!modal || modal.getAttribute('data-recurrence-wired') === '1') return;
+    modal.setAttribute('data-recurrence-wired', '1');
+    var chk = $('expense-recurring');
+    if (chk) chk.addEventListener('change', toggleExpenseRecurrencePanelVisible);
+    var rep = $('expense-recurrence-repeat');
+    if (rep) rep.addEventListener('change', function () { syncExpenseRecurrenceRepeatRows(); updateExpenseRecurrenceSummary(); });
+    var intv = $('expense-recurrence-interval');
+    if (intv) intv.addEventListener('input', updateExpenseRecurrenceSummary);
+    var domIn = $('expense-recurrence-dom');
+    if (domIn) domIn.addEventListener('input', updateExpenseRecurrenceSummary);
+    var endMode = $('expense-recurrence-end-mode');
+    if (endMode) endMode.addEventListener('change', function () { syncExpenseRecurrenceRepeatRows(); updateExpenseRecurrenceSummary(); });
+    var endDate = $('expense-recurrence-end-date');
+    if (endDate) endDate.addEventListener('change', updateExpenseRecurrenceSummary);
+    var fDate = $('expense-date');
+    if (fDate) fDate.addEventListener('change', function () {
+      var d = $('expense-recurrence-dom');
+      var pd = parseYMD(fDate.value || todayISO());
+      if (d && !isNaN(pd.getTime()) && $('expense-recurrence-repeat') && $('expense-recurrence-repeat').value === 'monthly') {
+        d.value = String(pd.getDate());
+      }
+      updateExpenseRecurrenceSummary();
+    });
+    modal.addEventListener('click', function (ev) {
+      var btn = ev.target.closest('.exp-rec-dow');
+      if (!btn) return;
+      var on = btn.classList.toggle('on');
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+      updateExpenseRecurrenceSummary();
+    });
+  }
+
   function openExpenseModal(existingTx) {
+    wireExpenseRecurrenceControls();
     var m = $('expenseModal');
     if (!m) return;
     var editId = $('expense-edit-id');
@@ -2003,6 +2369,7 @@ var leadSourceChart = null;
     var fCat = $('expense-category');
     var fVendor = $('expense-vendor');
     var fNotes = $('expense-notes');
+    var recChk = $('expense-recurring');
 
     if (existingTx) {
       if (editId) editId.value = existingTx.id || '';
@@ -2012,6 +2379,37 @@ var leadSourceChart = null;
       if (fCat) fCat.value = existingTx.categoryLabel || '';
       if (fVendor) fVendor.value = existingTx.vendor || '';
       if (fNotes) fNotes.value = existingTx.notes != null ? existingTx.notes : '';
+      var isLead = !!existingTx.expenseRecurringLead && existingTx.recurrence;
+      if (recChk) recChk.checked = isLead;
+      if (isLead && existingTx.recurrence) {
+        var r = existingTx.recurrence;
+        if ($('expense-recurrence-repeat')) $('expense-recurrence-repeat').value = r.repeat === 'weekly' ? 'weekly' : 'monthly';
+        if ($('expense-recurrence-interval')) $('expense-recurrence-interval').value = String(Math.max(1, r.interval || 1));
+        if ($('expense-recurrence-dom')) {
+          if (r.dayOfMonth != null) $('expense-recurrence-dom').value = String(r.dayOfMonth);
+          else if (r.repeat !== 'weekly') {
+            var pdDom = parseYMD(existingTx.date || todayISO());
+            if (!isNaN(pdDom.getTime())) $('expense-recurrence-dom').value = String(pdDom.getDate());
+          }
+        }
+        if ($('expense-recurrence-end-mode')) $('expense-recurrence-end-mode').value = r.endDate ? 'on' : 'never';
+        if ($('expense-recurrence-end-date')) $('expense-recurrence-end-date').value = r.endDate || '';
+        m.querySelectorAll('.exp-rec-dow').forEach(function (b) {
+          b.classList.remove('on');
+          b.setAttribute('aria-pressed', 'false');
+        });
+        if (r.weekdays && r.weekdays.length) {
+          r.weekdays.forEach(function (wd) {
+            var b = m.querySelector('.exp-rec-dow[data-dow="' + wd + '"]');
+            if (b) {
+              b.classList.add('on');
+              b.setAttribute('aria-pressed', 'true');
+            }
+          });
+        }
+      } else {
+        resetExpenseRecurrenceUiDefaults();
+      }
     } else {
       if (editId) editId.value = '';
       if (fDate) fDate.value = todayISO();
@@ -2020,7 +2418,11 @@ var leadSourceChart = null;
       if (fCat) fCat.value = '';
       if (fVendor) fVendor.value = '';
       if (fNotes) fNotes.value = '';
+      if (recChk) recChk.checked = false;
+      resetExpenseRecurrenceUiDefaults();
     }
+    syncExpenseRecurrenceRepeatRows();
+    toggleExpenseRecurrencePanelVisible();
     m.classList.add('on');
   }
 
@@ -2242,11 +2644,12 @@ var leadSourceChart = null;
         var desc = titleTrim || vendorTrim || notesTrim;
 
         var editId = $('expense-edit-id') ? $('expense-edit-id').value : '';
+        var recurring = $('expense-recurring') && $('expense-recurring').checked;
         if (editId) {
-          // Update existing transaction
+          var prevTx = state.transactions.find(function (t) { return t.id === editId; });
           state.transactions = state.transactions.map(function (tx) {
             if (tx.id !== editId) return tx;
-            return {
+            var next = {
               id: tx.id,
               date: date,
               title: titleTrim,
@@ -2256,23 +2659,58 @@ var leadSourceChart = null;
               amount: amount,
               category: cat,
             };
+            if (recurring) {
+              next.recurrenceSeriesId = (prevTx && prevTx.recurrenceSeriesId) ? prevTx.recurrenceSeriesId : uuid();
+              next.expenseRecurringLead = true;
+              next.recurrence = readExpenseRecurrenceRuleFromUi(date);
+              next.recurring = true;
+            } else {
+              if (prevTx && prevTx.expenseRecurrenceInstance) {
+                next.recurrenceSeriesId = prevTx.recurrenceSeriesId;
+                next.expenseRecurrenceInstance = true;
+              }
+            }
+            return next;
           });
           saveTransactions(state.transactions);
           recomputeAndRender();
           var updated = state.transactions.find(function (t) { return t.id === editId; });
           if (updated) persistTransactionToSupabase(updated);
+          if (recurring) {
+            expandRecurringExpenseInstances();
+            recomputeAndRender();
+          }
         } else {
-          // Create new expense transaction
-          addTransaction({
-            id: uuid(),
-            date: date,
-            title: titleTrim,
-            vendor: vendorTrim,
-            notes: notesTrim,
-            description: desc,
-            amount: amount,
-            category: cat,
-          });
+          if (recurring) {
+            var seriesId = uuid();
+            addTransaction({
+              id: uuid(),
+              date: date,
+              title: titleTrim,
+              vendor: vendorTrim,
+              notes: notesTrim,
+              description: desc,
+              amount: amount,
+              category: cat,
+              recurrenceSeriesId: seriesId,
+              expenseRecurringLead: true,
+              recurrence: readExpenseRecurrenceRuleFromUi(date),
+              recurring: true,
+            });
+            expandRecurringExpenseInstances();
+            recomputeAndRender();
+          } else {
+            addTransaction({
+              id: uuid(),
+              date: date,
+              title: titleTrim,
+              vendor: vendorTrim,
+              notes: notesTrim,
+              description: desc,
+              amount: amount,
+              category: cat,
+            });
+          }
         }
         closeExpenseModal();
       });
@@ -2456,6 +2894,8 @@ var leadSourceChart = null;
             vendor: tx.vendor,
             notes: tx.notes,
             description: tx.description,
+            expenseRecurringLead: tx.expenseRecurringLead,
+            recurrence: tx.recurrence,
           });
           return;
         }
@@ -2464,6 +2904,14 @@ var leadSourceChart = null;
         if (!delBtn) return;
         var id = delBtn.getAttribute('data-exp-del');
         if (!id) return;
+        var delTx = state.transactions.find(function (t) { return t.id === id; });
+        if (delTx && delTx.expenseRecurringLead && delTx.recurrenceSeriesId) {
+          if (!confirm('Delete this recurring expense and all auto-generated occurrences in the series?')) return;
+          var sid = delTx.recurrenceSeriesId;
+          var ids = state.transactions.filter(function (t) { return t.recurrenceSeriesId === sid; }).map(function (t) { return t.id; });
+          deleteTransactionsByIds(ids);
+          return;
+        }
         if (confirm('Delete this expense transaction?')) {
           deleteTransaction(id);
         }
@@ -2509,6 +2957,8 @@ var leadSourceChart = null;
           $('client-email').value = client.email || '';
           $('client-phone').value = client.phone || '';
           $('client-notes').value = client.notes || '';
+          var retCb = $('client-retainer');
+          if (retCb) retCb.checked = client.retainer === true;
           m.classList.add('on');
           return;
         }
@@ -2690,6 +3140,8 @@ var leadSourceChart = null;
       $('client-email').value = '';
       $('client-phone').value = '';
       $('client-notes').value = '';
+      var retCb = $('client-retainer');
+      if (retCb) retCb.checked = false;
       m.classList.add('on');
     }
 
@@ -2708,6 +3160,7 @@ var leadSourceChart = null;
           return;
         }
         var existingId = $('client-edit-id') ? $('client-edit-id').value : '';
+        var retainerChecked = $('client-retainer') && $('client-retainer').checked;
         var client;
         if (existingId) {
           clients = clients.map(function (c) {
@@ -2723,6 +3176,7 @@ var leadSourceChart = null;
               notes: $('client-notes').value.trim(),
               totalRevenue: c.totalRevenue || 0,
               createdAt: c.createdAt || Date.now(),
+              retainer: !!retainerChecked,
             };
             return client;
           });
@@ -2738,6 +3192,7 @@ var leadSourceChart = null;
             notes: $('client-notes').value.trim(),
             totalRevenue: 0,
             createdAt: Date.now(),
+            retainer: !!retainerChecked,
           };
           clients.push(client);
         }
@@ -2995,8 +3450,8 @@ var leadSourceChart = null;
         }
 
         // Prefer remote when available; otherwise keep local fallback.
-        if (remoteTxs.length) state.transactions = remoteTxs;
-        if (remoteClients.length) clients = remoteClients;
+        if (remoteTxs.length) state.transactions = mergeTransactionsPreserveRecurrence(state.transactions, remoteTxs);
+        if (remoteClients.length) clients = mergeClientsPreserveRetainer(clients, remoteClients);
 
         // #region agent log
         debugAgentLog({ runId: 'run1', hypothesisId: 'H2', location: 'financial-core.js:initDataFromSupabase', message: 'after remote load', data: { remoteTxCount: remoteTxs.length, remoteClientCount: remoteClients.length, appliedRemoteTx: !!remoteTxs.length, appliedRemoteClients: !!remoteClients.length } });
@@ -3008,6 +3463,8 @@ var leadSourceChart = null;
       }
 
       // Projects/invoices remain local-only for now.
+
+      expandRecurringExpenseInstances();
 
       // Ensure dropdowns reflect latest clients/projects.
       populateProjectClientOptions();
@@ -3025,6 +3482,7 @@ var leadSourceChart = null;
       projects = loadProjects();
       invoices = loadInvoices();
       campaigns = loadCampaigns();
+      expandRecurringExpenseInstances();
       state.computed = compute(state.filter);
       renderAll();
       renderProjects();

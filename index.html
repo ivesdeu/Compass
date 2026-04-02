@@ -80,6 +80,8 @@
   .btn:hover { border-color:var(--text3); color:var(--text); }
   .btn-p { background:var(--coral); border-color:var(--coral); color:#fff; font-weight:500; }
   .btn-p:hover { background:var(--coral2); border-color:var(--coral2); }
+  .exp-rec-dow { width:34px; height:34px; border-radius:50%; padding:0; font-size:11px; font-weight:600; flex-shrink:0; border:1px solid var(--border2); background:var(--bg3); color:var(--text2); }
+  .exp-rec-dow.on { background:var(--coral); border-color:var(--coral); color:#fff; }
 
   /* CARD */
   .card { background:var(--bg2); border:1px solid var(--border); border-radius:var(--rl); padding:22px 24px; }
@@ -722,6 +724,7 @@
         <select class="fi" id="tx-category">
           <option value="svc">Services revenue</option>
           <option value="ret">Retainer revenue</option>
+          <option value="own">Owner investment</option>
           <option value="lab">Labor (expense)</option>
           <option value="sw">Software &amp; tools (expense)</option>
           <option value="ads">Advertising (expense)</option>
@@ -856,6 +859,9 @@
       <div class="fgp"><label class="fl">Contact name</label><input class="fi" id="client-contact" /></div>
       <div class="fgp"><label class="fl">Status</label><input class="fi" id="client-status" placeholder="e.g. Active, Lead" /></div>
       <div class="fgp"><label class="fl">Industry / Vertical</label><input class="fi" id="client-industry" placeholder="e.g. Home services, Restaurants" /></div>
+      <div class="fgp" style="grid-column:1/-1;display:flex;align-items:center;gap:8px;">
+        <input type="checkbox" id="client-retainer" /><label class="fl" for="client-retainer" style="margin:0;">Retainer client (counts toward Active Retainers)</label>
+      </div>
       <div class="fgp"><label class="fl">Email</label><input class="fi" id="client-email" type="email" /></div>
       <div class="fgp"><label class="fl">Phone</label><input class="fi" id="client-phone" /></div>
       <div class="fgp" style="grid-column:1/-1;"><label class="fl">Notes</label><textarea class="fi" id="client-notes" rows="2" style="min-height:56px;resize:vertical;"></textarea></div>
@@ -896,7 +902,7 @@
 
 <!-- Expense CRUD -->
 <div class="mo" id="expenseModal">
-  <div class="md">
+  <div class="md" style="max-width:540px;">
     <div class="mt" id="expense-modal-title">Add expense</div>
     <input type="hidden" id="expense-edit-id" value="" />
     <div class="fg" style="margin-bottom:16px;">
@@ -908,6 +914,52 @@
       <div class="fgp" style="grid-column:1/-1;"><label class="fl">Notes</label><textarea class="fi" id="expense-notes" rows="2"></textarea></div>
       <div class="fgp" style="grid-column:1/-1;display:flex;align-items:center;gap:8px;">
         <input type="checkbox" id="expense-recurring" /><label class="fl" for="expense-recurring" style="margin:0;">Recurring</label>
+      </div>
+      <div id="expense-recurrence-panel" style="display:none;grid-column:1/-1;padding:14px 16px;border-radius:var(--rl);border:1px solid var(--border);background:var(--bg3);margin-top:2px;">
+        <div style="font-weight:600;margin-bottom:12px;font-size:14px;">Recurrence</div>
+        <div class="fg" style="margin-bottom:0;">
+          <div class="fgp">
+            <label class="fl">Repeat</label>
+            <select class="fi" id="expense-recurrence-repeat">
+              <option value="monthly">Monthly</option>
+              <option value="weekly">Weekly</option>
+            </select>
+          </div>
+          <div class="fgp">
+            <label class="fl">Every</label>
+            <div style="display:flex;align-items:center;gap:8px;">
+              <input class="fi" type="number" id="expense-recurrence-interval" min="1" value="1" style="width:72px;" />
+              <span id="expense-recurrence-interval-label" style="font-size:13px;color:var(--text2);">month(s)</span>
+            </div>
+          </div>
+          <div class="fgp" id="expense-recurrence-monthly-row" style="grid-column:1/-1;">
+            <label class="fl">On day of month</label>
+            <input class="fi" type="number" id="expense-recurrence-dom" min="1" max="31" value="1" style="max-width:100px;" />
+          </div>
+          <div class="fgp" id="expense-recurrence-weekly-row" style="grid-column:1/-1;display:none;">
+            <label class="fl" style="width:100%;">On</label>
+            <div id="expense-recurrence-dow-wrap" style="display:flex;gap:6px;flex-wrap:wrap;">
+              <button type="button" class="btn exp-rec-dow" data-dow="0" aria-pressed="false">S</button>
+              <button type="button" class="btn exp-rec-dow" data-dow="1" aria-pressed="false">M</button>
+              <button type="button" class="btn exp-rec-dow" data-dow="2" aria-pressed="false">T</button>
+              <button type="button" class="btn exp-rec-dow" data-dow="3" aria-pressed="false">W</button>
+              <button type="button" class="btn exp-rec-dow" data-dow="4" aria-pressed="false">T</button>
+              <button type="button" class="btn exp-rec-dow" data-dow="5" aria-pressed="false">F</button>
+              <button type="button" class="btn exp-rec-dow" data-dow="6" aria-pressed="false">S</button>
+            </div>
+          </div>
+          <div class="fgp" style="grid-column:1/-1;">
+            <label class="fl">End</label>
+            <div style="display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+              <select class="fi" id="expense-recurrence-end-mode" style="width:auto;min-width:150px;">
+                <option value="never">Never</option>
+                <option value="on">On date</option>
+              </select>
+              <input class="fi" type="date" id="expense-recurrence-end-date" style="max-width:170px;" />
+            </div>
+          </div>
+        </div>
+        <p id="expense-recurrence-summary" style="font-size:13px;color:var(--text2);margin:12px 0 0;line-height:1.5;"></p>
       </div>
     </div>
     <div class="mf" style="border-top:none;padding-top:0;">
@@ -1016,6 +1068,6 @@
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/assets/supabase-auth.js"></script>
-<script src="/assets/financial-core.js?v=20260402-chartdates"></script>
+<script src="/assets/financial-core.js?v=20260402-recur"></script>
 </body>
 </html>
