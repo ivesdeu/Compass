@@ -251,20 +251,57 @@
 
   // ---------- Shared helpers ----------
 
-  // Match Supabase `transactions` table: id, user_id, date, amount, category, description, created_at.
+  function buildTransactionMetadata(tx) {
+    var m = {};
+    if (tx.title) m.title = tx.title;
+    if (tx.vendor) m.vendor = tx.vendor;
+    if (tx.notes) m.notes = tx.notes;
+    if (tx.source) m.source = tx.source;
+    if (tx.recurrence && typeof tx.recurrence === 'object') m.recurrence = tx.recurrence;
+    if (tx.recurrenceSeriesId) m.recurrenceSeriesId = tx.recurrenceSeriesId;
+    if (tx.expenseRecurringLead === true) m.expenseRecurringLead = true;
+    if (tx.expenseRecurrenceInstance === true) m.expenseRecurrenceInstance = true;
+    if (tx.recurring === true) m.recurring = true;
+    return Object.keys(m).length ? m : null;
+  }
+
+  function applyTransactionMetadata(tx, meta) {
+    if (!meta || typeof meta !== 'object') return tx;
+    var out = Object.assign({}, tx);
+    if (meta.title != null) out.title = meta.title;
+    if (meta.vendor != null) out.vendor = meta.vendor;
+    if (meta.notes != null) out.notes = meta.notes;
+    if (meta.source != null) out.source = meta.source;
+    if (meta.recurrence != null) out.recurrence = meta.recurrence;
+    if (meta.recurrenceSeriesId != null) out.recurrenceSeriesId = meta.recurrenceSeriesId;
+    if (meta.expenseRecurringLead === true) out.expenseRecurringLead = true;
+    if (meta.expenseRecurrenceInstance === true) out.expenseRecurrenceInstance = true;
+    if (meta.recurring === true) out.recurring = true;
+    return out;
+  }
+
+  // Match Supabase `transactions` table + optional columns (see supabase/dashboard_sync.sql).
   function transactionRowForDb(tx, userId) {
     var line = tx.description || tx.title || tx.note || null;
     if (!line && (tx.vendor || tx.notes)) {
       line = [tx.title, tx.vendor, tx.notes].filter(function (s) { return s && String(s).trim(); }).join(' · ') || null;
     }
-    return {
+    var meta = buildTransactionMetadata(tx);
+    var row = {
       id: tx.id,
       user_id: userId,
       date: tx.date,
       category: tx.category,
       amount: tx.amount,
       description: line,
+      client_id: tx.clientId || null,
+      project_id: tx.projectId || null,
+      other_label: tx.otherLabel || null,
+      other_type: tx.otherType || null,
+      note: tx.note || null,
     };
+    if (meta) row.metadata = meta;
+    return row;
   }
 
   async function persistTransactionToSupabase(tx) {
@@ -378,6 +415,7 @@
     var changed = false;
     var clientIdMap = {};
     var txIdMap = {};
+    var projectIdMap = {};
 
     clients = (clients || []).map(function (c) {
       var oldId = c && c.id;
@@ -386,6 +424,23 @@
       clientIdMap[oldId || ''] = newId;
       changed = true;
       return Object.assign({}, c, { id: newId });
+    });
+
+    projects = (projects || []).map(function (p) {
+      if (!p) return p;
+      var next = Object.assign({}, p);
+      if (next.clientId && clientIdMap[next.clientId]) {
+        next.clientId = clientIdMap[next.clientId];
+        changed = true;
+      }
+      var oldPid = p.id;
+      if (!isUuid(oldPid)) {
+        var newPid = uuid();
+        projectIdMap[oldPid || ''] = newPid;
+        next.id = newPid;
+        changed = true;
+      }
+      return next;
     });
 
     state.transactions = (state.transactions || []).map(function (tx) {
@@ -401,16 +456,11 @@
         next.clientId = clientIdMap[next.clientId];
         changed = true;
       }
-      return next;
-    });
-
-    projects = (projects || []).map(function (p) {
-      if (!p) return p;
-      if (p.clientId && clientIdMap[p.clientId]) {
+      if (next.projectId && projectIdMap[next.projectId]) {
+        next.projectId = projectIdMap[next.projectId];
         changed = true;
-        return Object.assign({}, p, { clientId: clientIdMap[p.clientId] });
       }
-      return p;
+      return next;
     });
 
     invoices = (invoices || []).map(function (inv) {
@@ -427,11 +477,19 @@
       return next;
     });
 
+    campaigns = (campaigns || []).map(function (c) {
+      if (!c) return c;
+      if (isUuid(c.id)) return c;
+      changed = true;
+      return Object.assign({}, c, { id: uuid() });
+    });
+
     if (changed) {
       saveTransactions(state.transactions);
       saveClients(clients);
       saveProjects(projects);
       saveInvoices(invoices);
+      saveCampaigns(campaigns);
     }
   }
 
@@ -487,8 +545,557 @@
     }
   }
 
-  function mapTransactionRow(row) {
+  function mergeRemoteWithLocalOrphans(localList, remoteRows, mapRow) {
+    var remoteMapped = (remoteRows || []).map(mapRow);
+    var rid = {};
+    remoteMapped.forEach(function (x) {
+      if (x && x.id) rid[x.id] = true;
+    });
+    var out = remoteMapped.slice();
+    (localList || []).forEach(function (x) {
+      if (x && x.id && !rid[x.id]) out.push(x);
+    });
+    return out;
+  }
+
+  function parseJsonbLoose(val) {
+    if (val == null || val === '') return null;
+    if (typeof val === 'string') {
+      try {
+        return JSON.parse(val);
+      } catch (_) {
+        return null;
+      }
+    }
+    return val;
+  }
+
+  function normalizeCaseStudyStrategyFromDb(raw) {
+    var v = parseJsonbLoose(raw);
+    if (v == null) return [];
+    if (typeof v === 'string' && v.trim()) return [{ title: '', body: v.trim() }];
+    if (!Array.isArray(v)) return [];
+    if (!v.length) return [];
+    if (typeof v[0] === 'string') {
+      return v.map(function (s) {
+        return { title: '', body: String(s || '') };
+      }).filter(function (x) {
+        return x.body;
+      });
+    }
+    return v.map(function (it) {
+      if (!it || typeof it !== 'object') return { title: '', body: '' };
+      return { title: String(it.title || ''), body: String(it.body || '') };
+    }).filter(function (x) {
+      return x.title || x.body;
+    });
+  }
+
+  function normalizeCaseStudyResultsFromDb(raw) {
+    var v = parseJsonbLoose(raw);
+    if (v == null) return [];
+    if (Array.isArray(v)) {
+      return v.map(function (x) {
+        return String(x == null ? '' : x).trim();
+      }).filter(Boolean);
+    }
+    if (typeof v === 'string' && v.trim()) {
+      return v.split(/\n+/).map(function (s) {
+        return s.trim();
+      }).filter(Boolean);
+    }
+    return [];
+  }
+
+  function projectHasCaseStudyViewable(p) {
+    if (!p) return false;
+    if (p.caseStudyPublished) return true;
+    if (p.caseStudyCategory && String(p.caseStudyCategory).trim()) return true;
+    if (p.caseStudyChallenge && String(p.caseStudyChallenge).trim()) return true;
+    var st = p.caseStudyStrategy;
+    if (Array.isArray(st) && st.some(function (x) {
+      return x && (String(x.title || '').trim() || String(x.body || '').trim());
+    })) return true;
+    var rs = p.caseStudyResults;
+    if (Array.isArray(rs) && rs.some(function (s) {
+      return String(s || '').trim();
+    })) return true;
+    return false;
+  }
+
+  function appendCaseStudyStrategyRow(title, body) {
+    var list = $('case-study-strategy-list');
+    if (!list) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'case-strategy-row';
+    wrap.style.cssText = 'display:flex;flex-direction:column;gap:6px;padding:10px;border:1px solid var(--border);border-radius:var(--rl);background:var(--bg);';
+    wrap.innerHTML =
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:8px;">' +
+        '<span style="font-size:12px;font-weight:600;color:var(--text2);">Strategy point</span>' +
+        '<button type="button" class="btn case-strategy-remove" style="font-size:11px;padding:3px 8px;color:var(--red);">Remove</button>' +
+      '</div>' +
+      '<input class="fi cs-strat-title" type="text" placeholder="Title (optional)" />' +
+      '<textarea class="fi cs-strat-body" rows="2" style="min-height:48px;resize:vertical;" placeholder="Body"></textarea>';
+    list.appendChild(wrap);
+    var ti = wrap.querySelector('.cs-strat-title');
+    var bd = wrap.querySelector('.cs-strat-body');
+    if (ti) ti.value = title || '';
+    if (bd) bd.value = body || '';
+  }
+
+  function clearCaseStudyForm() {
+    var pub = $('project-case-study-published');
+    if (pub) pub.checked = false;
+    if ($('project-case-study-category')) $('project-case-study-category').value = '';
+    if ($('project-case-study-challenge')) $('project-case-study-challenge').value = '';
+    if ($('project-case-study-strategy-plain')) $('project-case-study-strategy-plain').value = '';
+    if ($('project-case-study-results')) $('project-case-study-results').value = '';
+    var list = $('case-study-strategy-list');
+    if (list) list.innerHTML = '';
+  }
+
+  function fillCaseStudyForm(p) {
+    clearCaseStudyForm();
+    if (!p) return;
+    if ($('project-case-study-published')) $('project-case-study-published').checked = !!p.caseStudyPublished;
+    if ($('project-case-study-category')) $('project-case-study-category').value = p.caseStudyCategory || '';
+    if ($('project-case-study-challenge')) $('project-case-study-challenge').value = p.caseStudyChallenge || '';
+    var strat = Array.isArray(p.caseStudyStrategy) ? p.caseStudyStrategy : [];
+    var meaningful = strat.filter(function (x) {
+      return x && (String(x.title || '').trim() || String(x.body || '').trim());
+    });
+    if (meaningful.length === 1 && !String(meaningful[0].title || '').trim() && String(meaningful[0].body || '').trim()) {
+      if ($('project-case-study-strategy-plain')) $('project-case-study-strategy-plain').value = meaningful[0].body;
+    } else {
+      meaningful.forEach(function (x) {
+        appendCaseStudyStrategyRow(x.title || '', x.body || '');
+      });
+    }
+    var res = Array.isArray(p.caseStudyResults) ? p.caseStudyResults : [];
+    if ($('project-case-study-results')) $('project-case-study-results').value = res.join('\n');
+  }
+
+  function readCaseStudyFromUi() {
+    var published = !!($('project-case-study-published') && $('project-case-study-published').checked);
+    var category = ($('project-case-study-category') && $('project-case-study-category').value || '').trim();
+    var challenge = ($('project-case-study-challenge') && $('project-case-study-challenge').value || '').trim();
+    var resultsRaw = ($('project-case-study-results') && $('project-case-study-results').value || '').trim();
+    var results = resultsRaw ? resultsRaw.split(/\n+/).map(function (s) {
+      return s.trim();
+    }).filter(Boolean) : [];
+    var items = [];
+    var list = document.querySelectorAll('#case-study-strategy-list .case-strategy-row');
+    list.forEach(function (row) {
+      var t = row.querySelector('.cs-strat-title');
+      var b = row.querySelector('.cs-strat-body');
+      var title = t ? t.value.trim() : '';
+      var body = b ? b.value.trim() : '';
+      if (title || body) items.push({ title: title, body: body });
+    });
+    if (!items.length) {
+      var plain = ($('project-case-study-strategy-plain') && $('project-case-study-strategy-plain').value || '').trim();
+      if (plain) items = [{ title: '', body: plain }];
+    }
     return {
+      caseStudyPublished: published,
+      caseStudyCategory: category || null,
+      caseStudyChallenge: challenge || null,
+      caseStudyStrategy: items,
+      caseStudyResults: results,
+    };
+  }
+
+  // ---------- Projects (Supabase) ----------
+  function mapProjectRow(row) {
+    return {
+      id: row.id,
+      clientId: row.client_id || null,
+      name: row.name || '',
+      status: row.status || '',
+      type: row.type || '',
+      startDate: row.start_date ? String(row.start_date).slice(0, 10) : '',
+      dueDate: row.due_date ? String(row.due_date).slice(0, 10) : '',
+      value: Number(row.value || 0),
+      description: row.description || '',
+      notes: row.notes || '',
+      satisfaction: row.satisfaction != null && row.satisfaction !== '' ? Number(row.satisfaction) : null,
+      archived: !!row.archived,
+      createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+      caseStudyPublished: !!row.case_study_published,
+      caseStudyChallenge: row.case_study_challenge || '',
+      caseStudyStrategy: normalizeCaseStudyStrategyFromDb(row.case_study_strategy),
+      caseStudyResults: normalizeCaseStudyResultsFromDb(row.case_study_results),
+      caseStudyCategory: row.case_study_category || '',
+    };
+  }
+
+  function projectRowForDb(p, userId) {
+    var strat = Array.isArray(p.caseStudyStrategy) ? p.caseStudyStrategy : [];
+    var res = Array.isArray(p.caseStudyResults) ? p.caseStudyResults : [];
+    return {
+      id: p.id,
+      user_id: userId,
+      client_id: p.clientId || null,
+      name: p.name || '',
+      status: p.status || '',
+      type: p.type || '',
+      start_date: p.startDate || null,
+      due_date: p.dueDate || null,
+      value: p.value || 0,
+      description: p.description || '',
+      notes: p.notes || '',
+      satisfaction: p.satisfaction != null && !isNaN(p.satisfaction) ? p.satisfaction : null,
+      archived: !!p.archived,
+      created_at: p.createdAt ? new Date(p.createdAt).toISOString() : new Date().toISOString(),
+      case_study_published: !!p.caseStudyPublished,
+      case_study_challenge: p.caseStudyChallenge || null,
+      case_study_strategy: strat,
+      case_study_results: res,
+      case_study_category: p.caseStudyCategory || null,
+    };
+  }
+
+  async function persistProjectToSupabase(p) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !p || !p.id) return;
+    try {
+      var result = await supabase.from('projects').upsert(projectRowForDb(p, currentUser.id), { onConflict: 'id' });
+      if (result.error) console.error('upsert project error', result.error);
+    } catch (err) {
+      console.error('persistProjectToSupabase error', err);
+    }
+  }
+
+  async function deleteProjectRemote(id) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !id) return;
+    try {
+      await supabase.from('projects').delete().eq('id', id).eq('user_id', currentUser.id);
+    } catch (err) {
+      console.error('deleteProjectRemote error', err);
+    }
+  }
+
+  async function claimUnassignedProjects(ids) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !ids || !ids.length) return;
+    try {
+      var res = await supabase.from('projects').update({ user_id: currentUser.id }).in('id', ids).is('user_id', null);
+      if (res.error) console.warn('claimUnassignedProjects', res.error);
+    } catch (e) {
+      console.warn('claimUnassignedProjects error', e);
+    }
+  }
+
+  async function fetchProjectsFromSupabase() {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser) return loadProjects();
+    try {
+      var result = await supabase.from('projects').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: true });
+      if (result.error) {
+        console.error('load projects error', result.error);
+        return loadProjects();
+      }
+      var rows = result.data || [];
+      if (!rows.length) {
+        var legacy = await supabase.from('projects').select('*').is('user_id', null).order('created_at', { ascending: true });
+        if (!legacy.error && legacy.data && legacy.data.length) {
+          rows = legacy.data;
+          claimUnassignedProjects(rows.map(function (r) { return r.id; }).filter(Boolean));
+        }
+      }
+      return rows.map(mapProjectRow);
+    } catch (err) {
+      console.error('fetchProjectsFromSupabase error', err);
+      return loadProjects();
+    }
+  }
+
+  async function uploadProjectsToSupabase(list) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !Array.isArray(list) || !list.length) return false;
+    try {
+      var payload = list.map(function (p) { return projectRowForDb(p, currentUser.id); });
+      var result = await supabase.from('projects').upsert(payload, { onConflict: 'id' });
+      if (result.error) {
+        console.error('bulk upsert projects error', result.error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('uploadProjectsToSupabase error', err);
+      return false;
+    }
+  }
+
+  // ---------- Invoices (Supabase) ----------
+  function mapInvoiceRow(row) {
+    return {
+      id: row.id,
+      incomeTxId: row.income_tx_id,
+      number: row.number || '',
+      dateIssued: row.date_issued ? String(row.date_issued).slice(0, 10) : '',
+      dueDate: row.due_date ? String(row.due_date).slice(0, 10) : '',
+      amount: Number(row.amount || 0),
+      status: row.status || 'sent',
+      paidAt: row.paid_at ? String(row.paid_at).slice(0, 10) : null,
+    };
+  }
+
+  function invoiceRowForDb(inv, userId) {
+    return {
+      id: inv.id,
+      user_id: userId,
+      income_tx_id: inv.incomeTxId,
+      number: inv.number,
+      date_issued: inv.dateIssued,
+      due_date: inv.dueDate,
+      amount: inv.amount,
+      status: inv.status || 'sent',
+      paid_at: inv.paidAt || null,
+    };
+  }
+
+  async function persistInvoiceToSupabase(inv) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !inv || !inv.id) return;
+    try {
+      var result = await supabase.from('invoices').upsert(invoiceRowForDb(inv, currentUser.id), { onConflict: 'id' });
+      if (result.error) console.error('upsert invoice error', result.error);
+    } catch (err) {
+      console.error('persistInvoiceToSupabase error', err);
+    }
+  }
+
+  async function deleteInvoiceRemote(id) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !id) return;
+    try {
+      await supabase.from('invoices').delete().eq('id', id).eq('user_id', currentUser.id);
+    } catch (err) {
+      console.error('deleteInvoiceRemote error', err);
+    }
+  }
+
+  async function claimUnassignedInvoices(ids) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !ids || !ids.length) return;
+    try {
+      var res = await supabase.from('invoices').update({ user_id: currentUser.id }).in('id', ids).is('user_id', null);
+      if (res.error) console.warn('claimUnassignedInvoices', res.error);
+    } catch (e) {
+      console.warn('claimUnassignedInvoices error', e);
+    }
+  }
+
+  async function fetchInvoicesFromSupabase() {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser) return loadInvoices();
+    try {
+      var result = await supabase.from('invoices').select('*').eq('user_id', currentUser.id).order('date_issued', { ascending: false });
+      if (result.error) {
+        console.error('load invoices error', result.error);
+        return loadInvoices();
+      }
+      var rows = result.data || [];
+      if (!rows.length) {
+        var legacy = await supabase.from('invoices').select('*').is('user_id', null);
+        if (!legacy.error && legacy.data && legacy.data.length) {
+          rows = legacy.data;
+          claimUnassignedInvoices(rows.map(function (r) { return r.id; }).filter(Boolean));
+        }
+      }
+      return rows.map(mapInvoiceRow);
+    } catch (err) {
+      console.error('fetchInvoicesFromSupabase error', err);
+      return loadInvoices();
+    }
+  }
+
+  async function uploadInvoicesToSupabase(list) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !Array.isArray(list) || !list.length) return false;
+    try {
+      var payload = list.map(function (inv) { return invoiceRowForDb(inv, currentUser.id); });
+      var result = await supabase.from('invoices').upsert(payload, { onConflict: 'id' });
+      if (result.error) {
+        console.error('bulk upsert invoices error', result.error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('uploadInvoicesToSupabase error', err);
+      return false;
+    }
+  }
+
+  // ---------- Campaigns (Supabase) ----------
+  function mapCampaignRow(row) {
+    var st = row.status;
+    if ([CAMPAIGN_STATUS_PIPELINE, CAMPAIGN_STATUS_WON, CAMPAIGN_STATUS_LOST].indexOf(st) === -1) st = CAMPAIGN_STATUS_PIPELINE;
+    return {
+      id: row.id,
+      name: row.name || '',
+      channel: row.channel || '',
+      startDate: row.start_date ? String(row.start_date).slice(0, 10) : '',
+      notes: row.notes || '',
+      pipelineValue: Math.max(0, Number(row.pipeline_value || 0)),
+      status: st,
+      createdAt: row.created_at ? new Date(row.created_at).getTime() : Date.now(),
+    };
+  }
+
+  function campaignRowForDb(c, userId) {
+    var n = normalizeCampaign(c);
+    if (!n) return null;
+    return {
+      id: n.id,
+      user_id: userId,
+      name: n.name || '',
+      channel: n.channel || '',
+      start_date: n.startDate || null,
+      notes: n.notes || '',
+      pipeline_value: n.pipelineValue || 0,
+      status: n.status || CAMPAIGN_STATUS_PIPELINE,
+      created_at: n.createdAt ? new Date(n.createdAt).toISOString() : new Date().toISOString(),
+    };
+  }
+
+  async function persistCampaignToSupabase(c) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !c || !c.id) return;
+    var row = campaignRowForDb(c, currentUser.id);
+    if (!row) return;
+    try {
+      var result = await supabase.from('campaigns').upsert(row, { onConflict: 'id' });
+      if (result.error) console.error('upsert campaign error', result.error);
+    } catch (err) {
+      console.error('persistCampaignToSupabase error', err);
+    }
+  }
+
+  async function deleteCampaignRemote(id) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !id) return;
+    try {
+      await supabase.from('campaigns').delete().eq('id', id).eq('user_id', currentUser.id);
+    } catch (err) {
+      console.error('deleteCampaignRemote error', err);
+    }
+  }
+
+  async function claimUnassignedCampaigns(ids) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !ids || !ids.length) return;
+    try {
+      var res = await supabase.from('campaigns').update({ user_id: currentUser.id }).in('id', ids).is('user_id', null);
+      if (res.error) console.warn('claimUnassignedCampaigns', res.error);
+    } catch (e) {
+      console.warn('claimUnassignedCampaigns error', e);
+    }
+  }
+
+  async function fetchCampaignsFromSupabase() {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser) return loadCampaigns();
+    try {
+      var result = await supabase.from('campaigns').select('*').eq('user_id', currentUser.id).order('start_date', { ascending: false });
+      if (result.error) {
+        console.error('load campaigns error', result.error);
+        return loadCampaigns();
+      }
+      var rows = result.data || [];
+      if (!rows.length) {
+        var legacy = await supabase.from('campaigns').select('*').is('user_id', null);
+        if (!legacy.error && legacy.data && legacy.data.length) {
+          rows = legacy.data;
+          claimUnassignedCampaigns(rows.map(function (r) { return r.id; }).filter(Boolean));
+        }
+      }
+      return rows.map(mapCampaignRow);
+    } catch (err) {
+      console.error('fetchCampaignsFromSupabase error', err);
+      return loadCampaigns();
+    }
+  }
+
+  async function uploadCampaignsToSupabase(list) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !Array.isArray(list) || !list.length) return false;
+    try {
+      var payload = [];
+      list.forEach(function (c) {
+        var row = campaignRowForDb(normalizeCampaign(c) || c, currentUser.id);
+        if (row) payload.push(row);
+      });
+      if (!payload.length) return true;
+      var result = await supabase.from('campaigns').upsert(payload, { onConflict: 'id' });
+      if (result.error) {
+        console.error('bulk upsert campaigns error', result.error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('uploadCampaignsToSupabase error', err);
+      return false;
+    }
+  }
+
+  // ---------- App settings (custom project status labels) ----------
+  async function fetchAppSettingsFromSupabase() {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser) return null;
+    try {
+      var result = await supabase.from('app_settings').select('*').eq('user_id', currentUser.id).maybeSingle();
+      if (result.error) {
+        console.error('load app_settings error', result.error);
+        return null;
+      }
+      return result.data;
+    } catch (err) {
+      console.error('fetchAppSettingsFromSupabase error', err);
+      return null;
+    }
+  }
+
+  async function persistAppSettingsToSupabase() {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser) return;
+    try {
+      var result = await supabase.from('app_settings').upsert({
+        user_id: currentUser.id,
+        project_statuses: projectStatuses,
+        updated_at: new Date().toISOString(),
+      }, { onConflict: 'user_id' });
+      if (result.error) console.error('upsert app_settings error', result.error);
+    } catch (err) {
+      console.error('persistAppSettingsToSupabase error', err);
+    }
+  }
+
+  function mapTransactionRow(row) {
+    var metaRaw = row.metadata;
+    var meta = typeof metaRaw === 'string' ? (function () {
+      try { return JSON.parse(metaRaw); } catch (_) { return null; }
+    })() : metaRaw;
+    var tx = {
       id: row.id,
       userId: row.user_id,
       date: row.date,
@@ -503,6 +1110,7 @@
       source: row.source || '',
       createdAt: row.created_at || null,
     };
+    return applyTransactionMetadata(tx, meta);
   }
 
   async function claimUnassignedTransactions(ids) {
@@ -1788,6 +2396,7 @@ var leadSourceChart = null;
           ? CAMPAIGN_STATUS_PIPELINE
           : statusRaw;
         var existingId = ($('campaign-edit-id') && $('campaign-edit-id').value) || '';
+        var savedCampaign = null;
         if (existingId) {
           campaigns = campaigns.map(function (c) {
             if (c.id !== existingId) return c;
@@ -1802,8 +2411,9 @@ var leadSourceChart = null;
               createdAt: c.createdAt || Date.now(),
             });
           });
+          savedCampaign = campaigns.find(function (c) { return c.id === existingId; }) || null;
         } else {
-          campaigns.push(normalizeCampaign({
+          var newCamp = normalizeCampaign({
             id: uuid(),
             name: name,
             channel: channel,
@@ -1812,9 +2422,12 @@ var leadSourceChart = null;
             pipelineValue: pipelineVal,
             status: status,
             createdAt: Date.now(),
-          }));
+          });
+          campaigns.push(newCamp);
+          savedCampaign = newCamp;
         }
         saveCampaigns(campaigns);
+        if (savedCampaign) persistCampaignToSupabase(savedCampaign);
         closeCampaignModal();
         renderMarketing();
       });
@@ -1824,6 +2437,71 @@ var leadSourceChart = null;
         if (ev.target === modal) closeCampaignModal();
       });
     }
+  }
+
+  function openCaseStudyViewModal(projectId) {
+    var p = projects.find(function (x) { return x.id === projectId; });
+    var modal = $('caseStudyViewModal');
+    var body = $('case-study-view-body');
+    if (!p || !modal || !body) return;
+    var client = p.clientId ? clients.find(function (c) { return c.id === p.clientId; }) : null;
+    var clientName = client && client.companyName ? client.companyName : '—';
+    var industry = client && client.industry ? client.industry : '—';
+    var period = '—';
+    if (p.startDate || p.dueDate) {
+      period = (p.startDate ? fmtDateDisplay(p.startDate) : '…') + ' – ' + (p.dueDate ? fmtDateDisplay(p.dueDate) : '…');
+    }
+    var pubBadge = p.caseStudyPublished
+      ? '<span style="display:inline-block;padding:2px 10px;border-radius:999px;background:rgba(34,197,94,0.15);color:#15803d;font-size:12px;font-weight:600;">Published</span>'
+      : '<span style="display:inline-block;padding:2px 10px;border-radius:999px;background:var(--bg2);color:var(--text3);font-size:12px;font-weight:600;">Draft</span>';
+
+    var strategyHtml = '';
+    (p.caseStudyStrategy || []).forEach(function (item) {
+      if (!item || (!String(item.title || '').trim() && !String(item.body || '').trim())) return;
+      strategyHtml += '<div style="margin-bottom:14px;">';
+      if (String(item.title || '').trim()) {
+        strategyHtml += '<div style="font-weight:700;margin-bottom:4px;">' + esc(item.title) + '</div>';
+      }
+      if (String(item.body || '').trim()) {
+        strategyHtml += '<div style="color:var(--text2);white-space:pre-wrap;">' + esc(item.body) + '</div>';
+      }
+      strategyHtml += '</div>';
+    });
+
+    var results = Array.isArray(p.caseStudyResults) ? p.caseStudyResults : [];
+    var resultsHtml = '';
+    if (results.length) {
+      resultsHtml = '<ul style="margin:0;padding-left:1.25em;">' + results.map(function (r) {
+        return '<li style="margin-bottom:6px;">' + esc(String(r)) + '</li>';
+      }).join('') + '</ul>';
+    }
+
+    var cat = (p.caseStudyCategory || '').trim();
+    var challenge = (p.caseStudyChallenge || '').trim();
+
+    body.innerHTML =
+      '<div style="margin-bottom:18px;padding-bottom:16px;border-bottom:1px solid var(--border);">' +
+        '<div style="font-size:20px;font-weight:700;margin-bottom:8px;">' + esc(p.name || 'Project') + '</div>' +
+        '<div style="display:flex;flex-wrap:wrap;gap:8px 16px;font-size:13px;color:var(--text2);">' +
+          '<div><strong style="color:var(--text);">Client</strong> ' + esc(clientName) + '</div>' +
+          '<div><strong style="color:var(--text);">Industry</strong> ' + esc(industry) + '</div>' +
+          '<div><strong style="color:var(--text);">Work period</strong> ' + esc(period) + '</div>' +
+          (p.type ? '<div><strong style="color:var(--text);">Project type</strong> ' + esc(p.type) + '</div>' : '') +
+        '</div>' +
+        '<div style="margin-top:10px;">' + pubBadge + '</div>' +
+      '</div>' +
+      (cat ? '<div style="margin-bottom:16px;"><div style="font-size:11px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);margin-bottom:4px;">Case study category</div><div>' + esc(cat) + '</div></div>' : '') +
+      (challenge ? '<div style="margin-bottom:16px;"><div style="font-size:11px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);margin-bottom:6px;">The challenge</div><div style="white-space:pre-wrap;color:var(--text2);">' + esc(challenge) + '</div></div>' : '') +
+      (strategyHtml ? '<div style="margin-bottom:16px;"><div style="font-size:11px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);margin-bottom:8px;">Our strategy</div>' + strategyHtml + '</div>' : '') +
+      (resultsHtml ? '<div style="margin-bottom:8px;"><div style="font-size:11px;text-transform:uppercase;letter-spacing:0.04em;color:var(--text3);margin-bottom:8px;">The results</div>' + resultsHtml + '</div>' : '') +
+      (!cat && !challenge && !strategyHtml && !resultsHtml ? '<div style="color:var(--text3);font-size:13px;">No case study copy yet. Use Edit to add challenge, strategy, and results.</div>' : '');
+
+    modal.classList.add('on');
+  }
+
+  function closeCaseStudyViewModal() {
+    var modal = $('caseStudyViewModal');
+    if (modal) modal.classList.remove('on');
   }
 
   // ---------- Projects rendering ----------
@@ -1844,6 +2522,16 @@ var leadSourceChart = null;
       tbody.innerHTML = projects.map(function (p) {
         var client = clients.find(function (c) { return c.id === p.clientId; });
         var clientName = client ? client.companyName : '—';
+        var canView = projectHasCaseStudyViewable(p);
+        var pubLabel = p.caseStudyPublished ? 'Yes' : 'No';
+        var csCell = '<div style="font-size:12px;line-height:1.4;">' +
+          '<div><span style="color:var(--text3);">Pub.</span> <strong>' + pubLabel + '</strong></div>';
+        if (canView) {
+          csCell += '<button type="button" class="btn" data-project-casestudy="' + esc(p.id) + '" style="font-size:11px;padding:4px 10px;margin-top:6px;">View</button>';
+        } else {
+          csCell += '<div style="margin-top:4px;color:var(--text3);">—</div>';
+        }
+        csCell += '</div>';
         return '<tr>' +
           '<td class="tdp">' + (p.name || 'Untitled') + '</td>' +
           '<td>' + clientName + '</td>' +
@@ -1856,6 +2544,7 @@ var leadSourceChart = null;
             'style="font-size:12px;padding:4px 8px;width:100%;max-width:200px;box-sizing:border-box;">' +
             buildProjectRowStatusOptionsHtml(p.status) +
             '</select></td>' +
+          '<td style="vertical-align:top;">' + csCell + '</td>' +
           '<td style="white-space:nowrap;">' +
             '<button type="button" class="btn" data-project-edit="' + p.id + '" style="font-size:11px;padding:4px 10px;margin-right:6px;">Edit</button>' +
             '<button type="button" class="btn" data-project-del="' + p.id + '" style="font-size:11px;padding:4px 10px;color:var(--red);">Delete</button>' +
@@ -2343,12 +3032,14 @@ var leadSourceChart = null;
 
   function deleteTransaction(id) {
     markTransactionsDeletedLocally([id]);
+    var invsToDelete = invoices.filter(function (inv) { return inv.incomeTxId === id; });
     state.transactions = state.transactions.filter(function (tx) { return tx.id !== id; });
     invoices = invoices.filter(function (inv) { return inv.incomeTxId !== id; });
     saveTransactions(state.transactions);
     saveInvoices(invoices);
     recomputeAndRender();
     deleteTransactionRemote(id);
+    invsToDelete.forEach(function (inv) { deleteInvoiceRemote(inv.id); });
   }
 
   function deleteTransactionsByIds(ids) {
@@ -2356,12 +3047,14 @@ var leadSourceChart = null;
     markTransactionsDeletedLocally(ids);
     var remove = {};
     ids.forEach(function (id) { remove[id] = true; });
+    var invsToDelete = invoices.filter(function (inv) { return remove[inv.incomeTxId]; });
     state.transactions = state.transactions.filter(function (tx) { return !remove[tx.id]; });
     invoices = invoices.filter(function (inv) { return !remove[inv.incomeTxId]; });
     saveTransactions(state.transactions);
     saveInvoices(invoices);
     recomputeAndRender();
     ids.forEach(function (id) { deleteTransactionRemote(id); });
+    invsToDelete.forEach(function (inv) { deleteInvoiceRemote(inv.id); });
   }
 
   // ---------- UI wiring ----------
@@ -3135,6 +3828,8 @@ var leadSourceChart = null;
           });
           saveTransactions(state.transactions);
           recomputeAndRender();
+          var incomeUpdated = state.transactions.find(function (t) { return t.id === editId; });
+          if (incomeUpdated) persistTransactionToSupabase(incomeUpdated);
         } else {
           addTransaction({
             id: uuid(),
@@ -3217,6 +3912,8 @@ var leadSourceChart = null;
         }
         saveInvoices(invoices);
         recomputeAndRender();
+        var invSaved = getInvoiceByIncomeTxId(txId);
+        if (invSaved) persistInvoiceToSupabase(invSaved);
         closeInvoiceModal();
       });
     }
@@ -3316,6 +4013,7 @@ var leadSourceChart = null;
         if (!id || !confirm('Remove this campaign?')) return;
         campaigns = campaigns.filter(function (c) { return c.id !== id; });
         saveCampaigns(campaigns);
+        deleteCampaignRemote(id);
         renderMarketing();
       });
     }
@@ -3373,10 +4071,17 @@ var leadSourceChart = null;
         if ((proj.status || '') === next) return;
         proj.status = next;
         saveProjects(projects);
+        persistProjectToSupabase(proj);
         renderProjectKpisAndCharts();
         if (state.computed) renderInsights();
       });
       projTable.addEventListener('click', function (ev) {
+        var csBtn = ev.target.closest('[data-project-casestudy]');
+        if (csBtn) {
+          var csId = csBtn.getAttribute('data-project-casestudy');
+          if (csId) openCaseStudyViewModal(csId);
+          return;
+        }
         var editBtn = ev.target.closest('[data-project-edit]');
         if (editBtn) {
           var editId = editBtn.getAttribute('data-project-edit');
@@ -3401,6 +4106,9 @@ var leadSourceChart = null;
           if ($('project-satisfaction')) $('project-satisfaction').value = typeof proj.satisfaction === 'number' ? String(proj.satisfaction) : '';
           var archived = $('project-archived');
           if (archived) archived.checked = !!proj.archived;
+          fillCaseStudyForm(proj);
+          var det = $('project-case-study-details');
+          if (det) det.open = false;
           m.classList.add('on');
           return;
         }
@@ -3412,6 +4120,7 @@ var leadSourceChart = null;
         if (confirm('Delete this project?')) {
           projects = projects.filter(function (p) { return p.id !== id; });
           saveProjects(projects);
+          deleteProjectRemote(id);
           renderProjects();
           populateIncomeProjectOptions();
           if (state.computed) renderInsights();
@@ -3465,6 +4174,8 @@ var leadSourceChart = null;
           });
           saveInvoices(invoices);
           recomputeAndRender();
+          var invPaid = getInvoiceByIncomeTxId(paidTxId);
+          if (invPaid) persistInvoiceToSupabase(invPaid);
           return;
         }
 
@@ -3638,6 +4349,9 @@ var leadSourceChart = null;
       if ($('project-satisfaction')) $('project-satisfaction').value = '';
       var archived = $('project-archived');
       if (archived) archived.checked = false;
+      clearCaseStudyForm();
+      var det = $('project-case-study-details');
+      if (det) det.open = false;
       populateProjectClientOptions();
       populateProjectStatusOptions();
       m.classList.add('on');
@@ -3684,8 +4398,10 @@ var leadSourceChart = null;
         var satRaw = $('project-satisfaction') ? $('project-satisfaction').value.trim() : '';
         var satNum = satRaw !== '' ? Math.min(10, Math.max(1, parseInt(satRaw, 10))) : null;
         var satisfaction = (!isNaN(satNum) && satNum !== null) ? satNum : null;
+        var cs = readCaseStudyFromUi();
 
         var existingId = $('project-edit-id') ? $('project-edit-id').value : '';
+        var savedProject = null;
         if (existingId) {
           projects = projects.map(function (p) {
             if (p.id !== existingId) return p;
@@ -3703,8 +4419,14 @@ var leadSourceChart = null;
               satisfaction: satisfaction,
               archived: !!archived,
               createdAt: p.createdAt || Date.now(),
+              caseStudyPublished: cs.caseStudyPublished,
+              caseStudyCategory: cs.caseStudyCategory,
+              caseStudyChallenge: cs.caseStudyChallenge,
+              caseStudyStrategy: cs.caseStudyStrategy,
+              caseStudyResults: cs.caseStudyResults,
             };
           });
+          savedProject = projects.find(function (p) { return p.id === existingId; }) || null;
         } else {
           var proj = {
             id: uuid(),
@@ -3720,10 +4442,17 @@ var leadSourceChart = null;
             satisfaction: satisfaction,
             archived: !!archived,
             createdAt: Date.now(),
+            caseStudyPublished: cs.caseStudyPublished,
+            caseStudyCategory: cs.caseStudyCategory,
+            caseStudyChallenge: cs.caseStudyChallenge,
+            caseStudyStrategy: cs.caseStudyStrategy,
+            caseStudyResults: cs.caseStudyResults,
           };
           projects.push(proj);
+          savedProject = proj;
         }
         saveProjects(projects);
+        if (savedProject) persistProjectToSupabase(savedProject);
         renderProjects();
         if (state.computed) renderInsights();
         closeProjectModal();
@@ -3739,6 +4468,7 @@ var leadSourceChart = null;
         if (!label) return;
         projectStatuses.push(label);
         saveStatuses(projectStatuses);
+        persistAppSettingsToSupabase();
         statusInput.value = '';
         renderStatusList();
         populateProjectStatusOptions();
@@ -3754,9 +4484,34 @@ var leadSourceChart = null;
         if (isNaN(idx)) return;
         projectStatuses.splice(idx, 1);
         saveStatuses(projectStatuses);
+        persistAppSettingsToSupabase();
         renderStatusList();
         populateProjectStatusOptions();
         renderProjects();
+      });
+    }
+
+    var btnStratAdd = $('btn-case-study-strategy-add');
+    if (btnStratAdd) {
+      btnStratAdd.addEventListener('click', function () {
+        appendCaseStudyStrategyRow('', '');
+      });
+    }
+    var stratList = $('case-study-strategy-list');
+    if (stratList) {
+      stratList.addEventListener('click', function (ev) {
+        var rm = ev.target.closest('.case-strategy-remove');
+        if (!rm) return;
+        var row = rm.closest('.case-strategy-row');
+        if (row && row.parentNode) row.parentNode.removeChild(row);
+      });
+    }
+    var btnCsViewClose = $('btn-case-study-view-close');
+    if (btnCsViewClose) btnCsViewClose.addEventListener('click', closeCaseStudyViewModal);
+    var csViewModal = $('caseStudyViewModal');
+    if (csViewModal) {
+      csViewModal.addEventListener('click', function (ev) {
+        if (ev.target === csViewModal) closeCaseStudyViewModal();
       });
     }
   }
@@ -3821,6 +4576,7 @@ var leadSourceChart = null;
       projects = loadProjects();
       invoices = loadInvoices();
       campaigns = loadCampaigns();
+      projectStatuses = loadStatuses();
       normalizeLocalIdsForSupabase();
 
       if (supabase && currentUser) {
@@ -3845,6 +4601,41 @@ var leadSourceChart = null;
         }
         if (remoteClients.length) clients = mergeClientsPreserveRetainer(clients, remoteClients);
 
+        var remoteProjects = await fetchProjectsFromSupabase();
+        if (!remoteProjects.length && projects.length) {
+          await uploadProjectsToSupabase(projects);
+          remoteProjects = await fetchProjectsFromSupabase();
+        }
+        if (remoteProjects.length) {
+          projects = mergeRemoteWithLocalOrphans(projects, remoteProjects, function (x) { return x; });
+        }
+
+        var remoteInvoices = await fetchInvoicesFromSupabase();
+        if (!remoteInvoices.length && invoices.length) {
+          await uploadInvoicesToSupabase(invoices);
+          remoteInvoices = await fetchInvoicesFromSupabase();
+        }
+        if (remoteInvoices.length) {
+          invoices = mergeRemoteWithLocalOrphans(invoices, remoteInvoices, function (x) { return x; });
+        }
+
+        var remoteCampaigns = await fetchCampaignsFromSupabase();
+        if (!remoteCampaigns.length && campaigns.length) {
+          await uploadCampaignsToSupabase(campaigns);
+          remoteCampaigns = await fetchCampaignsFromSupabase();
+        }
+        if (remoteCampaigns.length) {
+          campaigns = mergeRemoteWithLocalOrphans(campaigns, remoteCampaigns, function (x) { return x; });
+        }
+
+        var settingsRow = await fetchAppSettingsFromSupabase();
+        if (settingsRow && Array.isArray(settingsRow.project_statuses) && settingsRow.project_statuses.length) {
+          projectStatuses = settingsRow.project_statuses.map(function (s) { return String(s); }).filter(Boolean);
+          saveStatuses(projectStatuses);
+        } else {
+          await persistAppSettingsToSupabase();
+        }
+
         // #region agent log
         debugAgentLog({ runId: 'run1', hypothesisId: 'H2', location: 'financial-core.js:initDataFromSupabase', message: 'after remote load', data: { remoteTxCount: remoteTxs.length, remoteClientCount: remoteClients.length, appliedRemoteTx: !!remoteTxs.length, appliedRemoteClients: !!remoteClients.length } });
         // #endregion
@@ -3852,15 +4643,17 @@ var leadSourceChart = null;
         // Cache in localStorage so existing browser keeps a copy.
         saveTransactions(state.transactions);
         saveClients(clients);
+        saveProjects(projects);
+        saveInvoices(invoices);
+        saveCampaigns(campaigns);
       }
-
-      // Projects/invoices remain local-only for now.
 
       expandRecurringExpenseInstances();
 
       // Ensure dropdowns reflect latest clients/projects.
       populateProjectClientOptions();
       populateIncomeClientOptions();
+      populateProjectStatusOptions();
 
       state.computed = compute(state.filter);
       renderAll();
@@ -3873,6 +4666,7 @@ var leadSourceChart = null;
       projects = loadProjects();
       invoices = loadInvoices();
       campaigns = loadCampaigns();
+      projectStatuses = loadStatuses();
       expandRecurringExpenseInstances();
       state.computed = compute(state.filter);
       renderAll();

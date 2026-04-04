@@ -611,7 +611,7 @@
       <div class="sh"><div class="st">Active Projects</div></div>
       <div id="projects-empty" style="font-size:13px;color:var(--text3);padding:8px 0;">No projects yet.</div>
       <table class="dt" id="projects-table" style="display:none;">
-        <thead><tr><th>Project</th><th>Client</th><th>Type</th><th>Description</th><th>Due</th><th>Value</th><th>Status</th><th style="width:160px;">Actions</th></tr></thead>
+        <thead><tr><th>Project</th><th>Client</th><th>Type</th><th>Description</th><th>Due</th><th>Value</th><th>Status</th><th style="min-width:120px;">Case study</th><th style="width:160px;">Actions</th></tr></thead>
         <tbody id="projects-tbody"></tbody>
       </table>
     </div>
@@ -921,7 +921,7 @@
 
 <!-- Project CRUD -->
 <div class="mo" id="projectModal">
-  <div class="md" style="max-width:560px;">
+  <div class="md" style="max-width:640px;">
     <div class="mt" id="project-modal-title">Add project</div>
     <input type="hidden" id="project-edit-id" value="" />
     <div class="fg" style="margin-bottom:16px;">
@@ -938,10 +938,41 @@
       <div class="fgp" style="grid-column:1/-1;display:flex;align-items:center;gap:8px;">
         <input type="checkbox" id="project-archived" /><label class="fl" for="project-archived" style="margin:0;">Archived / closed</label>
       </div>
+      <details id="project-case-study-details" style="grid-column:1/-1;margin-top:4px;border:1px solid var(--border);border-radius:var(--rl);padding:12px 14px;background:var(--bg3);">
+        <summary style="font-weight:600;cursor:pointer;user-select:none;outline:none;">Case study <span style="font-weight:400;color:var(--text3);font-size:12px;">(optional — website / portfolio)</span></summary>
+        <div style="margin-top:14px;display:flex;flex-direction:column;gap:12px;">
+          <div class="fgp" style="grid-column:1/-1;display:flex;align-items:center;gap:8px;">
+            <input type="checkbox" id="project-case-study-published" />
+            <label class="fl" for="project-case-study-published" style="margin:0;">Show on website / in list when published</label>
+          </div>
+          <div class="fgp" style="grid-column:1/-1;"><label class="fl">Case study category <span style="font-weight:400;color:var(--text3);font-size:12px;">(optional — separate from project type)</span></label><input class="fi" id="project-case-study-category" placeholder="e.g. Demand gen, Rebrand" /></div>
+          <div class="fgp" style="grid-column:1/-1;"><label class="fl">The challenge</label><textarea class="fi" id="project-case-study-challenge" rows="3" style="min-height:72px;resize:vertical;" placeholder="What problem did the client face?"></textarea></div>
+          <div class="fgp" style="grid-column:1/-1;">
+            <label class="fl">Our strategy</label>
+            <div style="font-size:12px;color:var(--text3);margin:0 0 8px;">Add titled points, or use a single narrative below if you leave the list empty.</div>
+            <div id="case-study-strategy-list" style="display:flex;flex-direction:column;gap:10px;"></div>
+            <button type="button" class="btn" id="btn-case-study-strategy-add" style="margin-top:8px;font-size:12px;padding:4px 10px;">+ Add strategy point</button>
+            <label class="fl" style="margin-top:12px;">Single strategy narrative</label>
+            <textarea class="fi" id="project-case-study-strategy-plain" rows="2" style="min-height:56px;resize:vertical;" placeholder="Used when no points are filled above"></textarea>
+          </div>
+          <div class="fgp" style="grid-column:1/-1;"><label class="fl">The results <span style="font-weight:400;color:var(--text3);font-size:12px;">(one per line)</span></label><textarea class="fi" id="project-case-study-results" rows="3" style="min-height:72px;resize:vertical;" placeholder="+40% qualified leads&#10;2.1× ROAS"></textarea></div>
+        </div>
+      </details>
     </div>
     <div class="mf" style="border-top:none;padding-top:0;margin-top:0;">
       <button type="button" class="btn" id="btn-project-cancel">Cancel</button>
       <button type="button" class="btn btn-p" id="btn-project-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<!-- Case study read-only (from Projects table View) -->
+<div class="mo" id="caseStudyViewModal">
+  <div class="md" style="max-width:640px;max-height:90vh;display:flex;flex-direction:column;">
+    <div class="mt">Case study</div>
+    <div id="case-study-view-body" class="case-study-view-body" style="overflow:auto;flex:1;font-size:14px;line-height:1.5;color:var(--text);padding:4px 0 8px;"></div>
+    <div class="mf" style="border-top:1px solid var(--border);padding-top:12px;margin-top:8px;">
+      <button type="button" class="btn btn-p" id="btn-case-study-view-close">Close</button>
     </div>
   </div>
 </div>
@@ -1114,6 +1145,6 @@
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/assets/supabase-auth.js"></script>
-<script src="/assets/financial-core.js?v=20260403-insights-refresh"></script>
+<script src="/assets/financial-core.js?v=20260403-case-study"></script>
 </body>
 </html>
