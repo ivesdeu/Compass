@@ -5345,7 +5345,11 @@ var spendReportUi = {
         var existingId = $('client-edit-id') ? $('client-edit-id').value : '';
         var retainerChecked = $('client-retainer') && $('client-retainer').checked;
         var client;
+        supabase = window.supabaseClient || supabase;
+        currentUser = window.currentUser || currentUser;
+
         if (existingId) {
+          var clientsSnapshot = JSON.stringify(clients);
           clients = clients.map(function (c) {
             if (c.id !== existingId) return c;
             client = {
@@ -5363,7 +5367,27 @@ var spendReportUi = {
             };
             return client;
           });
+          saveClients(clients);
+          renderClients();
+          if (state.computed) renderInsights();
+          if (supabase && currentUser && client) {
+            var editSync = await persistClientToSupabase(client);
+            if (editSync === 'error') {
+              try {
+                clients = JSON.parse(clientsSnapshot);
+              } catch (_) {}
+              saveClients(clients);
+              renderClients();
+              if (state.computed) renderInsights();
+              alert('Could not update this client in the cloud. Your changes were reverted. Check your connection, the browser console, and Supabase RLS rules, then try again.');
+              return;
+            }
+          }
         } else {
+          if (!supabase || !currentUser) {
+            alert('You must be signed in to add a client. New clients are saved to your cloud account only.');
+            return;
+          }
           client = {
             id: uuid(),
             companyName: company,
@@ -5377,18 +5401,17 @@ var spendReportUi = {
             createdAt: Date.now(),
             retainer: !!retainerChecked,
           };
+          var addSync = await persistClientToSupabase(client);
+          if (addSync !== 'ok') {
+            alert('Could not save this client to the cloud. Nothing was added. Check your connection, the browser console, and Supabase RLS rules, then try again.');
+            return;
+          }
           clients.push(client);
-        }
-        saveClients(clients);
-        renderClients();
-        if (state.computed) renderInsights();
-        var syncResult = 'skipped';
-        if (client) syncResult = await persistClientToSupabase(client);
-        if (syncResult === 'error') {
-          alert('Client saved on this device, but it could not be saved to the cloud. Check the browser console and Supabase RLS rules, then use Settings → Cloud Sync → Sync to retry.');
+          saveClients(clients);
+          renderClients();
+          if (state.computed) renderInsights();
         }
         refreshCloudSyncStatus();
-        // Keep project / income dropdowns in sync with new client list
         populateProjectClientOptions();
         populateIncomeClientOptions();
         closeClientModal();
