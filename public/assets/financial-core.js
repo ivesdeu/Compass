@@ -234,6 +234,38 @@
 
   var campaigns = [];
 
+  // ---------- Budgets store ----------
+
+  var BUDGETS_KEY = 'bizdash:budgets:v1';
+
+  function loadBudgets() {
+    try {
+      var raw = localStorage.getItem(BUDGETS_KEY);
+      var b = raw ? JSON.parse(raw) : {};
+      return {
+        lab: Math.max(0, Number(b.lab) || 0),
+        sw:  Math.max(0, Number(b.sw)  || 0),
+        ads: Math.max(0, Number(b.ads) || 0),
+        oth: Math.max(0, Number(b.oth) || 0),
+      };
+    } catch (_) {
+      return { lab: 0, sw: 0, ads: 0, oth: 0 };
+    }
+  }
+
+  function saveBudgets(b) {
+    try {
+      localStorage.setItem(BUDGETS_KEY, JSON.stringify({
+        lab: Math.max(0, Number(b.lab) || 0),
+        sw:  Math.max(0, Number(b.sw)  || 0),
+        ads: Math.max(0, Number(b.ads) || 0),
+        oth: Math.max(0, Number(b.oth) || 0),
+      }));
+    } catch (_) {}
+  }
+
+  var budgets = loadBudgets();
+
   function getInvoiceByIncomeTxId(txId) {
     return invoices.find(function (inv) { return inv.incomeTxId === txId; }) || null;
   }
@@ -1530,13 +1562,32 @@ var spendReportUi = {
   q: '',
 };
 
+  // Light UI chart theme: orange primary, muted grays for secondary series
+  var CHART_ORANGE = '#e8501a';
+  var CHART_ORANGE_FILL = 'rgba(232, 80, 26, 0.1)';
+  var CHART_ORANGE_FILL_BAR = 'rgba(232, 80, 26, 0.32)';
+  var CHART_EMPTY = '#e4e4e7';
+  var CHART_TICK = '#71717a';
+  var CHART_GRID = 'rgba(0, 0, 0, 0.04)';
+  var CHART_EXPENSE_GRAY = '#d4d4d8';
+  var CHART_PALETTE_REST = ['#71717a', '#a1a1aa', '#d4d4d8', '#e4e4e7', '#52525b', '#94a3b8'];
+  var CHART_VENDOR_PAL = [CHART_ORANGE, '#71717a', '#64748b', '#a1a1aa', '#94a3b8', '#78716c', '#d4d4d8', '#cbd5e1'];
+
+  function chartMultiColors(count) {
+    var c = [];
+    for (var i = 0; i < count; i++) {
+      c.push(i === 0 ? CHART_ORANGE : CHART_PALETTE_REST[(i - 1) % CHART_PALETTE_REST.length]);
+    }
+    return c;
+  }
+
   function renderExpenseChart(c) {
     var canvas = document.getElementById('cExp');
     if (!canvas || !window.Chart) return;
 
     var labels = [];
     var data = [];
-    var colors = ['#e8501a', '#3366aa', '#a86e28', '#c8c7c2'];
+    var colors = [CHART_ORANGE, '#64748b', '#78716c', CHART_EXPENSE_GRAY];
 
     var map = [
       ['Labor', c.expenseByCat.lab],
@@ -1562,7 +1613,7 @@ var spendReportUi = {
           labels: labels,
           datasets: [{
             data: data,
-            backgroundColor: map.length === 0 ? ['#e8e6e1'] : colors,
+            backgroundColor: map.length === 0 ? [CHART_EMPTY] : colors,
             borderWidth: 0,
           }],
         },
@@ -1576,7 +1627,7 @@ var spendReportUi = {
     } else {
       expenseChart.data.labels = labels;
       expenseChart.data.datasets[0].data = data;
-      expenseChart.data.datasets[0].backgroundColor = map.length === 0 ? ['#e8e6e1'] : colors;
+      expenseChart.data.datasets[0].backgroundColor = map.length === 0 ? [CHART_EMPTY] : colors;
       expenseChart.update('none');
     }
 
@@ -1629,13 +1680,13 @@ var spendReportUi = {
             {
               label: 'Revenue',
               data: revData,
-              backgroundColor: '#e8501a',
+              backgroundColor: CHART_ORANGE,
               borderRadius: 4,
             },
             {
               label: 'Expenses',
               data: expData,
-              backgroundColor: '#c0bfb8',
+              backgroundColor: CHART_EXPENSE_GRAY,
               borderRadius: 4,
             },
           ],
@@ -1660,7 +1711,7 @@ var spendReportUi = {
             y: {
               grid: { color: 'rgba(0,0,0,0.05)' },
               ticks: {
-                color: '#aaa99f',
+                color: CHART_TICK,
                 font: { size: 11 },
                 callback: function (v) { return '$' + v.toLocaleString(); },
               },
@@ -1806,12 +1857,121 @@ var spendReportUi = {
     }).join('');
   }
 
+  function renderBudgetVsActual() {
+    var container = document.getElementById('budget-vs-actual');
+    if (!container) return;
+
+    var now = new Date();
+    var monthLabelEl = document.getElementById('bva-month-label');
+    if (monthLabelEl) {
+      monthLabelEl.textContent = now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+    }
+    var thisMonthKey = now.getFullYear() + '-' + String(now.getMonth() + 1).padStart(2, '0');
+
+    var allTxs = state.transactions || [];
+    var actualByCat = { lab: 0, sw: 0, ads: 0, oth: 0 };
+    allTxs.forEach(function (tx) {
+      if (!tx.date || tx.date.slice(0, 7) !== thisMonthKey) return;
+      var amt = +tx.amount || 0;
+      if (amt <= 0) return;
+      if (actualByCat.hasOwnProperty(tx.category)) actualByCat[tx.category] += amt;
+    });
+
+    var catLabels = { lab: 'Labor', sw: 'Software & Tools', ads: 'Advertising', oth: 'Other' };
+    var catColors = { lab: '#e8501a', sw: '#3366aa', ads: '#a86e28', oth: '#c8c7c2' };
+
+    var hasAnyBudget = (budgets.lab + budgets.sw + budgets.ads + budgets.oth) > 0;
+    var totalBudget = budgets.lab + budgets.sw + budgets.ads + budgets.oth;
+    var totalActual = actualByCat.lab + actualByCat.sw + actualByCat.ads + actualByCat.oth;
+
+    var monthLabel = now.toLocaleDateString('en-US', { month: 'long', year: 'numeric' });
+
+    if (!hasAnyBudget) {
+      container.innerHTML =
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">' +
+          '<div>' +
+            '<div style="font-size:13px;color:var(--text2);line-height:1.5;">' +
+              'No monthly budgets set yet. ' +
+              '<a href="#" onclick="window.nav(\'settings\');return false;" style="color:var(--coral);text-decoration:none;font-weight:500;">Set budgets in Settings →</a>' +
+            '</div>' +
+          '</div>' +
+          '<div style="font-size:12px;color:var(--text3);">' + monthLabel + ' · ' + fmtCurrency(totalActual) + ' spent</div>' +
+        '</div>';
+      return;
+    }
+
+    var rows = ['lab', 'sw', 'ads', 'oth'].map(function (k) {
+      var budget = budgets[k];
+      var actual = actualByCat[k];
+      if (budget < 0.01 && actual < 0.01) return '';
+
+      var pct = budget > 0 ? Math.min(actual / budget * 100, 100) : 0;
+      var overPct = budget > 0 ? actual / budget * 100 : 0;
+      var remaining = budget - actual;
+
+      var barColor = overPct >= 100 ? 'var(--red)' : overPct >= 80 ? 'var(--amber)' : catColors[k];
+      var remainingColor = remaining < 0 ? 'var(--red)' : remaining < budget * 0.2 ? 'var(--amber)' : 'var(--green)';
+      var remainingLabel = remaining >= 0 ? fmtCurrencyPrecise(remaining) + ' left' : fmtCurrencyPrecise(Math.abs(remaining)) + ' over';
+
+      var statusBadge = '';
+      if (budget > 0) {
+        if (overPct >= 100) {
+          statusBadge = '<span class="pl pg-r" style="font-size:10px;">Over</span>';
+        } else if (overPct >= 80) {
+          statusBadge = '<span class="pl pg-a" style="font-size:10px;">' + Math.round(overPct) + '%</span>';
+        }
+      }
+
+      return '<div class="bva-row">' +
+        '<div class="bva-label">' +
+          '<span class="bva-dot" style="background:' + catColors[k] + ';"></span>' +
+          '<span>' + catLabels[k] + '</span>' +
+          statusBadge +
+        '</div>' +
+        '<div class="bva-nums">' +
+          '<span class="bva-actual">' + fmtCurrency(actual) + '</span>' +
+          '<span class="bva-sep">of</span>' +
+          '<span class="bva-budget">' + fmtCurrency(budget) + '</span>' +
+        '</div>' +
+        '<div class="bva-bar-wrap">' +
+          '<div class="pb" style="height:6px;flex:1;">' +
+            '<div class="pf" style="width:' + pct.toFixed(1) + '%;background:' + barColor + ';height:100%;"></div>' +
+          '</div>' +
+          '<span class="bva-remaining" style="color:' + remainingColor + ';">' + remainingLabel + '</span>' +
+        '</div>' +
+      '</div>';
+    }).filter(Boolean).join('');
+
+    var totalPct = totalBudget > 0 ? Math.min(totalActual / totalBudget * 100, 100) : 0;
+    var totalRemaining = totalBudget - totalActual;
+    var totalBarColor = totalPct >= 100 ? 'var(--red)' : totalPct >= 80 ? 'var(--amber)' : 'var(--green)';
+    var totalRemainingColor = totalRemaining < 0 ? 'var(--red)' : totalRemaining < totalBudget * 0.2 ? 'var(--amber)' : 'var(--green)';
+    var totalRemainingLabel = totalRemaining >= 0 ? fmtCurrencyPrecise(totalRemaining) + ' left' : fmtCurrencyPrecise(Math.abs(totalRemaining)) + ' over';
+
+    var totalRow = '<div class="bva-row bva-total">' +
+      '<div class="bva-label"><span>Total</span></div>' +
+      '<div class="bva-nums">' +
+        '<span class="bva-actual">' + fmtCurrency(totalActual) + '</span>' +
+        '<span class="bva-sep">of</span>' +
+        '<span class="bva-budget">' + fmtCurrency(totalBudget) + '</span>' +
+      '</div>' +
+      '<div class="bva-bar-wrap">' +
+        '<div class="pb" style="height:6px;flex:1;">' +
+          '<div class="pf" style="width:' + totalPct.toFixed(1) + '%;background:' + totalBarColor + ';height:100%;"></div>' +
+        '</div>' +
+        '<span class="bva-remaining" style="color:' + totalRemainingColor + ';">' + totalRemainingLabel + '</span>' +
+      '</div>' +
+    '</div>';
+
+    container.innerHTML = rows + totalRow;
+  }
+
   var SPEND_EXP_CATS = ['lab', 'sw', 'ads', 'oth'];
   var SPEND_CAT_META = {
-    lab: { label: 'Labor', color: '#e8501a' },
-    sw: { label: 'Software', color: '#3366aa' },
-    ads: { label: 'Advertising', color: '#a86e28' },
-    oth: { label: 'Other', color: '#c8c7c2' },
+    lab: { label: 'Labor', color: CHART_ORANGE },
+    sw: { label: 'Software', color: '#64748b' },
+    ads: { label: 'Advertising', color: '#78716c' },
+    oth: { label: 'Other', color: CHART_EXPENSE_GRAY },
   };
 
   function spendStartOfWeekMonday(d) {
@@ -1997,11 +2157,11 @@ var spendReportUi = {
       var maxV = 12;
       var top = venList.slice(0, maxV);
       var rest = venList.slice(maxV);
-      var PAL = ['#e8501a', '#3366aa', '#4a8a4a', '#a86e28', '#3366cc', '#cc3333', '#7b2d8e', '#2d8e7b'];
+      var PAL = CHART_VENDOR_PAL;
       top.forEach(function (v, i) {
         pillDefs.push({ id: 'ven:' + v, label: v, color: PAL[i % PAL.length] });
       });
-      if (rest.length) pillDefs.push({ id: 'ven:__other__', label: 'Other', color: '#c8c7c2' });
+      if (rest.length) pillDefs.push({ id: 'ven:__other__', label: 'Other', color: CHART_EXPENSE_GRAY });
     }
 
     var tabOk = pillDefs.some(function (p) { return p.id === tab; });
@@ -2140,11 +2300,11 @@ var spendReportUi = {
     avgRef = Math.round(avgRef * 100) / 100;
     var refLine = keys.map(function () { return avgRef; });
 
-    var gridMuted = 'rgba(0,0,0,0.06)';
-    var axisTick = '#aaa99f';
-    var lineStroke = '#111110';
-    var lineFill = 'rgba(17,17,16,0.07)';
-    var refStroke = 'rgba(0,0,0,0.18)';
+    var gridMuted = CHART_GRID;
+    var axisTick = CHART_TICK;
+    var lineStroke = CHART_ORANGE;
+    var lineFill = CHART_ORANGE_FILL;
+    var refStroke = 'rgba(0,0,0,0.12)';
 
     if (spendTrendChart) {
       spendTrendChart.destroy();
@@ -2154,10 +2314,10 @@ var spendReportUi = {
     var commonPlugins = {
       legend: { display: false },
       tooltip: {
-        backgroundColor: '#111110',
-        titleColor: '#ffffff',
-        bodyColor: '#ffffff',
-        borderColor: 'rgba(255,255,255,0.12)',
+        backgroundColor: '#ffffff',
+        titleColor: '#0a0a0a',
+        bodyColor: '#52525b',
+        borderColor: 'rgba(0,0,0,0.08)',
         borderWidth: 1,
         padding: 10,
         cornerRadius: 6,
@@ -2208,8 +2368,8 @@ var spendReportUi = {
               type: 'bar',
               label: 'Spend',
               data: dataVals,
-              backgroundColor: 'rgba(17,17,16,0.2)',
-              borderColor: lineStroke,
+              backgroundColor: CHART_ORANGE_FILL_BAR,
+              borderColor: 'rgba(232,80,26,0.45)',
               borderWidth: 1,
               borderRadius: 4,
               order: 2,
@@ -2247,7 +2407,7 @@ var spendReportUi = {
               tension: 0.35,
               pointRadius: 0,
               pointHoverRadius: 6,
-              pointHoverBackgroundColor: lineStroke,
+              pointHoverBackgroundColor: CHART_ORANGE,
               pointHoverBorderColor: '#ffffff',
               pointHoverBorderWidth: 2,
               order: 2,
@@ -2274,6 +2434,33 @@ var spendReportUi = {
     var barBtn = document.getElementById('spend-chart-bar');
     if (lineBtn) lineBtn.classList.toggle('on', chartType === 'line');
     if (barBtn) barBtn.classList.toggle('on', chartType === 'bar');
+  }
+
+  function wireSettingsSave() {
+    // Populate budget inputs from saved state
+    function populateBudgetInputs() {
+      ['lab', 'sw', 'ads', 'oth'].forEach(function (k) {
+        var el = document.getElementById('budget-input-' + k);
+        if (el && budgets[k] > 0) el.value = budgets[k];
+      });
+    }
+    populateBudgetInputs();
+
+    var saveBtn = document.getElementById('btn-save-settings');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', function () {
+        ['lab', 'sw', 'ads', 'oth'].forEach(function (k) {
+          var el = document.getElementById('budget-input-' + k);
+          if (el) budgets[k] = Math.max(0, parseFloat(el.value) || 0);
+        });
+        saveBudgets(budgets);
+        recomputeAndRender();
+        // Brief visual confirmation
+        var orig = saveBtn.textContent;
+        saveBtn.textContent = 'Saved!';
+        setTimeout(function () { saveBtn.textContent = orig; }, 1400);
+      });
+    }
   }
 
   function wireSpendingReport() {
@@ -2441,6 +2628,7 @@ var spendReportUi = {
     renderIncomeStatement(c);
     renderTransactionLog(c);
     renderExpensesTable(c);
+    renderBudgetVsActual();
     renderSpendingReport();
     renderRevenueVsExpenses(c);
     renderIncomeSection(c);
@@ -2479,8 +2667,7 @@ var spendReportUi = {
       data = [1];
     }
 
-    var colors = ['#e8501a', '#3366aa', '#4a8a4a', '#a86e28', '#c8c7c2',
-                  '#7b2d8e', '#2d8e7b', '#8e2d3a', '#5a5a9e', '#9e8a2d'];
+    var sliceColors = labels[0] === 'No data' ? [CHART_EMPTY] : chartMultiColors(labels.length);
 
     if (!verticalChart) {
       verticalChart = new Chart(canvas, {
@@ -2489,7 +2676,7 @@ var spendReportUi = {
           labels: labels,
           datasets: [{
             data: data,
-            backgroundColor: colors,
+            backgroundColor: sliceColors,
             borderWidth: 0,
           }],
         },
@@ -2503,6 +2690,7 @@ var spendReportUi = {
     } else {
       verticalChart.data.labels = labels;
       verticalChart.data.datasets[0].data = data;
+      verticalChart.data.datasets[0].backgroundColor = sliceColors;
       verticalChart.update('none');
     }
   }
@@ -2643,6 +2831,32 @@ var spendReportUi = {
       if (!retainerClients.length && clients.length > 0) {
         alerts.push({ type: 'info', msg: 'You have no retainer clients yet. Retainers provide predictable monthly revenue.' });
       }
+      // Budget alerts
+      var budgetCatLabels = { lab: 'Labor', sw: 'Software & Tools', ads: 'Advertising', oth: 'Other' };
+      var hasAnyBudget = (budgets.lab + budgets.sw + budgets.ads + budgets.oth) > 0;
+      if (!hasAnyBudget && allTxs.length > 0) {
+        alerts.push({ type: 'info', msg: 'No monthly budgets set. <a href="#" onclick="window.nav(\'settings\');return false;" style="color:var(--blue);font-weight:500;text-decoration:none;">Set budgets in Settings</a> to track spending targets.' });
+      } else if (hasAnyBudget) {
+        var budgetActual = { lab: 0, sw: 0, ads: 0, oth: 0 };
+        allTxs.forEach(function (tx) {
+          if (!tx.date || tx.date.slice(0, 7) !== thisMonthKey) return;
+          var amt = +tx.amount || 0;
+          if (amt > 0 && budgetActual.hasOwnProperty(tx.category)) budgetActual[tx.category] += amt;
+        });
+        ['lab', 'sw', 'ads', 'oth'].forEach(function (k) {
+          var bgt = budgets[k];
+          var act = budgetActual[k];
+          if (bgt < 0.01) return;
+          var usedPct = act / bgt * 100;
+          if (usedPct >= 100) {
+            var overAmt = act - bgt;
+            alerts.push({ type: 'warn', msg: '<strong>' + budgetCatLabels[k] + '</strong> is <strong>' + fmtCurrency(overAmt) + ' over budget</strong> this month (budgeted ' + fmtCurrency(bgt) + ', spent ' + fmtCurrency(act) + ').' });
+          } else if (usedPct >= 80) {
+            var leftAmt = bgt - act;
+            alerts.push({ type: 'warn', msg: '<strong>' + budgetCatLabels[k] + '</strong> has used <strong>' + Math.round(usedPct) + '%</strong> of its monthly budget — ' + fmtCurrency(leftAmt) + ' remaining.' });
+          }
+        });
+      }
       if (!alerts.length && allTxs.length > 0) {
         alerts.push({ type: 'good', msg: 'Everything looks healthy — no anomalies detected.' });
       }
@@ -2693,8 +2907,8 @@ var spendReportUi = {
             datasets: [{
               label: 'Revenue',
               data: trendData,
-              borderColor: '#e8501a',
-              backgroundColor: 'rgba(232,80,26,0.08)',
+              borderColor: CHART_ORANGE,
+              backgroundColor: CHART_ORANGE_FILL,
               borderWidth: 2,
               pointRadius: 3,
               fill: true,
@@ -2706,8 +2920,8 @@ var spendReportUi = {
             maintainAspectRatio: false,
             plugins: { legend: { display: false } },
             scales: {
-              x: { grid: { display: false }, ticks: { color: '#aaa99f', font: { size: 11 } } },
-              y: { grid: { color: 'rgba(0,0,0,0.05)' }, ticks: { color: '#aaa99f', font: { size: 11 }, callback: function (v) { return '$' + v.toLocaleString(); } } },
+              x: { grid: { display: false }, ticks: { color: CHART_TICK, font: { size: 11 } } },
+              y: { grid: { color: CHART_GRID }, ticks: { color: CHART_TICK, font: { size: 11 }, callback: function (v) { return '$' + v.toLocaleString(); } } },
             },
           },
         });
@@ -2843,7 +3057,6 @@ var spendReportUi = {
 
     var labels = [];
     var data = [];
-    var colors = ['#e8501a', '#3366aa', '#a86e28', '#2d8a6e', '#7c6f9c', '#c0bfb8', '#c94a4a'];
 
     if (!pairs.length) {
       labels = ['No active pipeline'];
@@ -2855,9 +3068,7 @@ var spendReportUi = {
       });
     }
 
-    var bg = !pairs.length
-      ? ['#e8e6e1']
-      : labels.map(function (_, i) { return colors[i % colors.length]; });
+    var bg = !pairs.length ? [CHART_EMPTY] : chartMultiColors(labels.length);
 
     if (!leadSourceChart) {
       leadSourceChart = new Chart(canvas, {
@@ -3363,12 +3574,12 @@ var spendReportUi = {
             datasets: [{
               label: 'Revenue',
               data: data,
-              borderColor: '#e8501a',
-              backgroundColor: 'rgba(232, 80, 26, 0.12)',
+              borderColor: CHART_ORANGE,
+              backgroundColor: CHART_ORANGE_FILL,
               borderWidth: 2,
               fill: true,
               tension: 0.35,
-              pointBackgroundColor: '#e8501a',
+              pointBackgroundColor: CHART_ORANGE,
               pointBorderColor: '#ffffff',
               pointBorderWidth: 2,
               pointRadius: 4,
@@ -3385,13 +3596,13 @@ var spendReportUi = {
             scales: {
               x: {
                 grid: { display: false },
-                ticks: { color: '#aaa99f', font: { size: 11 } },
+                ticks: { color: CHART_TICK, font: { size: 11 } },
               },
               y: {
                 beginAtZero: true,
-                grid: { color: 'rgba(0,0,0,0.05)' },
+                grid: { color: CHART_GRID },
                 ticks: {
-                  color: '#aaa99f',
+                  color: CHART_TICK,
                   font: { size: 11 },
                   callback: function (v) { return '$' + v.toLocaleString(); },
                 },
@@ -3470,14 +3681,17 @@ var spendReportUi = {
     if (svcCanvas && window.Chart) {
       var typeLabels = Object.keys(byType);
       var typeCounts = typeLabels.map(function (k) { return byType[k]; });
+      var projLbls = typeLabels.length ? typeLabels : ['No projects'];
+      var projData = typeLabels.length ? typeCounts : [1];
+      var projBg = typeLabels.length ? chartMultiColors(projLbls.length) : [CHART_EMPTY];
       if (!projTypeChart) {
         projTypeChart = new Chart(svcCanvas, {
           type: 'doughnut',
           data: {
-            labels: typeLabels.length ? typeLabels : ['No projects'],
+            labels: projLbls,
             datasets: [{
-              data: typeLabels.length ? typeCounts : [1],
-              backgroundColor: ['#e8501a','#3366aa','#a86e28','#4a8a4a','#c8c7c2'],
+              data: projData,
+              backgroundColor: projBg,
               borderWidth: 0,
             }],
           },
@@ -3489,8 +3703,9 @@ var spendReportUi = {
           },
         });
       } else {
-        projTypeChart.data.labels = typeLabels.length ? typeLabels : ['No projects'];
-        projTypeChart.data.datasets[0].data = typeLabels.length ? typeCounts : [1];
+        projTypeChart.data.labels = projLbls;
+        projTypeChart.data.datasets[0].data = projData;
+        projTypeChart.data.datasets[0].backgroundColor = projBg;
         projTypeChart.update('none');
       }
     }
@@ -3521,7 +3736,7 @@ var spendReportUi = {
             datasets: [{
               label: 'Deliverables',
               data: monthCounts,
-              backgroundColor: '#e8501a',
+              backgroundColor: CHART_ORANGE,
               borderRadius: 4,
             }],
           },
@@ -3534,12 +3749,12 @@ var spendReportUi = {
             scales: {
               x: {
                 grid: { display: false },
-                ticks: { color: '#aaa99f', font: { size: 11 } },
+                ticks: { color: CHART_TICK, font: { size: 11 } },
               },
               y: {
-                grid: { color: 'rgba(0,0,0,0.05)' },
+                grid: { color: CHART_GRID },
                 ticks: {
-                  color: '#aaa99f',
+                  color: CHART_TICK,
                   font: { size: 11 },
                   precision: 0,
                 },
@@ -5325,6 +5540,7 @@ var spendReportUi = {
     wireProjectsAndStatuses();
     wireFilter();
     wireSpendingReport();
+    wireSettingsSave();
     wireMarketingCampaign();
 
     // Simple page navigation wiring to replace the original bundle's nav().
