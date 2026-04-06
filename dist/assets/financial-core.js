@@ -398,40 +398,98 @@
     }
   }
 
-  /** @returns {Promise<'skipped'|'ok'|'error'>} skipped = not signed in / no supabase */
-  async function persistClientToSupabase(client) {
+  /** Last PostgREST/Supabase error from client persist (for user-facing alerts). */
+  var persistClientLastError = '';
+
+  function formatSupabaseErr(err) {
+    if (!err) return '';
+    var parts = [err.message, err.details, err.hint].filter(Boolean);
+    return parts.join(' — ') || JSON.stringify(err);
+  }
+
+  /**
+   * @param {'insert'|'update'} writeMode insert = new row only (avoids upsert RLS quirks); update = existing row
+   * @returns {Promise<'skipped'|'ok'|'error'>}
+   */
+  async function persistClientToSupabase(client, writeMode) {
+    persistClientLastError = '';
     supabase = window.supabaseClient || supabase;
-    currentUser = window.currentUser || currentUser;
-    if (!supabase || !currentUser) {
-      saveClients(clients);
+    if (!supabase) {
+      persistClientLastError = 'Supabase client is not loaded.';
       return 'skipped';
     }
-    if (!client || !isUuidForDb(client.id)) return 'skipped';
+
+    var sessionRes;
+    try {
+      sessionRes = await supabase.auth.getSession();
+    } catch (e) {
+      console.error('getSession before client persist', e);
+      persistClientLastError = String(e && e.message ? e.message : e);
+      return 'skipped';
+    }
+    var session = sessionRes && sessionRes.data && sessionRes.data.session;
+    if (!session || !session.user) {
+      persistClientLastError = 'No active session. Sign in again.';
+      currentUser = null;
+      window.currentUser = null;
+      return 'skipped';
+    }
+    currentUser = session.user;
+    window.currentUser = session.user;
+
+    if (!client || !isUuidForDb(client.id)) {
+      persistClientLastError = 'Invalid client id.';
+      return 'skipped';
+    }
 
     var payload = buildClientDbPayload(client, currentUser.id);
+    var mode = writeMode === 'update' ? 'update' : 'insert';
+
+    async function runWrite(body) {
+      if (mode === 'insert') {
+        return await supabase.from('clients').insert(body).select('id');
+      }
+      var bodyNoId = Object.assign({}, body);
+      delete bodyNoId.id;
+      return await supabase
+        .from('clients')
+        .update(bodyNoId)
+        .eq('id', client.id)
+        .eq('user_id', currentUser.id)
+        .select('id');
+    }
 
     try {
-      var result = await supabase
-        .from('clients')
-        .upsert(payload, { onConflict: 'id' });
+      var result = await runWrite(payload);
       if (result.error) {
-        console.error('upsert client error', result.error);
+        console.error('persist client error', result.error);
         var errStr = JSON.stringify(result.error || {});
         if (/is_retainer|schema|column/i.test(errStr)) {
           var payload2 = Object.assign({}, payload);
           delete payload2.is_retainer;
-          var result2 = await supabase.from('clients').upsert(payload2, { onConflict: 'id' });
+          var result2 = await runWrite(payload2);
           if (result2.error) {
-            console.error('upsert client (no is_retainer) error', result2.error);
+            console.error('persist client (no is_retainer) error', result2.error);
+            persistClientLastError = formatSupabaseErr(result2.error);
+            return 'error';
+          }
+          if (mode === 'update' && (!result2.data || !result2.data.length)) {
+            persistClientLastError = 'No row updated (id, user_id, or RLS).';
             return 'error';
           }
           return 'ok';
         }
+        persistClientLastError = formatSupabaseErr(result.error);
+        return 'error';
+      }
+      if (mode === 'update' && (!result.data || !result.data.length)) {
+        persistClientLastError = 'No row updated. Check that this client belongs to your account and RLS policies allow updates.';
         return 'error';
       }
       return 'ok';
     } catch (err) {
       console.error('persistClientToSupabase error', err);
+      persistClientLastError = String(err && err.message ? err.message : err);
       return 'error';
     }
   }
@@ -5371,7 +5429,7 @@ var spendReportUi = {
           renderClients();
           if (state.computed) renderInsights();
           if (supabase && currentUser && client) {
-            var editSync = await persistClientToSupabase(client);
+            var editSync = await persistClientToSupabase(client, 'update');
             if (editSync === 'error') {
               try {
                 clients = JSON.parse(clientsSnapshot);
@@ -5379,7 +5437,7 @@ var spendReportUi = {
               saveClients(clients);
               renderClients();
               if (state.computed) renderInsights();
-              alert('Could not update this client in the cloud. Your changes were reverted. Check your connection, the browser console, and Supabase RLS rules, then try again.');
+              alert('Could not update this client in the cloud. Your changes were reverted.\n\n' + (persistClientLastError || 'Check the browser console and Supabase RLS rules.'));
               return;
             }
           }
@@ -5401,9 +5459,13 @@ var spendReportUi = {
             createdAt: Date.now(),
             retainer: !!retainerChecked,
           };
-          var addSync = await persistClientToSupabase(client);
+          var addSync = await persistClientToSupabase(client, 'insert');
+          if (addSync === 'skipped') {
+            alert('Could not save this client: you are not signed in or your session expired.\n\n' + (persistClientLastError || 'Sign in again and retry.'));
+            return;
+          }
           if (addSync !== 'ok') {
-            alert('Could not save this client to the cloud. Nothing was added. Check your connection, the browser console, and Supabase RLS rules, then try again.');
+            alert('Could not save this client to the cloud. Nothing was added.\n\n' + (persistClientLastError || 'Check the browser console and Supabase RLS rules.'));
             return;
           }
           clients.push(client);

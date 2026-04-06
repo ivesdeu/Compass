@@ -55,6 +55,10 @@ CREATE POLICY "clients_insert_own" ON public.clients FOR INSERT WITH CHECK (auth
 CREATE POLICY "clients_update_own" ON public.clients FOR UPDATE USING (auth.uid() = user_id OR user_id IS NULL) WITH CHECK (auth.uid() = user_id);
 CREATE POLICY "clients_delete_own" ON public.clients FOR DELETE USING (auth.uid() = user_id);
 
+-- If `clients` was created via SQL only, PostgREST may lack table grants; browser + JWT use role `authenticated`.
+GRANT SELECT, INSERT, UPDATE, DELETE ON public.clients TO authenticated;
+GRANT ALL ON public.clients TO service_role;
+
 DROP POLICY IF EXISTS "transactions_select_own" ON public.transactions;
 DROP POLICY IF EXISTS "transactions_insert_own" ON public.transactions;
 DROP POLICY IF EXISTS "transactions_update_own" ON public.transactions;
