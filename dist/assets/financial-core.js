@@ -460,33 +460,37 @@
     }
 
     try {
-      var result = await runWrite(payload);
-      if (result.error) {
-        console.error('persist client error', result.error);
-        var errStr = JSON.stringify(result.error || {});
-        if (/is_retainer|schema|column/i.test(errStr)) {
-          var payload2 = Object.assign({}, payload);
-          delete payload2.is_retainer;
-          var result2 = await runWrite(payload2);
-          if (result2.error) {
-            console.error('persist client (no is_retainer) error', result2.error);
-            persistClientLastError = formatSupabaseErr(result2.error);
-            return 'error';
-          }
-          if (mode === 'update' && (!result2.data || !result2.data.length)) {
-            persistClientLastError = 'No row updated (id, user_id, or RLS).';
+      var body = Object.assign({}, payload);
+      var result;
+      var maxAttempts = 6;
+      for (var attempt = 0; attempt < maxAttempts; attempt++) {
+        result = await runWrite(body);
+        if (!result.error) {
+          if (mode === 'update' && (!result.data || !result.data.length)) {
+            persistClientLastError = 'No row updated. Check that this client belongs to your account and RLS policies allow updates.';
             return 'error';
           }
           return 'ok';
         }
-        persistClientLastError = formatSupabaseErr(result.error);
-        return 'error';
+        console.error('persist client error', result.error);
+        var errStr = JSON.stringify(result.error || {});
+        var changed = false;
+        if ((/industry|schema cache|could not find.*column/i.test(errStr)) && Object.prototype.hasOwnProperty.call(body, 'industry')) {
+          delete body.industry;
+          changed = true;
+          console.warn('bizdash: retrying client persist without industry — run ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS industry text;');
+        }
+        if (!changed && /is_retainer/i.test(errStr) && Object.prototype.hasOwnProperty.call(body, 'is_retainer')) {
+          delete body.is_retainer;
+          changed = true;
+        }
+        if (!changed) {
+          persistClientLastError = formatSupabaseErr(result.error);
+          return 'error';
+        }
       }
-      if (mode === 'update' && (!result.data || !result.data.length)) {
-        persistClientLastError = 'No row updated. Check that this client belongs to your account and RLS policies allow updates.';
-        return 'error';
-      }
-      return 'ok';
+      persistClientLastError = formatSupabaseErr(result.error);
+      return 'error';
     } catch (err) {
       console.error('persistClientToSupabase error', err);
       persistClientLastError = String(err && err.message ? err.message : err);
@@ -5009,6 +5013,7 @@ var spendReportUi = {
           if (!client) return;
           var m = $('clientModal');
           if (!m) return;
+          populateClientIndustryDatalist();
           var hiddenId = $('client-edit-id');
           if (hiddenId) hiddenId.value = client.id;
           $('client-company').value = client.companyName || '';
@@ -5364,6 +5369,24 @@ var spendReportUi = {
 
   // ---------- Client form wiring ----------
 
+  function populateClientIndustryDatalist() {
+    var dl = document.getElementById('client-industry-list');
+    if (!dl) return;
+    var seen = {};
+    var list = [];
+    (clients || []).forEach(function (c) {
+      if (!c || !c.industry) return;
+      var v = String(c.industry).trim();
+      if (!v || seen[v]) return;
+      seen[v] = true;
+      list.push(v);
+    });
+    list.sort(function (a, b) { return a.localeCompare(b, undefined, { sensitivity: 'base' }); });
+    dl.innerHTML = list.map(function (v) {
+      return '<option value="' + esc(v) + '"></option>';
+    }).join('');
+  }
+
   function wireClientForm() {
     var btnAddClient = $('btn-add-client');
     var btnClientSave = $('btn-client-save');
@@ -5383,6 +5406,7 @@ var spendReportUi = {
       $('client-notes').value = '';
       var retCb = $('client-retainer');
       if (retCb) retCb.checked = false;
+      populateClientIndustryDatalist();
       m.classList.add('on');
     }
 

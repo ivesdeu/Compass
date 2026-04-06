@@ -86,6 +86,7 @@ END $ext$;
 DO $cl$
 BEGIN
   IF to_regclass('public.clients') IS NOT NULL THEN
+    ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS industry text;
     ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS is_retainer boolean DEFAULT false;
   END IF;
 END $cl$;
