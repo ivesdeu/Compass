@@ -8,19 +8,6 @@
   var supabase = window.supabaseClient || null;
   var currentUser = window.currentUser || null;
 
-  // Debug ingest: only on localhost — public origins cannot reach 127.0.0.1 (browser blocks loopback from HTTPS sites).
-  function debugAgentLog(entry) {
-    try {
-      var h = window.location && window.location.hostname;
-      if (h !== 'localhost' && h !== '127.0.0.1') return;
-      fetch('http://127.0.0.1:7475/ingest/507d12bf-babb-4204-8816-34a6e29c9b5b', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': 'c7d7dd' },
-        body: JSON.stringify(Object.assign({ sessionId: 'c7d7dd', timestamp: Date.now() }, entry)),
-      }).catch(function () {});
-    } catch (_) {}
-  }
-
   var STORAGE_KEY = 'bizdash:transactions:v1';
   // Ids the user deleted locally; applied after remote merge so a row does not reappear in the ledger (expenses + transaction log) if the server delete lags or fails once.
   var TX_DELETED_IDS_KEY = 'bizdash:tx-deleted-ids:v1';
@@ -93,6 +80,37 @@
 
   function isUuid(v) {
     return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(String(v || ''));
+  }
+
+  /** UUID shape Postgres accepts (any version nibble); looser than isUuid(). */
+  function isUuidForDb(v) {
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(String(v || '').trim());
+  }
+
+  function buildClientDbPayload(client, userId) {
+    var rev = Number(client.totalRevenue);
+    if (!isFinite(rev)) rev = 0;
+    var createdIso;
+    try {
+      var d = client.createdAt != null ? new Date(client.createdAt) : new Date();
+      createdIso = isNaN(d.getTime()) ? new Date().toISOString() : d.toISOString();
+    } catch (_) {
+      createdIso = new Date().toISOString();
+    }
+    return {
+      id: client.id,
+      user_id: userId,
+      company_name: client.companyName,
+      contact_name: client.contactName,
+      status: client.status,
+      industry: client.industry,
+      email: client.email,
+      phone: client.phone,
+      notes: client.notes,
+      total_revenue: rev,
+      created_at: createdIso,
+      is_retainer: client.retainer === true,
+    };
   }
 
   function uuid() {
@@ -347,10 +365,6 @@
 
     var payload = transactionRowForDb(tx, currentUser.id);
 
-    // #region agent log
-    debugAgentLog({ runId: 'run1', hypothesisId: 'H1', location: 'financial-core.js:persistTransactionToSupabase', message: 'tx upsert payload shape', data: { keys: Object.keys(payload), hasClientIdKey: Object.prototype.hasOwnProperty.call(payload, 'client_id') } });
-    // #endregion
-
     try {
       var result = await supabase
         .from('transactions')
@@ -384,29 +398,17 @@
     }
   }
 
+  /** @returns {Promise<'skipped'|'ok'|'error'>} skipped = not signed in / no supabase */
   async function persistClientToSupabase(client) {
     supabase = window.supabaseClient || supabase;
     currentUser = window.currentUser || currentUser;
     if (!supabase || !currentUser) {
       saveClients(clients);
-      return;
+      return 'skipped';
     }
+    if (!client || !isUuidForDb(client.id)) return 'skipped';
 
-    var payload = {
-      id: client.id,
-      user_id: currentUser.id,
-      company_name: client.companyName,
-      contact_name: client.contactName,
-      status: client.status,
-      industry: client.industry,
-      email: client.email,
-      phone: client.phone,
-      notes: client.notes,
-      total_revenue: client.totalRevenue || 0,
-      created_at: client.createdAt ? new Date(client.createdAt).toISOString() : new Date().toISOString(),
-      // Requires column: is_retainer boolean (see Supabase clients table). Omit if not migrated yet.
-      is_retainer: client.retainer === true,
-    };
+    var payload = buildClientDbPayload(client, currentUser.id);
 
     try {
       var result = await supabase
@@ -419,11 +421,18 @@
           var payload2 = Object.assign({}, payload);
           delete payload2.is_retainer;
           var result2 = await supabase.from('clients').upsert(payload2, { onConflict: 'id' });
-          if (result2.error) console.error('upsert client (no is_retainer) error', result2.error);
+          if (result2.error) {
+            console.error('upsert client (no is_retainer) error', result2.error);
+            return 'error';
+          }
+          return 'ok';
         }
+        return 'error';
       }
+      return 'ok';
     } catch (err) {
       console.error('persistClientToSupabase error', err);
+      return 'error';
     }
   }
 
@@ -458,7 +467,7 @@
 
     clients = (clients || []).map(function (c) {
       var oldId = c && c.id;
-      if (isUuid(oldId)) return c;
+      if (isUuidForDb(oldId)) return c;
       var newId = uuid();
       clientIdMap[oldId || ''] = newId;
       changed = true;
@@ -473,7 +482,7 @@
         changed = true;
       }
       var oldPid = p.id;
-      if (!isUuid(oldPid)) {
+      if (!isUuidForDb(oldPid)) {
         var newPid = uuid();
         projectIdMap[oldPid || ''] = newPid;
         next.id = newPid;
@@ -485,7 +494,7 @@
     state.transactions = (state.transactions || []).map(function (tx) {
       var oldTxId = tx && tx.id;
       var next = Object.assign({}, tx);
-      if (!isUuid(oldTxId)) {
+      if (!isUuidForDb(oldTxId)) {
         var newTxId = uuid();
         txIdMap[oldTxId || ''] = newTxId;
         next.id = newTxId;
@@ -505,7 +514,7 @@
     invoices = (invoices || []).map(function (inv) {
       if (!inv) return inv;
       var next = Object.assign({}, inv);
-      if (!isUuid(next.id)) {
+      if (!isUuidForDb(next.id)) {
         next.id = uuid();
         changed = true;
       }
@@ -518,7 +527,7 @@
 
     campaigns = (campaigns || []).map(function (c) {
       if (!c) return c;
-      if (isUuid(c.id)) return c;
+      if (isUuidForDb(c.id)) return c;
       changed = true;
       return Object.assign({}, c, { id: uuid() });
     });
@@ -537,9 +546,6 @@
     var payload = list.map(function (tx) {
       return transactionRowForDb(tx, currentUser.id);
     });
-    // #region agent log
-    debugAgentLog({ runId: 'run1', hypothesisId: 'H1', location: 'financial-core.js:uploadTransactionsToSupabase', message: 'bulk tx upsert first row keys', data: { count: payload.length, firstKeys: payload[0] ? Object.keys(payload[0]) : [], firstHasClientId: payload[0] ? Object.prototype.hasOwnProperty.call(payload[0], 'client_id') : null } });
-    // #endregion
     try {
       var result = await supabase.from('transactions').upsert(payload, { onConflict: 'id' });
       if (result.error) {
@@ -557,21 +563,12 @@
     supabase = window.supabaseClient || supabase;
     currentUser = window.currentUser || currentUser;
     if (!supabase || !currentUser || !Array.isArray(list) || !list.length) return false;
-    var payload = list.map(function (client) {
-      return {
-        id: client.id,
-        user_id: currentUser.id,
-        company_name: client.companyName,
-        contact_name: client.contactName,
-        status: client.status,
-        industry: client.industry,
-        email: client.email,
-        phone: client.phone,
-        notes: client.notes,
-        total_revenue: client.totalRevenue || 0,
-        created_at: client.createdAt ? new Date(client.createdAt).toISOString() : new Date().toISOString(),
-        is_retainer: client.retainer === true,
-      };
+    var validClients = list.filter(function (c) {
+      return c && isUuidForDb(c.id);
+    });
+    if (!validClients.length) return false;
+    var payload = validClients.map(function (client) {
+      return buildClientDbPayload(client, currentUser.id);
     });
     try {
       var result = await supabase.from('clients').upsert(payload, { onConflict: 'id' });
@@ -2712,18 +2709,39 @@ var spendReportUi = {
     return keys.map(function (k) { return { month: k, revenue: byMonth[k] }; });
   }
 
-  function linearForecast(series) {
-    var n = series.length;
+  function computeMonthlyExpenseSeries() {
+    var byMonth = {};
+    (state.transactions || []).forEach(function (tx) {
+      if (['lab', 'sw', 'ads', 'oth'].indexOf(tx.category) === -1) return;
+      var amt = +tx.amount || 0;
+      if (amt <= 0 || !tx.date) return;
+      var key = tx.date.slice(0, 7);
+      byMonth[key] = (byMonth[key] || 0) + amt;
+    });
+    var keys = Object.keys(byMonth).sort();
+    return keys.map(function (k) { return { month: k, expense: byMonth[k] }; });
+  }
+
+  function linearForecastValues(ys) {
+    var n = ys.length;
     if (n < 2) return null;
-    var xs = series.map(function (_, i) { return i; });
-    var ys = series.map(function (s) { return s.revenue; });
     var sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
-    for (var i = 0; i < n; i++) { sumX += xs[i]; sumY += ys[i]; sumXY += xs[i] * ys[i]; sumXX += xs[i] * xs[i]; }
+    for (var i = 0; i < n; i++) {
+      sumX += i;
+      sumY += ys[i];
+      sumXY += i * ys[i];
+      sumXX += i * i;
+    }
     var denom = n * sumXX - sumX * sumX;
     if (!denom) return null;
     var slope = (n * sumXY - sumX * sumY) / denom;
     var intercept = (sumY - slope * sumX) / n;
     return { slope: slope, intercept: intercept, nextValue: Math.max(0, slope * n + intercept) };
+  }
+
+  function linearForecast(series) {
+    if (!series || series.length < 2) return null;
+    return linearForecastValues(series.map(function (s) { return s.revenue; }));
   }
 
   function fmtMonthLabel(ym) {
@@ -2743,8 +2761,9 @@ var spendReportUi = {
     var now = new Date();
     var todayStr = dateYMD(new Date(now.getFullYear(), now.getMonth(), now.getDate(), 12));
 
-    // ---- Monthly revenue series ----
+    // ---- Monthly revenue & expense series ----
     var series = computeMonthlyRevenueSeries();
+    var expSeries = computeMonthlyExpenseSeries();
     var last3 = series.slice(-3);
     var avg3 = last3.length ? last3.reduce(function (s, x) { return s + x.revenue; }, 0) / last3.length : 0;
     var thisMonthKey = todayStr.slice(0, 7);
@@ -2786,6 +2805,7 @@ var spendReportUi = {
 
     // ---- Forecast ----
     var forecast = linearForecast(series);
+    var expForecast = linearForecastValues(expSeries.map(function (s) { return s.expense; }));
 
     // ---- Alerts ----
     var alertsEl = document.getElementById('insights-alerts');
@@ -2956,22 +2976,96 @@ var spendReportUi = {
       }
     }
 
-    // ---- Forecast card ----
+    // ---- Forecast & run rate card ----
     var forecastEl = document.getElementById('ins-forecast-body');
     if (forecastEl) {
-      if (!forecast || series.length < 2) {
-        forecastEl.innerHTML = '<div style="font-size:13px;color:var(--text3);">Need at least 2 months of data for a forecast.</div>';
+      var dim = daysInMonth(now.getFullYear(), now.getMonth());
+      var dom = Math.max(1, now.getDate());
+      var mtdExpense = 0;
+      allTxs.forEach(function (tx) {
+        if (!tx.date || tx.date.slice(0, 7) !== thisMonthKey) return;
+        if (['lab', 'sw', 'ads', 'oth'].indexOf(tx.category) === -1) return;
+        var a = +tx.amount || 0;
+        if (a > 0) mtdExpense += a;
+      });
+      var projectedEom = mtdExpense > 0 ? (mtdExpense / dom) * dim : 0;
+
+      var paceHtml = '<div id="ins-pace-block" style="padding-bottom:14px;margin-bottom:14px;border-bottom:1px solid var(--border);">' +
+        '<div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.06em;color:var(--text3);margin-bottom:6px;">This month (pace)</div>';
+      if (mtdExpense > 0) {
+        paceHtml +=
+          '<div style="font-size:13px;color:var(--text2);line-height:1.5;">MTD ' + fmtCurrency(mtdExpense) + ' · At current daily pace, ~<strong style="color:var(--text);">' + fmtCurrency(projectedEom) + '</strong> by month-end</div>' +
+          '<div style="font-size:12px;color:var(--text3);margin-top:6px;line-height:1.45;">' + dim + ' days in month · day ' + dom + '.</div>';
       } else {
-        var nextLabel = nextMonthLabel(series[series.length - 1].month);
+        paceHtml += '<div style="font-size:13px;color:var(--text3);">No expense recorded this month yet.</div>';
+      }
+      paceHtml += '</div>';
+
+      var lastRevMonth = series.length ? series[series.length - 1].month : null;
+      var lastExpMonth = expSeries.length ? expSeries[expSeries.length - 1].month : null;
+      var anchorMonth = lastRevMonth && lastExpMonth
+        ? (lastRevMonth > lastExpMonth ? lastRevMonth : lastExpMonth)
+        : (lastRevMonth || lastExpMonth);
+      var nextLabelCombined = anchorMonth ? nextMonthLabel(anchorMonth) : '';
+
+      var revHtml = '';
+      if (forecast && series.length >= 2) {
+        var nextLabelRev = nextMonthLabel(series[series.length - 1].month);
         var lastActual = series[series.length - 1].revenue;
         var delta = forecast.nextValue - lastActual;
         var deltaColor = delta >= 0 ? 'var(--green)' : 'var(--red)';
         var deltaSign = delta >= 0 ? '+' : '';
-        forecastEl.innerHTML =
-          '<div style="font-size:13px;color:var(--text3);margin-bottom:12px;">' + nextLabel + '</div>' +
-          '<div style="font-size:32px;font-weight:600;letter-spacing:-0.03em;margin-bottom:6px;">' + fmtCurrency(forecast.nextValue) + '</div>' +
-          '<div style="font-size:13px;color:' + deltaColor + ';font-weight:500;">' + deltaSign + fmtCurrency(delta) + ' vs last month</div>' +
-          '<div style="font-size:12px;color:var(--text3);margin-top:10px;line-height:1.5;">Based on a linear trend across ' + series.length + ' month' + (series.length > 1 ? 's' : '') + ' of data.</div>';
+        revHtml =
+          '<div id="ins-rev-trend-block" style="padding-bottom:14px;margin-bottom:14px;border-bottom:1px solid var(--border);">' +
+            '<div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.06em;color:var(--text3);margin-bottom:6px;">Next month — revenue (trend)</div>' +
+            '<div style="font-size:13px;color:var(--text3);margin-bottom:8px;">' + nextLabelRev + '</div>' +
+            '<div style="font-size:32px;font-weight:600;letter-spacing:-0.03em;margin-bottom:6px;">' + fmtCurrency(forecast.nextValue) + '</div>' +
+            '<div style="font-size:13px;color:' + deltaColor + ';font-weight:500;">' + deltaSign + fmtCurrency(delta) + ' vs last month</div>' +
+            '<div style="font-size:12px;color:var(--text3);margin-top:8px;line-height:1.5;">Linear trend across ' + series.length + ' month' + (series.length > 1 ? 's' : '') + ' of revenue.</div>' +
+          '</div>';
+      }
+
+      var expHtml = '';
+      if (expForecast && expSeries.length >= 2) {
+        var nextLabelExp = nextMonthLabel(expSeries[expSeries.length - 1].month);
+        var lastExpAmt = expSeries[expSeries.length - 1].expense;
+        var expDelta = expForecast.nextValue - lastExpAmt;
+        var expDeltaColor = expDelta >= 0 ? 'var(--red)' : 'var(--green)';
+        var expDeltaSign = expDelta >= 0 ? '+' : '';
+        expHtml =
+          '<div id="ins-exp-trend-block" style="padding-bottom:14px;margin-bottom:14px;border-bottom:1px solid var(--border);">' +
+            '<div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.06em;color:var(--text3);margin-bottom:6px;">Next month — expense (trend)</div>' +
+            '<div style="font-size:13px;color:var(--text3);margin-bottom:8px;">' + nextLabelExp + '</div>' +
+            '<div style="font-size:32px;font-weight:600;letter-spacing:-0.03em;margin-bottom:6px;">' + fmtCurrency(expForecast.nextValue) + '</div>' +
+            '<div style="font-size:13px;color:' + expDeltaColor + ';font-weight:500;">' + expDeltaSign + fmtCurrency(expDelta) + ' vs last month</div>' +
+            '<div style="font-size:12px;color:var(--text3);margin-top:8px;line-height:1.5;">Linear trend across ' + expSeries.length + ' month' + (expSeries.length > 1 ? 's' : '') + ' of expenses.</div>' +
+          '</div>';
+      }
+
+      var netHtml = '';
+      if (forecast && expForecast && series.length >= 2 && expSeries.length >= 2) {
+        var netVal = forecast.nextValue - expForecast.nextValue;
+        var netColor = netVal >= 0 ? 'var(--green)' : 'var(--red)';
+        netHtml =
+          '<div id="ins-net-block">' +
+            '<div style="font-size:11px;font-weight:500;text-transform:uppercase;letter-spacing:0.06em;color:var(--text3);margin-bottom:6px;">Projected net — ' + nextLabelCombined + '</div>' +
+            '<div style="font-size:32px;font-weight:600;letter-spacing:-0.03em;color:' + netColor + ';">' + fmtCurrency(netVal) + '</div>' +
+            '<div style="font-size:12px;color:var(--text3);margin-top:8px;line-height:1.5;">Revenue trend minus expense trend (next period).</div>' +
+          '</div>';
+      } else if ((forecast && series.length >= 2) || (expForecast && expSeries.length >= 2)) {
+        netHtml =
+          '<div id="ins-net-block" style="font-size:12px;color:var(--text3);line-height:1.5;">Need at least 2 months of both revenue and expense history for a full projected net estimate.</div>';
+      }
+
+      var hasRevForecast = forecast && series.length >= 2;
+      var hasExpForecast = expForecast && expSeries.length >= 2;
+      if (!hasRevForecast && !hasExpForecast && mtdExpense <= 0 && !series.length && !expSeries.length) {
+        forecastEl.innerHTML = '<div style="font-size:13px;color:var(--text3);">Add transactions to see pace and trends. Need at least 2 months of history for revenue or expense forecasts.</div>';
+      } else if (!hasRevForecast && !hasExpForecast && mtdExpense <= 0) {
+        forecastEl.innerHTML = paceHtml +
+          '<div style="font-size:13px;color:var(--text3);">Need at least 2 months of revenue or expense history for trend forecasts.</div>';
+      } else {
+        forecastEl.innerHTML = paceHtml + revHtml + expHtml + netHtml;
       }
     }
 
@@ -4420,7 +4514,7 @@ var spendReportUi = {
     var serviceLabel = tx && tx.description ? tx.description : 'Project consulting';
 
     return '' +
-      '<div style="max-width:860px;margin:0 auto;background:#fff;border-radius:16px;padding:54px 58px;color:#1f1f1f;font-family:Inter,system-ui,-apple-system,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,0.08);">' +
+      '<div style="max-width:860px;margin:0 auto;background:#fff;border-radius:16px;padding:54px 58px;color:#1f1f1f;font-family:\'Helvetica Now Pro Display Medium\',system-ui,-apple-system,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,0.08);">' +
         '<div style="display:flex;justify-content:space-between;gap:24px;margin-bottom:36px;">' +
           '<div>' +
             '<div style="font-size:42px;line-height:0.9;font-weight:700;letter-spacing:0.02em;margin-bottom:14px;">IDM</div>' +
@@ -5046,6 +5140,170 @@ var spendReportUi = {
     }
   }
 
+  function refreshCloudSyncStatus() {
+    var el = $('settings-cloud-status');
+    var syncBtn = $('settings-btn-cloud-sync');
+    var authBtn = $('settings-btn-cloud-auth');
+    supabase = window.supabaseClient || supabase;
+    var user = window.currentUser || currentUser;
+    if (!el) return;
+    if (!window.supabaseClient) {
+      el.textContent = 'Cloud: Supabase not loaded';
+      if (syncBtn) syncBtn.disabled = true;
+      return;
+    }
+    if (!user) {
+      el.textContent = 'Cloud: sign in (gate or below) to sync clients and data across browsers.';
+      if (syncBtn) syncBtn.disabled = true;
+      if (authBtn) authBtn.textContent = 'Sign in';
+      return;
+    }
+    el.textContent = 'Cloud: ' + (user.email || 'Signed in') + ' · ' + (clients && clients.length) + ' client(s) in this workspace';
+    if (syncBtn) syncBtn.disabled = false;
+    if (authBtn) authBtn.textContent = 'Sign out';
+  }
+
+  function openCloudAuthModal() {
+    var m = $('cloudAuthModal');
+    if (m) m.classList.add('on');
+  }
+
+  function closeCloudAuthModal() {
+    var m = $('cloudAuthModal');
+    if (m) m.classList.remove('on');
+  }
+
+  function wireCloudSyncPanel() {
+    refreshCloudSyncStatus();
+
+    var authBtn = $('settings-btn-cloud-auth');
+    var syncBtn = $('settings-btn-cloud-sync');
+
+    if (authBtn) {
+      authBtn.addEventListener('click', async function () {
+        supabase = window.supabaseClient || supabase;
+        var user = window.currentUser || currentUser;
+        if (user && supabase) {
+          try {
+            await supabase.auth.signOut();
+          } catch (e) {
+            console.error('signOut error', e);
+          }
+          refreshCloudSyncStatus();
+          return;
+        }
+        openCloudAuthModal();
+      });
+    }
+
+    if (syncBtn) {
+      syncBtn.addEventListener('click', async function () {
+        if (!window.currentUser) {
+          alert('Sign in with the same account you use on your other browser, then tap Sync. Data lives in the cloud per account, not in the browser alone.');
+          openCloudAuthModal();
+          return;
+        }
+        var label = syncBtn.textContent;
+        syncBtn.disabled = true;
+        syncBtn.textContent = 'Syncing…';
+        try {
+          await initDataFromSupabase();
+          refreshCloudSyncStatus();
+          syncBtn.textContent = 'Done';
+          setTimeout(function () { syncBtn.textContent = label || 'Sync'; }, 1800);
+        } catch (e) {
+          console.error('Sync error', e);
+          alert('Sync failed: ' + ((e && e.message) || String(e)));
+          syncBtn.textContent = label || 'Sync';
+        } finally {
+          syncBtn.disabled = !window.currentUser;
+        }
+      });
+    }
+
+    var btnCancel = $('btn-cloud-auth-cancel');
+    if (btnCancel) btnCancel.addEventListener('click', closeCloudAuthModal);
+    var modal = $('cloudAuthModal');
+    if (modal) {
+      modal.addEventListener('click', function (ev) {
+        if (ev.target === modal) closeCloudAuthModal();
+      });
+    }
+
+    var btnSignin = $('btn-cloud-auth-signin');
+    if (btnSignin) {
+      btnSignin.addEventListener('click', async function () {
+        supabase = window.supabaseClient || supabase;
+        var emailEl = $('cloud-auth-email');
+        var passEl = $('cloud-auth-password');
+        var email = emailEl && emailEl.value.trim();
+        var password = passEl && passEl.value;
+        if (!email || !password) {
+          alert('Enter email and password.');
+          return;
+        }
+        try {
+          var res = await supabase.auth.signInWithPassword({ email: email, password: password });
+          if (res.error) {
+            alert(res.error.message || 'Sign-in failed.');
+            return;
+          }
+          closeCloudAuthModal();
+        } catch (err) {
+          console.error('cloud modal signin', err);
+          alert('Sign-in failed.');
+        }
+      });
+    }
+
+    var btnSignup = $('btn-cloud-auth-signup');
+    if (btnSignup) {
+      btnSignup.addEventListener('click', async function () {
+        supabase = window.supabaseClient || supabase;
+        var emailEl = $('cloud-auth-email');
+        var passEl = $('cloud-auth-password');
+        var email = emailEl && emailEl.value.trim();
+        var password = passEl && passEl.value;
+        if (!email || !password) {
+          alert('Enter email and password.');
+          return;
+        }
+        try {
+          var res = await supabase.auth.signUp({ email: email, password: password });
+          if (res.error) {
+            alert(res.error.message || 'Sign-up failed.');
+            return;
+          }
+          alert('Check your email to confirm your account if required, then sign in.');
+        } catch (err) {
+          console.error('cloud modal signup', err);
+          alert('Sign-up failed.');
+        }
+      });
+    }
+
+    var btnGh = $('btn-cloud-auth-github');
+    if (btnGh) {
+      btnGh.addEventListener('click', async function () {
+        supabase = window.supabaseClient || supabase;
+        if (!supabase) return;
+        try {
+          var redirectTo = window.location.origin + window.location.pathname;
+          var res = await supabase.auth.signInWithOAuth({
+            provider: 'github',
+            options: { redirectTo: redirectTo },
+          });
+          if (res.error) alert(res.error.message || 'GitHub sign-in failed.');
+        } catch (err) {
+          console.error('cloud modal github', err);
+          alert('GitHub sign-in failed.');
+        }
+      });
+    }
+  }
+
+  window.refreshCloudSyncStatus = refreshCloudSyncStatus;
+
   // ---------- Client form wiring ----------
 
   function wireClientForm() {
@@ -5078,7 +5336,7 @@ var spendReportUi = {
     if (btnAddClient) btnAddClient.addEventListener('click', openClientModal);
     if (btnClientCancel) btnClientCancel.addEventListener('click', closeClientModal);
     if (btnClientSave) {
-      btnClientSave.addEventListener('click', function () {
+      btnClientSave.addEventListener('click', async function () {
         var company = $('client-company').value.trim();
         if (!company) {
           alert('Company name is required.');
@@ -5124,7 +5382,12 @@ var spendReportUi = {
         saveClients(clients);
         renderClients();
         if (state.computed) renderInsights();
-        if (client) persistClientToSupabase(client);
+        var syncResult = 'skipped';
+        if (client) syncResult = await persistClientToSupabase(client);
+        if (syncResult === 'error') {
+          alert('Client saved on this device, but it could not be saved to the cloud. Check the browser console and Supabase RLS rules, then use Settings → Cloud Sync → Sync to retry.');
+        }
+        refreshCloudSyncStatus();
         // Keep project / income dropdowns in sync with new client list
         populateProjectClientOptions();
         populateIncomeClientOptions();
@@ -5488,10 +5751,6 @@ var spendReportUi = {
           await persistAppSettingsToSupabase();
         }
 
-        // #region agent log
-        debugAgentLog({ runId: 'run1', hypothesisId: 'H2', location: 'financial-core.js:initDataFromSupabase', message: 'after remote load', data: { remoteTxCount: remoteTxs.length, remoteClientCount: remoteClients.length, appliedRemoteTx: !!remoteTxs.length, appliedRemoteClients: !!remoteClients.length } });
-        // #endregion
-
         // Cache in localStorage so existing browser keeps a copy.
         saveTransactions(state.transactions);
         saveClients(clients);
@@ -5510,6 +5769,7 @@ var spendReportUi = {
       state.computed = compute(state.filter);
       renderAll();
       renderProjects();
+      refreshCloudSyncStatus();
     } catch (err) {
       console.error('initDataFromSupabase error', err);
       // Fallback in case anything goes wrong.
@@ -5523,6 +5783,7 @@ var spendReportUi = {
       state.computed = compute(state.filter);
       renderAll();
       renderProjects();
+      refreshCloudSyncStatus();
     }
   }
 
@@ -5541,6 +5802,7 @@ var spendReportUi = {
     wireFilter();
     wireSpendingReport();
     wireSettingsSave();
+    wireCloudSyncPanel();
     wireMarketingCampaign();
 
     // Simple page navigation wiring to replace the original bundle's nav().

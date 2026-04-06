@@ -6,6 +6,11 @@
 <title>Business Dashboard</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23e8501a'/%3E%3Ctext x='50%25' y='52%25' text-anchor='middle' font-size='32' fill='white' font-family='sans-serif'%3EBD%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
+<script>
+  if (typeof Chart !== 'undefined' && Chart.defaults) {
+    Chart.defaults.font.family = '"Helvetica Now Pro Display Medium", system-ui, -apple-system, sans-serif';
+  }
+</script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -34,17 +39,50 @@
     --blue:     var(--neutral);
     --blue-bg:  var(--neutral-bg);
     --r: 6px; --rl: 8px; --rs: 6px;
-    --font-sans: "Helvetica Now Pro Display", -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --font-sans: "Helvetica Now Pro Display Medium", -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif;
   }
   /* Host Medium .woff2/.woff in public/fonts/ (rename to match) or rely on local() if the font is installed. */
   @font-face {
-    font-family: "Helvetica Now Pro Display";
+    font-family: "Helvetica Now Pro Display Medium";
+    src: local("Helvetica Now Pro Display Medium"),
+      local("Helvetica Now Pro Display"),
+      url("/fonts/HelveticaNowProDisplay-Medium.woff2") format("woff2"),
+      url("/fonts/HelveticaNowProDisplay-Medium.woff") format("woff"),
+      url("/fonts/HelveticaNowProDisplay-Md.woff2") format("woff2");
+    font-weight: 400;
+    font-style: normal;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "Helvetica Now Pro Display Medium";
     src: local("Helvetica Now Pro Display Medium"),
       local("Helvetica Now Pro Display"),
       url("/fonts/HelveticaNowProDisplay-Medium.woff2") format("woff2"),
       url("/fonts/HelveticaNowProDisplay-Medium.woff") format("woff"),
       url("/fonts/HelveticaNowProDisplay-Md.woff2") format("woff2");
     font-weight: 500;
+    font-style: normal;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "Helvetica Now Pro Display Medium";
+    src: local("Helvetica Now Pro Display Medium"),
+      local("Helvetica Now Pro Display"),
+      url("/fonts/HelveticaNowProDisplay-Medium.woff2") format("woff2"),
+      url("/fonts/HelveticaNowProDisplay-Medium.woff") format("woff"),
+      url("/fonts/HelveticaNowProDisplay-Md.woff2") format("woff2");
+    font-weight: 600;
+    font-style: normal;
+    font-display: swap;
+  }
+  @font-face {
+    font-family: "Helvetica Now Pro Display Medium";
+    src: local("Helvetica Now Pro Display Medium"),
+      local("Helvetica Now Pro Display"),
+      url("/fonts/HelveticaNowProDisplay-Medium.woff2") format("woff2"),
+      url("/fonts/HelveticaNowProDisplay-Medium.woff") format("woff"),
+      url("/fonts/HelveticaNowProDisplay-Md.woff2") format("woff2");
+    font-weight: 700;
     font-style: normal;
     font-display: swap;
   }
@@ -57,7 +95,7 @@
   /* Legacy text-brand classes kept for possible reuse; sidebar uses .sb-brand-img. */
   .sb-idm { font-size:28px; font-weight:600; color:var(--text); letter-spacing:-0.03em; line-height:1; }
   .sb-sub { font-size:9px; color:var(--text3); text-transform:uppercase; letter-spacing:0.05em; line-height:1.4; font-weight:400; }
-  .sb-brand-img { width:100%; height:auto; display:block; border-radius:8px; }
+  .sb-brand-img { width:100%; max-width:220px; height:auto; display:block; border-radius:0; }
   .sb-nav { flex:1; display:flex; flex-direction:column; padding:14px 10px; gap:2px; overflow-y:auto; }
   .nav-lbl { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--text3); padding:10px 10px 5px; }
   .ni { display:flex; align-items:center; gap:10px; padding:9px 12px 9px 9px; border-radius:var(--rs); border-left:3px solid transparent; cursor:pointer; color:var(--text2); font-size:0.875rem; font-weight:500; transition:background .15s,color .15s,border-color .15s; user-select:none; }
@@ -529,7 +567,7 @@
 <div class="mobile-nav-overlay" id="mobile-nav-overlay" onclick="document.body.classList.remove('mobile-nav-open')"></div>
 <div class="sb">
     <div class="sb-logo">
-    <img class="sb-brand-img" src="/idm-logo.png" width="400" height="120" alt="ives deutschmann marketing" loading="eager" decoding="async" />
+    <img class="sb-brand-img" src="/idm-logo.png?v=mgmt-lockup" width="400" height="123" alt="ives deutschmann management" loading="eager" decoding="async" />
   </div>
   <nav class="sb-nav">
     <div class="nav-lbl">Overview</div>
@@ -870,7 +908,7 @@
         <div id="ins-expense-breakdown" style="display:flex;flex-direction:column;gap:8px;margin-top:4px;"></div>
       </div>
       <div class="card">
-        <div class="sh"><div class="st">Next-Month Forecast</div><div class="ss">linear trend</div></div>
+        <div class="sh"><div class="st">Outlook</div><div class="ss">Revenue & expense trends · this month pace</div></div>
         <div id="ins-forecast-body" style="margin-top:4px;"></div>
       </div>
     </div>
@@ -959,7 +997,7 @@
             <button type="button" class="btn" id="settings-btn-cloud-sync" style="flex:1;font-size:11px;padding:7px 10px;" disabled>Sync</button>
           </div>
           <div style="font-size:12px;color:var(--text2);line-height:1.55;margin-top:10px;">
-            Uses Supabase auth; your workspace payload is stored per-user and synced to localStorage.
+            Clients and transactions sync per signed-in account. Use the <strong>same email</strong> on each browser, then tap <strong>Sync</strong> to pull uploads from your other device.
           </div>
         </div>
       </div>
@@ -1356,6 +1394,6 @@
 </script>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="/assets/supabase-auth.js"></script>
-<script src="/assets/financial-core.js?v=20260406-budgets"></script>
+<script src="/assets/financial-core.js?v=20260407-font"></script>
 </body>
 </html>

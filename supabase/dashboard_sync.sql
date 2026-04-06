@@ -1,16 +1,90 @@
--- Dashboard full sync: run in Supabase SQL Editor (adjust if objects already exist).
--- Requires existing `transactions` and `clients` tables with `user_id` and RLS you already use.
+-- Dashboard full sync: run in Supabase SQL Editor (top to bottom).
+-- CRITICAL: Select from line 1 through the end. If you start at "ALTER TABLE public.transactions",
+-- you will get 42P01 because the table was never created.
+-- Optional: run `supabase/bootstrap_core.sql` first, then this entire file.
 
--- ---- Transactions: extra columns for income links and rich expense/income fields ----
-ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS client_id uuid;
-ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS project_id uuid;
-ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS other_label text;
-ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS other_type text;
-ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS note text;
-ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS metadata jsonb DEFAULT '{}'::jsonb;
+-- =============================================================================
+-- 0. Core tables (app requires these; CREATE IF NOT EXISTS is safe to re-run)
+-- =============================================================================
 
--- Optional: clients table retainer flag (if not already added)
-ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS is_retainer boolean DEFAULT false;
+CREATE TABLE IF NOT EXISTS public.clients (
+  id uuid PRIMARY KEY,
+  user_id uuid REFERENCES auth.users (id) ON DELETE CASCADE,
+  company_name text,
+  contact_name text,
+  status text,
+  industry text,
+  email text,
+  phone text,
+  notes text,
+  total_revenue numeric DEFAULT 0,
+  created_at timestamptz DEFAULT now(),
+  is_retainer boolean DEFAULT false
+);
+CREATE INDEX IF NOT EXISTS clients_user_id_idx ON public.clients (user_id);
+
+CREATE TABLE IF NOT EXISTS public.transactions (
+  id uuid PRIMARY KEY,
+  user_id uuid REFERENCES auth.users (id) ON DELETE CASCADE,
+  "date" date,
+  category text,
+  amount numeric DEFAULT 0,
+  description text,
+  source text,
+  created_at timestamptz DEFAULT now(),
+  client_id uuid,
+  project_id uuid,
+  other_label text,
+  other_type text,
+  note text,
+  metadata jsonb DEFAULT '{}'::jsonb
+);
+CREATE INDEX IF NOT EXISTS transactions_user_id_idx ON public.transactions (user_id);
+CREATE INDEX IF NOT EXISTS transactions_user_date_idx ON public.transactions (user_id, "date" DESC);
+
+-- Row level security for core tables (required for browser clients using the anon key)
+ALTER TABLE public.clients ENABLE ROW LEVEL SECURITY;
+ALTER TABLE public.transactions ENABLE ROW LEVEL SECURITY;
+
+DROP POLICY IF EXISTS "clients_select_own" ON public.clients;
+DROP POLICY IF EXISTS "clients_insert_own" ON public.clients;
+DROP POLICY IF EXISTS "clients_update_own" ON public.clients;
+DROP POLICY IF EXISTS "clients_delete_own" ON public.clients;
+CREATE POLICY "clients_select_own" ON public.clients FOR SELECT USING (auth.uid() = user_id OR user_id IS NULL);
+CREATE POLICY "clients_insert_own" ON public.clients FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "clients_update_own" ON public.clients FOR UPDATE USING (auth.uid() = user_id OR user_id IS NULL) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "clients_delete_own" ON public.clients FOR DELETE USING (auth.uid() = user_id);
+
+DROP POLICY IF EXISTS "transactions_select_own" ON public.transactions;
+DROP POLICY IF EXISTS "transactions_insert_own" ON public.transactions;
+DROP POLICY IF EXISTS "transactions_update_own" ON public.transactions;
+DROP POLICY IF EXISTS "transactions_delete_own" ON public.transactions;
+CREATE POLICY "transactions_select_own" ON public.transactions FOR SELECT USING (auth.uid() = user_id OR user_id IS NULL);
+CREATE POLICY "transactions_insert_own" ON public.transactions FOR INSERT WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "transactions_update_own" ON public.transactions FOR UPDATE USING (auth.uid() = user_id OR user_id IS NULL) WITH CHECK (auth.uid() = user_id);
+CREATE POLICY "transactions_delete_own" ON public.transactions FOR DELETE USING (auth.uid() = user_id);
+
+-- ---- Extend existing rows: extra columns (skipped entirely if `transactions` is missing) ----
+DO $ext$
+BEGIN
+  IF to_regclass('public.transactions') IS NULL THEN
+    RAISE EXCEPTION 'public.transactions does not exist. Run from line 1 of this file, or run supabase/bootstrap_core.sql first.';
+  END IF;
+  ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS client_id uuid;
+  ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS project_id uuid;
+  ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS other_label text;
+  ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS other_type text;
+  ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS note text;
+  ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS metadata jsonb DEFAULT '{}'::jsonb;
+  ALTER TABLE public.transactions ADD COLUMN IF NOT EXISTS source text;
+END $ext$;
+
+DO $cl$
+BEGIN
+  IF to_regclass('public.clients') IS NOT NULL THEN
+    ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS is_retainer boolean DEFAULT false;
+  END IF;
+END $cl$;
 
 -- ---- Projects ----
 CREATE TABLE IF NOT EXISTS public.projects (
