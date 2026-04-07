@@ -598,6 +598,20 @@
   .spend-tv-bar { grid-column: 1 / -1; height: 4px; background: var(--bg3); border-radius: 2px; overflow: hidden; margin-top: -2px; }
   .spend-tv-bar-fill { height: 100%; border-radius: 2px; background: var(--coral); opacity: 0.85; transition: width .35s ease; }
 
+  /* Timesheet */
+  .ts-grid { display:grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap:12px; }
+  .ts-kpi { padding:14px 16px; border:1px solid var(--border); border-radius:var(--rl); background:var(--bg2); }
+  .ts-kpi-lbl { font-size:11px; color:var(--text3); text-transform:uppercase; letter-spacing:0.06em; margin-bottom:6px; }
+  .ts-kpi-val { font-size:24px; font-weight:700; letter-spacing:-0.02em; font-variant-numeric:tabular-nums; }
+  .ts-kpi-sub { font-size:12px; color:var(--text2); margin-top:4px; }
+  .ts-weekdays { display:flex; flex-wrap:wrap; gap:10px 12px; }
+  .ts-weekday { display:inline-flex; align-items:center; gap:6px; font-size:12px; color:var(--text2); }
+  .ts-radio { display:inline-flex; align-items:center; gap:12px; font-size:13px; color:var(--text2); margin-top:4px; }
+  .ts-row-actions { white-space:nowrap; }
+  @media (max-width: 960px) {
+    .ts-grid { grid-template-columns: 1fr 1fr; }
+  }
+
   /* Budget vs. Actual */
   .bva-card { padding: 20px 22px 18px; }
   .bva-row { display: grid; grid-template-columns: 160px 1fr 1fr; align-items: center; gap: 10px 16px; padding: 10px 0; border-bottom: 1px solid var(--border); }
@@ -663,6 +677,9 @@
     </div>
     <div class="ni" data-nav="expenses" onclick="nav('expenses',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>Expenses
+    </div>
+    <div class="ni" data-nav="timesheet" onclick="nav('timesheet',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="4" width="18" height="18" rx="2"/><path d="M16 2v4M8 2v4M3 10h18"/></svg>Timesheet
     </div>
     <div class="nav-lbl">Analytics</div>
     <div class="ni" data-nav="performance" onclick="nav('performance',this)">
@@ -934,6 +951,42 @@
     </div>
   </div>
 
+  <!-- TIMESHEET -->
+  <div class="pg" id="page-timesheet">
+    <div class="ph">
+      <div>
+        <div class="pt">Timesheet</div>
+        <div class="ps">Hours logged per employee account. Add entries manually and track billable utilization.</div>
+      </div>
+      <div class="hr">
+        <button type="button" class="btn btn-p" id="btn-add-time">+ Add Time</button>
+      </div>
+    </div>
+    <div class="ts-grid mb">
+      <div class="ts-kpi"><div class="ts-kpi-lbl">Total hours</div><div class="ts-kpi-val" id="ts-kpi-total">0.0h</div><div class="ts-kpi-sub" id="ts-kpi-total-sub">0 entries</div></div>
+      <div class="ts-kpi"><div class="ts-kpi-lbl">Billable</div><div class="ts-kpi-val" id="ts-kpi-billable">0.0h</div><div class="ts-kpi-sub" id="ts-kpi-billable-sub">0.0%</div></div>
+      <div class="ts-kpi"><div class="ts-kpi-lbl">Non-billable</div><div class="ts-kpi-val" id="ts-kpi-nonbillable">0.0h</div><div class="ts-kpi-sub" id="ts-kpi-nonbillable-sub">0.0%</div></div>
+      <div class="ts-kpi"><div class="ts-kpi-lbl">Employees</div><div class="ts-kpi-val" id="ts-kpi-employees">0</div><div class="ts-kpi-sub" id="ts-kpi-employees-sub">with logged time</div></div>
+      <div class="ts-kpi"><div class="ts-kpi-lbl">Avg / employee</div><div class="ts-kpi-val" id="ts-kpi-avg">0.0h</div><div class="ts-kpi-sub" id="ts-kpi-avg-sub">total period</div></div>
+    </div>
+    <div class="card mb">
+      <div class="sh"><div class="st">Hours by employee</div><div class="ss">Based on the Account field in each time entry</div></div>
+      <div id="timesheet-empty" style="font-size:13px;color:var(--text3);padding:8px 0;">No time logged yet.</div>
+      <table class="dt" id="timesheet-table" style="display:none;">
+        <thead><tr><th>Employee (Account)</th><th>Total</th><th>Billable</th><th>Non-Billable</th><th>Entries</th><th>Utilization</th></tr></thead>
+        <tbody id="timesheet-tbody"></tbody>
+      </table>
+    </div>
+    <div class="card">
+      <div class="sh"><div class="st">Recent entries</div><div class="ss">Newest first</div></div>
+      <div id="timesheet-log-empty" style="font-size:13px;color:var(--text3);padding:8px 0;">No entries yet.</div>
+      <table class="dt" id="timesheet-log-table" style="display:none;">
+        <thead><tr><th>Date</th><th>Employee</th><th>Project</th><th>Task</th><th>Activity</th><th>Hours</th><th>Type</th><th>Notes</th><th style="width:110px;">Actions</th></tr></thead>
+        <tbody id="timesheet-log-tbody"></tbody>
+      </table>
+    </div>
+  </div>
+
   <!-- PERFORMANCE -->
   <div class="pg" id="page-performance">
     <div class="ph"><div><div class="pt">Projects</div><div class="ps">Delivery pipeline and client work</div></div><div class="hr"><button type="button" class="btn" id="btn-manage-statuses">Manage statuses</button><button type="button" class="btn btn-p" id="btn-add-project">+ Add project</button></div></div>
@@ -1196,6 +1249,49 @@
       </div>
     </div>
     <div id="invoice-preview-body" style="background:#f3f3f3;padding:20px;max-height:calc(92vh - 64px);overflow:auto;"></div>
+  </div>
+</div>
+
+<!-- MODAL -->
+<div class="mo" id="timesheetModal">
+  <div class="md" style="max-width:700px;">
+    <div class="mt" id="timesheet-modal-title">Time Entry</div>
+    <input type="hidden" id="timesheet-edit-id" value="" />
+    <div class="fg" style="margin-bottom:14px;">
+      <div class="fgp"><label class="fl">Account*</label><input class="fi" id="ts-account" placeholder="Employee / account" /></div>
+      <div class="fgp"><label class="fl">Project*</label><input class="fi" id="ts-project" /></div>
+      <div class="fgp"><label class="fl">Task*</label><input class="fi" id="ts-task" /></div>
+      <div class="fgp"><label class="fl">Activity code</label><input class="fi" id="ts-activity-code" /></div>
+      <div class="fgp"><label class="fl">Time* (HH:MM)</label><input class="fi" id="ts-time" placeholder="01:30" /></div>
+      <div class="fgp">
+        <label class="fl">Type</label>
+        <div class="ts-radio">
+          <label><input type="radio" name="ts-billable" id="ts-billable" checked /> Billable</label>
+          <label><input type="radio" name="ts-billable" id="ts-nonbillable" /> Non-Billable</label>
+        </div>
+      </div>
+      <div class="fgp" style="grid-column:1/-1;"><label class="fl">Notes</label><textarea class="fi" id="ts-notes" rows="2" placeholder="Internal note"></textarea></div>
+      <div class="fgp" style="grid-column:1/-1;">
+        <a href="#" id="ts-toggle-external-note" style="font-size:12px;color:var(--text2);text-decoration:none;">+ Show External Note</a>
+      </div>
+      <div class="fgp" style="grid-column:1/-1;display:none;" id="ts-external-wrap"><label class="fl">External note</label><textarea class="fi" id="ts-external-note" rows="2"></textarea></div>
+      <div class="fgp" style="grid-column:1/-1;">
+        <label class="fl">Week Days*</label>
+        <div class="ts-weekdays">
+          <label class="ts-weekday"><input type="checkbox" class="ts-weekday-cb" data-dow="1" /> Monday</label>
+          <label class="ts-weekday"><input type="checkbox" class="ts-weekday-cb" data-dow="2" /> Tuesday</label>
+          <label class="ts-weekday"><input type="checkbox" class="ts-weekday-cb" data-dow="3" /> Wednesday</label>
+          <label class="ts-weekday"><input type="checkbox" class="ts-weekday-cb" data-dow="4" /> Thursday</label>
+          <label class="ts-weekday"><input type="checkbox" class="ts-weekday-cb" data-dow="5" /> Friday</label>
+          <label class="ts-weekday"><input type="checkbox" class="ts-weekday-cb" data-dow="6" /> Saturday</label>
+          <label class="ts-weekday"><input type="checkbox" class="ts-weekday-cb" data-dow="0" /> Sunday</label>
+        </div>
+      </div>
+    </div>
+    <div class="mf" style="border-top:none;padding-top:0;margin-top:0;">
+      <button type="button" class="btn" id="btn-timesheet-cancel">Cancel</button>
+      <button type="button" class="btn btn-p" id="btn-timesheet-save">Save</button>
+    </div>
   </div>
 </div>
 
@@ -1511,6 +1607,7 @@
   <button type="button" class="btn" onclick="document.getElementById('btn-add-client')?.click()">+ Client</button>
   <button type="button" class="btn" onclick="document.getElementById('btn-add-project')?.click()">+ Project</button>
   <button type="button" class="btn" onclick="document.getElementById('btn-add-expense')?.click()">+ Expense</button>
+  <button type="button" class="btn" onclick="document.getElementById('btn-add-time')?.click()">+ Time</button>
   <button type="button" class="btn btn-p" onclick="document.getElementById('btn-add-income')?.click()">+ Income</button>
 </div>
 

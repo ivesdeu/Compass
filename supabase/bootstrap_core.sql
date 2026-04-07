@@ -38,5 +38,23 @@ CREATE TABLE IF NOT EXISTS public.transactions (
 CREATE INDEX IF NOT EXISTS transactions_user_id_idx ON public.transactions (user_id);
 CREATE INDEX IF NOT EXISTS transactions_user_date_idx ON public.transactions (user_id, "date" DESC);
 
+CREATE TABLE IF NOT EXISTS public.timesheet_entries (
+  id uuid PRIMARY KEY,
+  user_id uuid REFERENCES auth.users (id) ON DELETE CASCADE,
+  "date" date,
+  account text,
+  project text,
+  task text,
+  activity_code text,
+  minutes int DEFAULT 0,
+  billable boolean DEFAULT true,
+  notes text,
+  external_note text,
+  weekdays jsonb DEFAULT '[]'::jsonb,
+  created_at timestamptz DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS timesheet_entries_user_id_idx ON public.timesheet_entries (user_id);
+CREATE INDEX IF NOT EXISTS timesheet_entries_user_date_idx ON public.timesheet_entries (user_id, "date" DESC);
+
 -- Sanity check (should print a non-null regclass):
-SELECT to_regclass('public.clients') AS clients_regclass, to_regclass('public.transactions') AS transactions_regclass;
+SELECT to_regclass('public.clients') AS clients_regclass, to_regclass('public.transactions') AS transactions_regclass, to_regclass('public.timesheet_entries') AS timesheet_entries_regclass;

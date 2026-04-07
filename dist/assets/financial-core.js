@@ -280,6 +280,127 @@
 
   var campaigns = [];
 
+  // Timesheet entries (local)
+  var TIMESHEET_KEY = 'bizdash:timesheet:v1';
+
+  function loadTimesheetEntries() {
+    try {
+      var raw = localStorage.getItem(TIMESHEET_KEY);
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function saveTimesheetEntries(list) {
+    try {
+      localStorage.setItem(TIMESHEET_KEY, JSON.stringify(Array.isArray(list) ? list : []));
+    } catch (_) {}
+  }
+
+  var timesheetEntries = loadTimesheetEntries();
+
+  // ---------- Timesheet entries (Supabase) ----------
+  function mapTimesheetRow(row) {
+    var w = row.weekdays;
+    if (typeof w === 'string') {
+      try { w = JSON.parse(w); } catch (_) { w = []; }
+    }
+    if (!Array.isArray(w)) w = [];
+    return {
+      id: row.id,
+      date: row.date ? String(row.date).slice(0, 10) : '',
+      account: row.account || '',
+      project: row.project || '',
+      task: row.task || '',
+      activityCode: row.activity_code || '',
+      minutes: Math.max(0, Number(row.minutes) || 0),
+      billable: row.billable !== false,
+      notes: row.notes || '',
+      externalNote: row.external_note || '',
+      weekdays: w.map(function (n) { return Number(n); }).filter(function (n) { return !isNaN(n); }),
+      createdAt: row.created_at || null,
+    };
+  }
+
+  function timesheetRowForDb(entry, userId) {
+    return {
+      id: entry.id,
+      user_id: userId,
+      date: entry.date || null,
+      account: entry.account || '',
+      project: entry.project || '',
+      task: entry.task || '',
+      activity_code: entry.activityCode || '',
+      minutes: Math.max(0, Number(entry.minutes) || 0),
+      billable: entry.billable !== false,
+      notes: entry.notes || '',
+      external_note: entry.externalNote || '',
+      weekdays: Array.isArray(entry.weekdays) ? entry.weekdays : [],
+      created_at: entry.createdAt ? new Date(entry.createdAt).toISOString() : new Date().toISOString(),
+    };
+  }
+
+  async function persistTimesheetEntryToSupabase(entry) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !entry || !entry.id) return;
+    try {
+      var result = await supabase.from('timesheet_entries').upsert(timesheetRowForDb(entry, currentUser.id), { onConflict: 'id' });
+      if (result.error) console.error('upsert timesheet entry error', result.error);
+    } catch (err) {
+      console.error('persistTimesheetEntryToSupabase error', err);
+    }
+  }
+
+  async function deleteTimesheetEntryRemote(id) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !id) return;
+    try {
+      await supabase.from('timesheet_entries').delete().eq('id', id).eq('user_id', currentUser.id);
+    } catch (err) {
+      console.error('deleteTimesheetEntryRemote error', err);
+    }
+  }
+
+  async function fetchTimesheetEntriesFromSupabase() {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser) return loadTimesheetEntries();
+    try {
+      var result = await supabase.from('timesheet_entries').select('*').eq('user_id', currentUser.id).order('date', { ascending: false });
+      if (result.error) {
+        console.error('load timesheet_entries error', result.error);
+        return loadTimesheetEntries();
+      }
+      var rows = result.data || [];
+      return rows.map(mapTimesheetRow);
+    } catch (err) {
+      console.error('fetchTimesheetEntriesFromSupabase error', err);
+      return loadTimesheetEntries();
+    }
+  }
+
+  async function uploadTimesheetEntriesToSupabase(list) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !Array.isArray(list) || !list.length) return false;
+    try {
+      var payload = list.map(function (e) { return timesheetRowForDb(e, currentUser.id); });
+      var result = await supabase.from('timesheet_entries').upsert(payload, { onConflict: 'id' });
+      if (result.error) {
+        console.error('bulk upsert timesheet_entries error', result.error);
+        return false;
+      }
+      return true;
+    } catch (err) {
+      console.error('uploadTimesheetEntriesToSupabase error', err);
+      return false;
+    }
+  }
+
   // ---------- Budgets store ----------
 
   var BUDGETS_KEY = 'bizdash:budgets:v1';
@@ -1372,18 +1493,24 @@
     refreshSettingsBudgetInputsFromState();
   }
 
-  async function persistAppSettingsToSupabase() {
+  async function persistAppSettingsToSupabase(opts) {
+    opts = opts || {};
+    var includeDashboard = opts.includeDashboard !== false;
     supabase = window.supabaseClient || supabase;
     currentUser = window.currentUser || currentUser;
     if (!supabase || !currentUser) return;
     try {
-      var dash = collectDashboardSettingsForCloud();
+      var dash = includeDashboard ? collectDashboardSettingsForCloud() : null;
+      var existingSettings = null;
       try {
-        var existingSettings = await fetchAppSettingsFromSupabase();
-        if (existingSettings && existingSettings.dashboard_settings) {
+        existingSettings = await fetchAppSettingsFromSupabase();
+        if (includeDashboard && existingSettings && existingSettings.dashboard_settings) {
           dash = mergeDashboardSettingsForPersist(existingSettings.dashboard_settings, dash);
         }
       } catch (_) {}
+      if (!includeDashboard) {
+        dash = existingSettings && existingSettings.dashboard_settings ? existingSettings.dashboard_settings : {};
+      }
       var result = await supabase.from('app_settings').upsert(
         {
           user_id: currentUser.id,
@@ -3252,16 +3379,32 @@ var spendReportUi = {
     }
     populateBudgetInputs();
 
+    function readBudgetInputsIntoState() {
+      ['lab', 'sw', 'ads', 'oth'].forEach(function (k) {
+        var el = document.getElementById('budget-input-' + k);
+        if (el) budgets[k] = Math.max(0, parseFloat(el.value) || 0);
+      });
+    }
+
+    async function syncBudgetsNow() {
+      readBudgetInputsIntoState();
+      saveBudgets(budgets);
+      recomputeAndRender();
+      await persistAppSettingsToSupabase({ includeDashboard: true });
+    }
+
+    ['lab', 'sw', 'ads', 'oth'].forEach(function (k) {
+      var el = document.getElementById('budget-input-' + k);
+      if (!el) return;
+      el.addEventListener('change', function () {
+        syncBudgetsNow();
+      });
+    });
+
     var saveBtn = document.getElementById('btn-save-settings');
     if (saveBtn) {
       saveBtn.addEventListener('click', async function () {
-        ['lab', 'sw', 'ads', 'oth'].forEach(function (k) {
-          var el = document.getElementById('budget-input-' + k);
-          if (el) budgets[k] = Math.max(0, parseFloat(el.value) || 0);
-        });
-        saveBudgets(budgets);
-        recomputeAndRender();
-        await persistAppSettingsToSupabase();
+        await syncBudgetsNow();
         // Brief visual confirmation
         var orig = saveBtn.textContent;
         saveBtn.textContent = 'Saved!';
@@ -3475,6 +3618,7 @@ var spendReportUi = {
     renderMarketing();
     renderDashAR();
     renderClients();
+    renderTimesheet();
   }
 
   function renderRevenueByVertical(c) {
@@ -4563,7 +4707,7 @@ var spendReportUi = {
     if (btn) btn.addEventListener('click', function () { openCampaignModal(''); });
     if (btnCancel) btnCancel.addEventListener('click', closeCampaignModal);
     if (btnSave) {
-      btnSave.addEventListener('click', function () {
+      btnSave.addEventListener('click', async function () {
         var name = ($('campaign-name') && $('campaign-name').value || '').trim();
         if (!name) {
           alert('Campaign name is required.');
@@ -5255,6 +5399,293 @@ var spendReportUi = {
     setText('cust-kpi-1', String(k.total));
     setText('cust-kpi-2', String(k.activeRetainers));
     setText('cust-kpi-3', fmtCurrency(k.avgValue || 0));
+  }
+
+  function parseTimeInputToMinutes(raw) {
+    var s = String(raw || '').trim();
+    if (!s) return NaN;
+    var m = s.match(/^(\d{1,2}):([0-5]\d)$/);
+    if (!m) return NaN;
+    var hh = parseInt(m[1], 10);
+    var mm = parseInt(m[2], 10);
+    if (isNaN(hh) || isNaN(mm) || hh < 0 || hh > 23) return NaN;
+    return hh * 60 + mm;
+  }
+
+  function formatMinutesToHours(mins) {
+    var n = Math.max(0, Number(mins) || 0);
+    return (n / 60).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + 'h';
+  }
+
+  function startOfWeekMonday(d) {
+    var x = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
+    var wd = x.getDay(); // Sun=0..Sat=6
+    var delta = wd === 0 ? -6 : 1 - wd;
+    x.setDate(x.getDate() + delta);
+    return x;
+  }
+
+  function renderTimesheet() {
+    var empty = $('timesheet-empty');
+    var table = $('timesheet-table');
+    var tbody = $('timesheet-tbody');
+    var logEmpty = $('timesheet-log-empty');
+    var logTable = $('timesheet-log-table');
+    var logBody = $('timesheet-log-tbody');
+    if (!tbody || !logBody) return;
+
+    var byEmp = {};
+    var total = 0;
+    var bill = 0;
+    var non = 0;
+    (timesheetEntries || []).forEach(function (e) {
+      var key = (e.account || '').trim() || '—';
+      if (!byEmp[key]) byEmp[key] = { total: 0, billable: 0, nonBillable: 0, entries: 0 };
+      var mins = Math.max(0, Number(e.minutes) || 0);
+      byEmp[key].total += mins;
+      byEmp[key].entries += 1;
+      if (e.billable) byEmp[key].billable += mins;
+      else byEmp[key].nonBillable += mins;
+      total += mins;
+      if (e.billable) bill += mins;
+      else non += mins;
+    });
+
+    var empKeys = Object.keys(byEmp).sort(function (a, b) { return byEmp[b].total - byEmp[a].total; });
+    if (!empKeys.length) {
+      tbody.innerHTML = '';
+      if (empty) empty.style.display = 'block';
+      if (table) table.style.display = 'none';
+    } else {
+      if (empty) empty.style.display = 'none';
+      if (table) table.style.display = 'table';
+      tbody.innerHTML = empKeys.map(function (k) {
+        var row = byEmp[k];
+        var util = row.total > 0 ? (row.billable / row.total * 100) : 0;
+        return '<tr>' +
+          '<td class="tdp">' + esc(k) + '</td>' +
+          '<td style="font-variant-numeric:tabular-nums;">' + formatMinutesToHours(row.total) + '</td>' +
+          '<td style="font-variant-numeric:tabular-nums;color:var(--green);">' + formatMinutesToHours(row.billable) + '</td>' +
+          '<td style="font-variant-numeric:tabular-nums;">' + formatMinutesToHours(row.nonBillable) + '</td>' +
+          '<td>' + row.entries + '</td>' +
+          '<td style="font-variant-numeric:tabular-nums;">' + util.toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%</td>' +
+        '</tr>';
+      }).join('');
+    }
+
+    setText('ts-kpi-total', formatMinutesToHours(total));
+    setText('ts-kpi-total-sub', (timesheetEntries || []).length + ' entries');
+    setText('ts-kpi-billable', formatMinutesToHours(bill));
+    setText('ts-kpi-billable-sub', total > 0 ? ((bill / total) * 100).toFixed(1) + '%' : '0.0%');
+    setText('ts-kpi-nonbillable', formatMinutesToHours(non));
+    setText('ts-kpi-nonbillable-sub', total > 0 ? ((non / total) * 100).toFixed(1) + '%' : '0.0%');
+    setText('ts-kpi-employees', String(empKeys.length));
+    setText('ts-kpi-avg', formatMinutesToHours(empKeys.length ? total / empKeys.length : 0));
+    setText('ts-kpi-avg-sub', 'total period');
+
+    var list = (timesheetEntries || []).slice().sort(function (a, b) {
+      var ad = (a.date || '') + ' ' + (a.createdAt || '');
+      var bd = (b.date || '') + ' ' + (b.createdAt || '');
+      return bd.localeCompare(ad);
+    });
+    if (!list.length) {
+      logBody.innerHTML = '';
+      if (logEmpty) logEmpty.style.display = 'block';
+      if (logTable) logTable.style.display = 'none';
+    } else {
+      if (logEmpty) logEmpty.style.display = 'none';
+      if (logTable) logTable.style.display = 'table';
+      logBody.innerHTML = list.map(function (e) {
+        var typ = e.billable ? '<span class="pl pg-g">Billable</span>' : '<span class="pl pg-a">Non-Billable</span>';
+        var notes = e.notes ? esc(e.notes) : '—';
+        return '<tr>' +
+          '<td>' + esc(e.date || '—') + '</td>' +
+          '<td class="tdp">' + esc(e.account || '—') + '</td>' +
+          '<td>' + esc(e.project || '—') + '</td>' +
+          '<td>' + esc(e.task || '—') + '</td>' +
+          '<td>' + esc(e.activityCode || '—') + '</td>' +
+          '<td style="font-variant-numeric:tabular-nums;">' + formatMinutesToHours(e.minutes) + '</td>' +
+          '<td>' + typ + '</td>' +
+          '<td>' + notes + '</td>' +
+          '<td class="ts-row-actions">' +
+            '<button type="button" class="btn" data-ts-edit="' + e.id + '" style="margin-right:6px;">Edit</button>' +
+            '<button type="button" class="btn" data-ts-del="' + e.id + '" style="color:var(--red);">Delete</button>' +
+          '</td>' +
+        '</tr>';
+      }).join('');
+    }
+  }
+
+  function wireTimesheet() {
+    var m = $('timesheetModal');
+    var btnAdd = $('btn-add-time');
+    var btnSave = $('btn-timesheet-save');
+    var btnCancel = $('btn-timesheet-cancel');
+    var toggleExternal = $('ts-toggle-external-note');
+    var logTable = $('timesheet-log-table');
+    if (!m) return;
+
+    function openModal(editId) {
+      var title = $('timesheet-modal-title');
+      var eid = $('timesheet-edit-id');
+      if (eid) eid.value = editId || '';
+      var t = null;
+      if (editId) {
+        t = (timesheetEntries || []).find(function (x) { return x.id === editId; }) || null;
+      }
+      if (title) title.textContent = t ? 'Edit Time Entry' : 'Time Entry';
+      $('ts-account').value = t ? (t.account || '') : '';
+      $('ts-project').value = t ? (t.project || '') : '';
+      $('ts-task').value = t ? (t.task || '') : '';
+      $('ts-activity-code').value = t ? (t.activityCode || '') : '';
+      if ($('ts-time')) {
+        if (t && t.minutes != null) {
+          var hh = String(Math.floor(t.minutes / 60)).padStart(2, '0');
+          var mm = String((t.minutes % 60)).padStart(2, '0');
+          $('ts-time').value = hh + ':' + mm;
+        } else {
+          $('ts-time').value = '01:00';
+        }
+      }
+      if ($('ts-billable')) $('ts-billable').checked = t ? !!t.billable : true;
+      if ($('ts-nonbillable')) $('ts-nonbillable').checked = t ? !t.billable : false;
+      $('ts-notes').value = t ? (t.notes || '') : '';
+      $('ts-external-note').value = t ? (t.externalNote || '') : '';
+      var extWrap = $('ts-external-wrap');
+      if (extWrap) extWrap.style.display = t && t.externalNote ? '' : 'none';
+      if (toggleExternal) toggleExternal.textContent = (extWrap && extWrap.style.display === 'none') ? '+ Show External Note' : '− Hide External Note';
+      var cbs = m.querySelectorAll('.ts-weekday-cb');
+      cbs.forEach(function (cb) { cb.checked = false; });
+      if (t && Array.isArray(t.weekdays) && t.weekdays.length) {
+        cbs.forEach(function (cb) {
+          var dow = parseInt(cb.getAttribute('data-dow'), 10);
+          cb.checked = t.weekdays.indexOf(dow) !== -1;
+        });
+      }
+      m.classList.add('on');
+    }
+
+    function closeModal() {
+      m.classList.remove('on');
+    }
+
+    if (btnAdd) btnAdd.addEventListener('click', function () { openModal(''); });
+    if (btnCancel) btnCancel.addEventListener('click', closeModal);
+    if (toggleExternal) {
+      toggleExternal.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        var extWrap = $('ts-external-wrap');
+        if (!extWrap) return;
+        var show = extWrap.style.display === 'none';
+        extWrap.style.display = show ? '' : 'none';
+        toggleExternal.textContent = show ? '− Hide External Note' : '+ Show External Note';
+      });
+    }
+    if (btnSave) {
+      btnSave.addEventListener('click', async function () {
+        var account = $('ts-account').value.trim();
+        var project = $('ts-project').value.trim();
+        var task = $('ts-task').value.trim();
+        var activityCode = $('ts-activity-code').value.trim();
+        var minutes = parseTimeInputToMinutes($('ts-time').value);
+        var notes = $('ts-notes').value.trim();
+        var external = $('ts-external-note').value.trim();
+        var billable = !!($('ts-billable') && $('ts-billable').checked);
+        if (!account || !project || !task || !isFinite(minutes) || minutes <= 0) {
+          alert('Account, Project, Task, and a valid time (HH:MM) are required.');
+          return;
+        }
+        var editId = $('timesheet-edit-id') ? $('timesheet-edit-id').value : '';
+        var selectedDow = [];
+        m.querySelectorAll('.ts-weekday-cb').forEach(function (cb) {
+          if (cb.checked) {
+            var n = parseInt(cb.getAttribute('data-dow'), 10);
+            if (!isNaN(n)) selectedDow.push(n);
+          }
+        });
+        if (!selectedDow.length) {
+          var td = new Date();
+          selectedDow = [td.getDay()];
+        }
+        if (editId) {
+          var changedEntry = null;
+          timesheetEntries = (timesheetEntries || []).map(function (e) {
+            if (e.id !== editId) return e;
+            var date = e.date || dateYMD(new Date());
+            changedEntry = {
+              id: e.id,
+              date: date,
+              account: account,
+              project: project,
+              task: task,
+              activityCode: activityCode,
+              minutes: minutes,
+              billable: billable,
+              notes: notes,
+              externalNote: external,
+              weekdays: selectedDow.slice(),
+              createdAt: e.createdAt || new Date().toISOString(),
+            };
+            return changedEntry;
+          });
+          if (changedEntry) await persistTimesheetEntryToSupabase(changedEntry);
+        } else {
+          var newEntries = [];
+          var base = startOfWeekMonday(new Date());
+          selectedDow.forEach(function (dow) {
+            var dt = new Date(base.getTime());
+            var idx = dow === 0 ? 6 : (dow - 1);
+            dt.setDate(base.getDate() + idx);
+            var entry = {
+              id: uuid(),
+              date: dateYMD(dt),
+              account: account,
+              project: project,
+              task: task,
+              activityCode: activityCode,
+              minutes: minutes,
+              billable: billable,
+              notes: notes,
+              externalNote: external,
+              weekdays: selectedDow.slice(),
+              createdAt: new Date().toISOString(),
+            };
+            timesheetEntries.push(entry);
+            newEntries.push(entry);
+          });
+          for (var i = 0; i < newEntries.length; i++) {
+            await persistTimesheetEntryToSupabase(newEntries[i]);
+          }
+        }
+        saveTimesheetEntries(timesheetEntries);
+        renderTimesheet();
+        closeModal();
+      });
+    }
+    if (logTable) {
+      logTable.addEventListener('click', function (ev) {
+        var editBtn = ev.target.closest('[data-ts-edit]');
+        if (editBtn) {
+          var eid = editBtn.getAttribute('data-ts-edit');
+          if (eid) openModal(eid);
+          return;
+        }
+        var delBtn = ev.target.closest('[data-ts-del]');
+        if (!delBtn) return;
+        var did = delBtn.getAttribute('data-ts-del');
+        if (!did) return;
+        if (!confirm('Delete this time entry?')) return;
+        timesheetEntries = (timesheetEntries || []).filter(function (e) { return e.id !== did; });
+        saveTimesheetEntries(timesheetEntries);
+        deleteTimesheetEntryRemote(did);
+        renderTimesheet();
+      });
+    }
+    if (m) {
+      m.addEventListener('click', function (ev) {
+        if (ev.target === m) closeModal();
+      });
+    }
   }
 
   // ---------- Mutations ----------
@@ -6976,7 +7407,7 @@ var spendReportUi = {
         if (!label) return;
         projectStatuses.push(label);
         saveStatuses(projectStatuses);
-        persistAppSettingsToSupabase();
+        persistAppSettingsToSupabase({ includeDashboard: false });
         statusInput.value = '';
         renderStatusList();
         populateProjectStatusOptions();
@@ -6992,7 +7423,7 @@ var spendReportUi = {
         if (isNaN(idx)) return;
         projectStatuses.splice(idx, 1);
         saveStatuses(projectStatuses);
-        persistAppSettingsToSupabase();
+        persistAppSettingsToSupabase({ includeDashboard: false });
         renderStatusList();
         populateProjectStatusOptions();
         renderProjects();
@@ -7095,6 +7526,7 @@ var spendReportUi = {
       projects = loadProjects();
       invoices = loadInvoices();
       campaigns = loadCampaigns();
+      timesheetEntries = loadTimesheetEntries();
       projectStatuses = loadStatuses();
       normalizeLocalIdsForSupabase();
 
@@ -7160,6 +7592,15 @@ var spendReportUi = {
           campaigns = mergeRemoteWithLocalOrphans(campaigns, remoteCampaigns, function (x) { return x; });
         }
 
+        var remoteTimesheet = await fetchTimesheetEntriesFromSupabase();
+        if (!remoteTimesheet.length && timesheetEntries.length) {
+          await uploadTimesheetEntriesToSupabase(timesheetEntries);
+          remoteTimesheet = await fetchTimesheetEntriesFromSupabase();
+        }
+        if (remoteTimesheet.length) {
+          timesheetEntries = mergeRemoteWithLocalOrphans(timesheetEntries, remoteTimesheet, function (x) { return x; });
+        }
+
         var settingsRow = await fetchAppSettingsFromSupabase();
         if (settingsRow && settingsRow.dashboard_settings) {
           applyDashboardSettingsFromCloud(settingsRow.dashboard_settings);
@@ -7177,6 +7618,7 @@ var spendReportUi = {
         saveProjects(projects);
         saveInvoices(invoices);
         saveCampaigns(campaigns);
+        saveTimesheetEntries(timesheetEntries);
       }
 
       expandRecurringExpenseInstances();
@@ -7198,6 +7640,7 @@ var spendReportUi = {
       projects = loadProjects();
       invoices = loadInvoices();
       campaigns = loadCampaigns();
+      timesheetEntries = loadTimesheetEntries();
       projectStatuses = loadStatuses();
       expandRecurringExpenseInstances();
       state.computed = compute(state.filter);
@@ -7214,6 +7657,7 @@ var spendReportUi = {
     state.filter = { mode: 'all', start: null, end: null };
     wireTransactionForm();
     wireIncomeExpenseForms();
+    wireTimesheet();
     wireDeleteHandlers();
     wireClientForm();
     wireInvoiceModal();
@@ -7255,6 +7699,7 @@ var spendReportUi = {
           customers: 'Customers',
           revenue: 'Income',
           expenses: 'Expenses',
+          timesheet: 'Timesheet',
           performance: 'Projects',
           retention: 'Retention',
           insights: 'Insights',
