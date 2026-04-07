@@ -40,6 +40,9 @@
     --blue-bg:  var(--neutral-bg);
     --r: 6px; --rl: 8px; --rs: 6px;
     --font-sans: "Helvetica Now Pro Display Medium", -apple-system, BlinkMacSystemFont, system-ui, "Segoe UI", Roboto, "Helvetica Neue", Helvetica, Arial, sans-serif;
+    --ease-premium: cubic-bezier(0.22, 1, 0.36, 1);
+    --dur-fast: 220ms;
+    --dur-med: 360ms;
     /* Custom <select> chevron (Safari uses heavy native chrome unless appearance is reset) */
     --select-chevron: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12' fill='none'%3E%3Cpath stroke='%23626262' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round' d='M3 4.5 6 7.5 9 4.5'/%3E%3C/svg%3E");
   }
@@ -138,6 +141,7 @@
   /* BTN */
   .btn { padding:8px 14px; border-radius:6px; border:1px solid var(--border2); background:var(--bg2); color:var(--text2); font-size:0.875rem; cursor:pointer; transition:border-color .15s,color .15s,background .15s,box-shadow .15s; font-weight:500; }
   .btn:hover { border-color:var(--border2); color:var(--text); background:var(--bg3); }
+  .btn:active { transform: translateY(1px) scale(0.995); }
   .btn-p { background:var(--coral); border-color:var(--coral); color:#fff; font-weight:600; }
   .btn-p:hover { background:var(--coral2); border-color:var(--coral2); color:#fff; }
   .exp-rec-dow { width:34px; height:34px; border-radius:50%; padding:0; font-size:11px; font-weight:600; flex-shrink:0; border:1px solid var(--border2); background:var(--bg3); color:var(--text2); }
@@ -145,6 +149,47 @@
 
   /* CARD */
   .card { background:var(--bg2); border:1px solid var(--border); border-radius:var(--rl); padding:22px 24px; box-shadow:none; }
+  .card,
+  .kc,
+  .ts-kpi,
+  .spend-kpi,
+  .spend-top-vendors-wrap,
+  .bva-row {
+    transition: transform var(--dur-fast) var(--ease-premium), box-shadow var(--dur-fast) var(--ease-premium), border-color var(--dur-fast) var(--ease-premium);
+  }
+  .card:hover,
+  .kc:hover,
+  .ts-kpi:hover,
+  .spend-kpi:hover,
+  .spend-top-vendors-wrap:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 8px 22px rgba(0, 0, 0, 0.04);
+    border-color: rgba(0, 0, 0, 0.12);
+  }
+  .motion-item {
+    opacity: 0;
+    transform: translateY(10px) scale(0.996);
+    will-change: opacity, transform;
+  }
+  .motion-item.motion-in {
+    animation: premiumEnter var(--dur-med) var(--ease-premium) both;
+    animation-delay: var(--motion-delay, 0ms);
+  }
+  .rollout-panel {
+    overflow: hidden;
+    height: 0;
+    opacity: 0;
+    transform: translateY(-4px);
+    transition: height var(--dur-med) var(--ease-premium), opacity var(--dur-fast) ease, transform var(--dur-med) var(--ease-premium);
+  }
+  .rollout-panel.on {
+    opacity: 1;
+    transform: translateY(0);
+  }
+  @keyframes premiumEnter {
+    from { opacity: 0; transform: translateY(12px) scale(0.996); }
+    to { opacity: 1; transform: translateY(0) scale(1); }
+  }
 
   /* KPI */
   .kg { display:grid; grid-template-columns:repeat(4,1fr); gap:16px; margin-bottom:24px; }
@@ -546,6 +591,24 @@
     .spend-toolbar-right { flex-wrap: wrap; justify-content: flex-start; }
     .spend-kpi-row { grid-template-columns: 1fr; }
   }
+  @media (prefers-reduced-motion: reduce) {
+    .btn,
+    .card,
+    .kc,
+    .ts-kpi,
+    .spend-kpi,
+    .spend-top-vendors-wrap,
+    .bva-row,
+    .motion-item,
+    .rollout-panel {
+      transition: none !important;
+      animation: none !important;
+      transform: none !important;
+    }
+    .motion-item {
+      opacity: 1 !important;
+    }
+  }
 
   /* Spending report (Expenses) — uses global theme tokens only */
   .spend-report-card { padding: 22px 22px 20px; }
@@ -566,6 +629,16 @@
   .spend-kpi-val { font-size: 28px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; color: var(--text); font-variant-numeric: tabular-nums; }
   .spend-kpi-cents { font-size: 0.55em; font-weight: 500; color: var(--text2); margin-left: 1px; }
   .spend-kpi-brk { font-size: 12px; font-weight: 500; color: var(--text2); margin-top: 8px; line-height: 1.4; font-variant-numeric: tabular-nums; display: none; }
+  .power-toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin: 8px 0 12px; }
+  .power-toolbar .fi { min-width: 120px; }
+  .power-chip { font-size:11px; color:var(--text2); border:1px solid var(--border); border-radius:999px; padding:3px 8px; background:var(--bg2); }
+  .power-filters { display:flex; flex-direction:column; gap:8px; margin-bottom:10px; }
+  .power-filter-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .power-cols { display:none; border:1px solid var(--border); border-radius:10px; padding:10px; margin-bottom:10px; background:var(--bg2); }
+  .power-cols.on { display:block; }
+  .power-cols-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:8px 12px; }
+  .power-col-item { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text2); }
+  .dt th.selcol, .dt td.selcol { width:34px; text-align:center; padding-left:10px; padding-right:10px; }
   .kc .kpi-exp-split { font-size: 12px; font-weight: 500; color: var(--text2); margin-top: 6px; line-height: 1.35; font-variant-numeric: tabular-nums; min-height: 1.35em; }
   .spend-chart-wrap { border: 1px solid var(--border); border-radius: var(--rl); background: var(--bg2); padding: 14px 16px 12px; }
   .spend-chart-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
@@ -837,9 +910,30 @@
     </div>
     <div class="card">
       <div class="sh"><div class="st">Income entries</div></div>
+      <div class="power-toolbar">
+        <input type="search" class="fi" id="income-power-search" placeholder="Search source, client, project, invoice..." autocomplete="off" />
+        <button type="button" class="btn" id="income-power-add-filter">+ Filter rule</button>
+        <button type="button" class="btn" id="income-power-columns">Columns</button>
+        <select class="fi" id="income-power-bulk-action" title="Bulk action">
+          <option value="">Bulk action...</option>
+          <option value="category:svc">Set category: Services</option>
+          <option value="category:ret">Set category: Retainer</option>
+          <option value="invoice:paid">Mark invoice paid</option>
+          <option value="invoice:sent">Mark invoice sent</option>
+          <option value="export:selected">Export selected CSV</option>
+          <option value="delete:selected">Delete selected</option>
+        </select>
+        <button type="button" class="btn btn-p" id="income-power-apply-bulk">Apply</button>
+        <button type="button" class="btn" id="income-power-export-all">Export filtered CSV</button>
+        <span class="power-chip" id="income-power-meta">0 rows</span>
+      </div>
+      <div id="income-power-columns-panel" class="power-cols">
+        <div class="power-cols-grid" id="income-power-columns-grid"></div>
+      </div>
+      <div id="income-power-filters" class="power-filters"></div>
       <div id="income-empty" style="font-size:13px;color:var(--text3);padding:8px 0;">No income recorded yet.</div>
       <table class="dt" id="income-table" style="display:none;">
-        <thead><tr><th>Date</th><th>Source</th><th>Client</th><th>Project</th><th>Category</th><th>Amount</th><th style="width:360px;">Actions</th></tr></thead>
+        <thead id="income-thead"></thead>
         <tbody id="income-tbody"></tbody>
       </table>
     </div>
@@ -1201,11 +1295,11 @@
         </select>
       </div>
       <div class="fgp" style="grid-column:1/-1;"><label class="fl">Note (optional)</label><input class="fi" id="tx-note" placeholder="e.g. Client invoice #104" /></div>
-      <div class="fgp" id="tx-other-wrapper" style="grid-column:1/-1;">
+      <div class="fgp rollout-panel" id="tx-other-wrapper" style="grid-column:1/-1;">
         <label class="fl">Other expense label (for “Other expense” category)</label>
         <input class="fi" id="tx-other-label" placeholder="e.g. Travel, Training, Misc." />
       </div>
-      <div class="fgp" id="tx-other-type-wrapper" style="grid-column:1/-1;">
+      <div class="fgp rollout-panel" id="tx-other-type-wrapper" style="grid-column:1/-1;">
         <label class="fl">Other expense type</label>
         <input class="fi" id="tx-other-type" placeholder="e.g. One-time, Subscription" />
       </div>
@@ -1274,7 +1368,7 @@
       <div class="fgp" style="grid-column:1/-1;">
         <a href="#" id="ts-toggle-external-note" style="font-size:12px;color:var(--text2);text-decoration:none;">+ Show External Note</a>
       </div>
-      <div class="fgp" style="grid-column:1/-1;display:none;" id="ts-external-wrap"><label class="fl">External note</label><textarea class="fi" id="ts-external-note" rows="2"></textarea></div>
+      <div class="fgp rollout-panel" style="grid-column:1/-1;display:none;" id="ts-external-wrap"><label class="fl">External note</label><textarea class="fi" id="ts-external-note" rows="2"></textarea></div>
       <div class="fgp" style="grid-column:1/-1;">
         <label class="fl">Week Days*</label>
         <div class="ts-weekdays">
@@ -1414,7 +1508,7 @@
       </div>
       <details id="project-case-study-details" style="grid-column:1/-1;margin-top:4px;border:1px solid var(--border);border-radius:var(--rl);padding:12px 14px;background:var(--bg3);">
         <summary style="font-weight:600;cursor:pointer;user-select:none;outline:none;">Case study <span style="font-weight:400;color:var(--text3);font-size:12px;">(optional — website / portfolio)</span></summary>
-        <div style="margin-top:14px;display:flex;flex-direction:column;gap:12px;">
+        <div id="project-case-study-body" class="rollout-panel on" style="margin-top:14px;display:flex;flex-direction:column;gap:12px;">
           <div class="fgp" style="grid-column:1/-1;display:flex;align-items:center;gap:8px;">
             <input type="checkbox" id="project-case-study-published" />
             <label class="fl" for="project-case-study-published" style="margin:0;">Show on website / in list when published</label>
@@ -1467,7 +1561,7 @@
       <div class="fgp" style="grid-column:1/-1;display:flex;align-items:center;gap:8px;">
         <input type="checkbox" id="expense-recurring" /><label class="fl" for="expense-recurring" style="margin:0;">Recurring</label>
       </div>
-      <div id="expense-recurrence-panel" style="display:none;grid-column:1/-1;padding:14px 16px;border-radius:var(--rl);border:1px solid var(--border);background:var(--bg3);margin-top:2px;">
+      <div id="expense-recurrence-panel" class="rollout-panel" style="display:none;grid-column:1/-1;padding:14px 16px;border-radius:var(--rl);border:1px solid var(--border);background:var(--bg3);margin-top:2px;">
         <div style="font-weight:600;margin-bottom:12px;font-size:14px;">Recurrence</div>
         <div class="fg" style="margin-bottom:0;">
           <div class="fgp">
