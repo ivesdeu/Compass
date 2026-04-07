@@ -2411,20 +2411,34 @@ var incomePowerState = {
     setText('kpi-exp', fmtCurrency(c.expenseTotal));
     setText('kpi-pft', fmtCurrency(c.netProfit));
 
-    var gmPct = c.grossMarginPct;
-    var gmStr =
-      gmPct != null && !isNaN(gmPct)
-        ? (Math.round(gmPct * 10) / 10).toLocaleString('en-US', {
-            maximumFractionDigits: 1,
-            minimumFractionDigits: 0,
-          }) + '%'
-        : '—';
-    setText('kpi-gm', gmStr);
-    var gmEl = $('kpi-gm');
-    if (gmEl) {
-      gmEl.style.color =
-        gmPct != null && !isNaN(gmPct) && gmPct < 0 ? 'var(--red)' : '';
+    function monthlyizedRetainerRevenueForWindow(startYmd, endYmd) {
+      var txs = state.transactions || [];
+      var retTxs = txs.filter(function (tx) {
+        if (tx.category !== 'ret' || !tx.date) return false;
+        var d = parseYMD(tx.date);
+        if (isNaN(d.getTime())) return false;
+        if (startYmd && tx.date < startYmd) return false;
+        if (endYmd && tx.date > endYmd) return false;
+        return true;
+      });
+      if (!retTxs.length) return 0;
+      var total = retTxs.reduce(function (sum, tx) { return sum + (+tx.amount || 0); }, 0);
+      var months = {};
+      retTxs.forEach(function (tx) {
+        months[String(tx.date).slice(0, 7)] = true;
+      });
+      var monthCount = Object.keys(months).length || 1;
+      return total / monthCount;
     }
+
+    var curBounds = dashboardCurrentYmdBounds(c.filter || state.filter);
+    var mrr = monthlyizedRetainerRevenueForWindow(
+      curBounds ? curBounds.start : null,
+      curBounds ? curBounds.end : null
+    );
+    setText('kpi-gm', fmtCurrency(mrr));
+    var gmEl = $('kpi-gm');
+    if (gmEl) gmEl.style.color = '';
 
     var expSplit = $('kpi-exp-split');
     if (expSplit) {
@@ -2454,11 +2468,14 @@ var incomePowerState = {
       return;
     }
 
+    var curB = dashboardCurrentYmdBounds(filt);
     var priorC = computeForYmdRange(priorB.start, priorB.end);
     var dRev = formatDashboardKpiDelta(c.revenueTotal, priorC.revenueTotal, 'revenue');
     var dExp = formatDashboardKpiDelta(c.expenseTotal, priorC.expenseTotal, 'expense');
     var dPft = formatDashboardKpiDelta(c.netProfit, priorC.netProfit, 'profit');
-    var dGm = formatGrossMarginDeltaPctPoints(c.grossMarginPct, priorC.grossMarginPct);
+    var curMrr = monthlyizedRetainerRevenueForWindow(curB ? curB.start : null, curB ? curB.end : null);
+    var priorMrr = monthlyizedRetainerRevenueForWindow(priorB.start, priorB.end);
+    var dGm = formatDashboardKpiDelta(curMrr, priorMrr, 'revenue');
     setKpiBadge('kpi-rev-badge', dRev.text, dRev.tone);
     setKpiBadge('kpi-exp-badge', dExp.text, dExp.tone);
     setKpiBadge('kpi-pft-badge', dPft.text, dPft.tone);
@@ -2631,7 +2648,11 @@ var incomePowerState = {
     var allTxs = state.transactions || [];
     var actualByCat = { lab: 0, sw: 0, ads: 0, oth: 0 };
     allTxs.forEach(function (tx) {
-      if (!tx.date || tx.date.slice(0, 7) !== thisMonthKey) return;
+      if (!tx.date) return;
+      var d = parseYMD(tx.date);
+      if (isNaN(d.getTime())) return;
+      var monthKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      if (monthKey !== thisMonthKey) return;
       var amt = +tx.amount || 0;
       if (amt <= 0) return;
       if (actualByCat.hasOwnProperty(tx.category)) actualByCat[tx.category] += amt;

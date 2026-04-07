@@ -1149,6 +1149,10 @@
       amount: Number(row.amount || 0),
       status: row.status || 'sent',
       paidAt: row.paid_at ? String(row.paid_at).slice(0, 10) : null,
+      stripeCheckoutSessionId: row.stripe_checkout_session_id || null,
+      stripePaymentIntentId: row.stripe_payment_intent_id || null,
+      stripeCustomerId: row.stripe_customer_id || null,
+      stripeStatus: row.stripe_status || null,
     };
   }
 
@@ -1163,7 +1167,42 @@
       amount: inv.amount,
       status: inv.status || 'sent',
       paid_at: inv.paidAt || null,
+      stripe_checkout_session_id: inv.stripeCheckoutSessionId || null,
+      stripe_payment_intent_id: inv.stripePaymentIntentId || null,
+      stripe_customer_id: inv.stripeCustomerId || null,
+      stripe_status: inv.stripeStatus || null,
     };
+  }
+
+  async function startStripeCheckoutForInvoice(inv) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !inv || !inv.id) {
+      alert('Sign in first to start Stripe Checkout.');
+      return;
+    }
+    try {
+      var res = await supabase.functions.invoke('create-stripe-checkout-session', {
+        body: {
+          invoiceId: inv.id,
+          successUrl: window.location.origin + window.location.pathname + '?payment=success',
+          cancelUrl: window.location.origin + window.location.pathname + '?payment=cancel',
+        },
+      });
+      if (res.error) {
+        alert('Stripe checkout failed: ' + (res.error.message || 'Unknown error'));
+        return;
+      }
+      var payload = res.data || {};
+      if (!payload.url) {
+        alert('Stripe checkout failed: no redirect URL returned.');
+        return;
+      }
+      window.location.href = payload.url;
+    } catch (err) {
+      console.error('startStripeCheckoutForInvoice error', err);
+      alert('Stripe checkout failed. Check console and edge function logs.');
+    }
   }
 
   async function persistInvoiceToSupabase(inv) {
@@ -1994,6 +2033,53 @@
     if (el) el.textContent = value;
   }
 
+  function prefersReducedMotion() {
+    try {
+      return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  function animateRollout(panel, show, immediate) {
+    if (!panel) return;
+    if (prefersReducedMotion() || immediate) {
+      panel.classList.toggle('on', !!show);
+      panel.style.display = show ? 'block' : 'none';
+      panel.style.height = show ? 'auto' : '0px';
+      return;
+    }
+    panel.style.display = 'block';
+    panel.style.overflow = 'hidden';
+    var startH = panel.getBoundingClientRect().height;
+    var endH = show ? panel.scrollHeight : 0;
+    panel.style.height = String(startH) + 'px';
+    panel.getBoundingClientRect();
+    panel.classList.toggle('on', !!show);
+    panel.style.height = String(endH) + 'px';
+    var onDone = function () {
+      panel.removeEventListener('transitionend', onDone);
+      if (show) panel.style.height = 'auto';
+      else panel.style.display = 'none';
+    };
+    panel.addEventListener('transitionend', onDone);
+  }
+
+  function stagePageMotion(container) {
+    if (!container || prefersReducedMotion()) return;
+    var selectors = '.ph, .kg .kc, .card, .ts-kpi, .bva-row, .dt tbody tr';
+    var nodes = container.querySelectorAll(selectors);
+    var cap = Math.min(nodes.length, 22);
+    for (var i = 0; i < cap; i += 1) {
+      var node = nodes[i];
+      node.classList.remove('motion-in');
+      node.classList.add('motion-item');
+      node.style.setProperty('--motion-delay', String(Math.min(i * 28, 280)) + 'ms');
+      void node.offsetWidth;
+      node.classList.add('motion-in');
+    }
+  }
+
   function setKpiBadge(id, text, tone) {
     var el = $(id);
     if (!el) return;
@@ -2282,20 +2368,34 @@ var spendReportUi = {
     setText('kpi-exp', fmtCurrency(c.expenseTotal));
     setText('kpi-pft', fmtCurrency(c.netProfit));
 
-    var gmPct = c.grossMarginPct;
-    var gmStr =
-      gmPct != null && !isNaN(gmPct)
-        ? (Math.round(gmPct * 10) / 10).toLocaleString('en-US', {
-            maximumFractionDigits: 1,
-            minimumFractionDigits: 0,
-          }) + '%'
-        : '—';
-    setText('kpi-gm', gmStr);
-    var gmEl = $('kpi-gm');
-    if (gmEl) {
-      gmEl.style.color =
-        gmPct != null && !isNaN(gmPct) && gmPct < 0 ? 'var(--red)' : '';
+    function monthlyizedRetainerRevenueForWindow(startYmd, endYmd) {
+      var txs = state.transactions || [];
+      var retTxs = txs.filter(function (tx) {
+        if (tx.category !== 'ret' || !tx.date) return false;
+        var d = parseYMD(tx.date);
+        if (isNaN(d.getTime())) return false;
+        if (startYmd && tx.date < startYmd) return false;
+        if (endYmd && tx.date > endYmd) return false;
+        return true;
+      });
+      if (!retTxs.length) return 0;
+      var total = retTxs.reduce(function (sum, tx) { return sum + (+tx.amount || 0); }, 0);
+      var months = {};
+      retTxs.forEach(function (tx) {
+        months[String(tx.date).slice(0, 7)] = true;
+      });
+      var monthCount = Object.keys(months).length || 1;
+      return total / monthCount;
     }
+
+    var curBounds = dashboardCurrentYmdBounds(c.filter || state.filter);
+    var mrr = monthlyizedRetainerRevenueForWindow(
+      curBounds ? curBounds.start : null,
+      curBounds ? curBounds.end : null
+    );
+    setText('kpi-gm', fmtCurrency(mrr));
+    var gmEl = $('kpi-gm');
+    if (gmEl) gmEl.style.color = '';
 
     var expSplit = $('kpi-exp-split');
     if (expSplit) {
@@ -2325,11 +2425,14 @@ var spendReportUi = {
       return;
     }
 
+    var curB = dashboardCurrentYmdBounds(filt);
     var priorC = computeForYmdRange(priorB.start, priorB.end);
     var dRev = formatDashboardKpiDelta(c.revenueTotal, priorC.revenueTotal, 'revenue');
     var dExp = formatDashboardKpiDelta(c.expenseTotal, priorC.expenseTotal, 'expense');
     var dPft = formatDashboardKpiDelta(c.netProfit, priorC.netProfit, 'profit');
-    var dGm = formatGrossMarginDeltaPctPoints(c.grossMarginPct, priorC.grossMarginPct);
+    var curMrr = monthlyizedRetainerRevenueForWindow(curB ? curB.start : null, curB ? curB.end : null);
+    var priorMrr = monthlyizedRetainerRevenueForWindow(priorB.start, priorB.end);
+    var dGm = formatDashboardKpiDelta(curMrr, priorMrr, 'revenue');
     setKpiBadge('kpi-rev-badge', dRev.text, dRev.tone);
     setKpiBadge('kpi-exp-badge', dExp.text, dExp.tone);
     setKpiBadge('kpi-pft-badge', dPft.text, dPft.tone);
@@ -2502,7 +2605,11 @@ var spendReportUi = {
     var allTxs = state.transactions || [];
     var actualByCat = { lab: 0, sw: 0, ads: 0, oth: 0 };
     allTxs.forEach(function (tx) {
-      if (!tx.date || tx.date.slice(0, 7) !== thisMonthKey) return;
+      if (!tx.date) return;
+      var d = parseYMD(tx.date);
+      if (isNaN(d.getTime())) return;
+      var monthKey = d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+      if (monthKey !== thisMonthKey) return;
       var amt = +tx.amount || 0;
       if (amt <= 0) return;
       if (actualByCat.hasOwnProperty(tx.category)) actualByCat[tx.category] += amt;
@@ -5029,6 +5136,9 @@ var spendReportUi = {
                 ? '<button type="button" class="btn" data-income-invoice-view="' + tx.id + '" style="margin-right:6px;">View invoice</button>'
                 : '') +
               (inv && inv.status !== 'paid'
+                ? '<button type="button" class="btn btn-p" data-income-invoice-pay="' + tx.id + '" style="margin-right:6px;">Pay now</button>'
+                : '') +
+              (inv && inv.status !== 'paid'
                 ? '<button type="button" class="btn" data-income-invoice-paid="' + tx.id + '" style="margin-right:6px;">Mark received</button>'
                 : '') +
               '<button type="button" class="btn" data-income-edit="' + tx.id + '" style="margin-right:6px;">Edit</button>' +
@@ -5552,8 +5662,9 @@ var spendReportUi = {
       $('ts-notes').value = t ? (t.notes || '') : '';
       $('ts-external-note').value = t ? (t.externalNote || '') : '';
       var extWrap = $('ts-external-wrap');
-      if (extWrap) extWrap.style.display = t && t.externalNote ? '' : 'none';
-      if (toggleExternal) toggleExternal.textContent = (extWrap && extWrap.style.display === 'none') ? '+ Show External Note' : '− Hide External Note';
+      var showExt = !!(t && t.externalNote);
+      if (extWrap) animateRollout(extWrap, showExt, true);
+      if (toggleExternal) toggleExternal.textContent = showExt ? '− Hide External Note' : '+ Show External Note';
       var cbs = m.querySelectorAll('.ts-weekday-cb');
       cbs.forEach(function (cb) { cb.checked = false; });
       if (t && Array.isArray(t.weekdays) && t.weekdays.length) {
@@ -5576,8 +5687,8 @@ var spendReportUi = {
         ev.preventDefault();
         var extWrap = $('ts-external-wrap');
         if (!extWrap) return;
-        var show = extWrap.style.display === 'none';
-        extWrap.style.display = show ? '' : 'none';
+        var show = extWrap.style.display === 'none' || !extWrap.classList.contains('on');
+        animateRollout(extWrap, show, false);
         toggleExternal.textContent = show ? '− Hide External Note' : '+ Show External Note';
       });
     }
@@ -5736,8 +5847,8 @@ var spendReportUi = {
     var w1 = $('tx-other-wrapper');
     var w2 = $('tx-other-type-wrapper');
     var show = cat === 'oth';
-    if (w1) w1.style.display = show ? '' : 'none';
-    if (w2) w2.style.display = show ? '' : 'none';
+    if (w1) animateRollout(w1, show, false);
+    if (w2) animateRollout(w2, show, false);
   }
 
   function openTransactionModal() {
@@ -6067,7 +6178,7 @@ var spendReportUi = {
   function toggleExpenseRecurrencePanelVisible() {
     var panel = $('expense-recurrence-panel');
     var chk = $('expense-recurring');
-    if (panel && chk) panel.style.display = chk.checked ? 'block' : 'none';
+    if (panel && chk) animateRollout(panel, !!chk.checked, false);
     if (chk && chk.checked) {
       var domIn = $('expense-recurrence-dom');
       var fDate = $('expense-date');
@@ -6183,6 +6294,7 @@ var spendReportUi = {
       resetExpenseRecurrenceUiDefaults();
     }
     syncExpenseRecurrenceRepeatRows();
+    animateRollout($('expense-recurrence-panel'), !!(recChk && recChk.checked), true);
     toggleExpenseRecurrencePanelVisible();
     m.classList.add('on');
   }
@@ -6586,7 +6698,7 @@ var spendReportUi = {
         if (existing) {
           invoices = invoices.map(function (inv) {
             if (inv.incomeTxId !== txId) return inv;
-            return {
+            return Object.assign({}, inv, {
               id: inv.id,
               incomeTxId: txId,
               number: number,
@@ -6595,7 +6707,7 @@ var spendReportUi = {
               amount: amount,
               status: inv.status || 'sent',
               paidAt: inv.paidAt || null,
-            };
+            });
           });
         } else {
           invoices.push({
@@ -6813,7 +6925,11 @@ var spendReportUi = {
           if (archived) archived.checked = !!proj.archived;
           fillCaseStudyForm(proj);
           var det = $('project-case-study-details');
-          if (det) det.open = false;
+          var detBody = $('project-case-study-body');
+          if (det && detBody) {
+            det.open = false;
+            animateRollout(detBody, false, true);
+          }
           m.classList.add('on');
           return;
         }
@@ -6860,22 +6976,29 @@ var spendReportUi = {
           return;
         }
 
+        var payBtn = ev.target.closest('[data-income-invoice-pay]');
+        if (payBtn) {
+          var payTxId = payBtn.getAttribute('data-income-invoice-pay');
+          if (!payTxId) return;
+          var invPay = getInvoiceByIncomeTxId(payTxId);
+          if (!invPay) {
+            alert('Create the invoice first.');
+            return;
+          }
+          startStripeCheckoutForInvoice(invPay);
+          return;
+        }
+
         var paidBtn = ev.target.closest('[data-income-invoice-paid]');
         if (paidBtn) {
           var paidTxId = paidBtn.getAttribute('data-income-invoice-paid');
           if (!paidTxId) return;
           invoices = invoices.map(function (inv) {
             if (inv.incomeTxId !== paidTxId) return inv;
-            return {
-              id: inv.id,
-              incomeTxId: inv.incomeTxId,
-              number: inv.number,
-              dateIssued: inv.dateIssued,
-              dueDate: inv.dueDate,
-              amount: inv.amount,
+            return Object.assign({}, inv, {
               status: 'paid',
               paidAt: new Date().toISOString().slice(0, 10),
-            };
+            });
           });
           saveInvoices(invoices);
           recomputeAndRender();
@@ -7255,6 +7378,28 @@ var spendReportUi = {
     var btnStatusAdd = $('btn-status-add');
     var statusInput = $('status-new-label');
     var statusList = $('status-list');
+    var caseStudyDetails = $('project-case-study-details');
+    var caseStudyBody = $('project-case-study-body');
+
+    if (caseStudyDetails && caseStudyBody && caseStudyDetails.getAttribute('data-rollout-wired') !== '1') {
+      caseStudyDetails.setAttribute('data-rollout-wired', '1');
+      animateRollout(caseStudyBody, false, true);
+      caseStudyDetails.open = false;
+      var caseSummary = caseStudyDetails.querySelector('summary');
+      if (caseSummary) {
+        caseSummary.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          var opening = !caseStudyDetails.open;
+          if (opening) caseStudyDetails.open = true;
+          animateRollout(caseStudyBody, opening, false);
+          if (!opening) {
+            window.setTimeout(function () {
+              caseStudyDetails.open = false;
+            }, 380);
+          }
+        });
+      }
+    }
 
     function renderStatusList() {
       if (!statusList) return;
@@ -7290,7 +7435,11 @@ var spendReportUi = {
       if (archived) archived.checked = false;
       clearCaseStudyForm();
       var det = $('project-case-study-details');
-      if (det) det.open = false;
+      var detBody = $('project-case-study-body');
+      if (det && detBody) {
+        det.open = false;
+        animateRollout(detBody, false, true);
+      }
       populateProjectClientOptions();
       populateProjectStatusOptions();
       m.classList.add('on');
@@ -7681,6 +7830,7 @@ var spendReportUi = {
       });
       var target = document.getElementById('page-' + pageId);
       if (target) target.classList.add('on');
+      stagePageMotion(target);
 
       // Sidebar active state
       var items = document.querySelectorAll('.ni');
@@ -7713,6 +7863,8 @@ var spendReportUi = {
     document.addEventListener('keydown', function (ev) {
       if (ev.key === 'Escape') document.body.classList.remove('mobile-nav-open');
     });
+
+    stagePageMotion(document.querySelector('.pg.on'));
 
     // Load data only when session is already present (auth also calls init after login).
     if (typeof initDataFromSupabase === 'function' && window.currentUser && window.supabaseClient) {
