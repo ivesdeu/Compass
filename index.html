@@ -3,6 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<meta name="chat-embed-url" content="http://localhost:3000/chat" />
 <title>Business Dashboard</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23e8501a'/%3E%3Ctext x='50%25' y='52%25' text-anchor='middle' font-size='32' fill='white' font-family='sans-serif'%3EBD%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
@@ -132,6 +133,27 @@
   /* PAGES */
   .pg { display:none; padding:36px 40px 32px; min-height:100%; max-width:1440px; margin:0 auto; width:100%; box-sizing:border-box; }
   .pg.on { display:block; }
+  .pg.pg-chat.on { display:flex; flex-direction:column; }
+  .pg-chat {
+    padding:0 !important;
+    max-width:none !important;
+    min-height:0;
+    flex:1;
+  }
+  .chat-embed-header {
+    padding:20px 40px 14px;
+    border-bottom:1px solid var(--border);
+    flex-shrink:0;
+    background:var(--bg2);
+  }
+  .chat-embed-header .ps code { font-size:12px; background:var(--bg3); padding:2px 6px; border-radius:4px; font-family:ui-monospace,monospace; }
+  #chat-iframe {
+    flex:1;
+    width:100%;
+    min-height:min(70vh, 720px);
+    border:0;
+    background:var(--bg);
+  }
   .ph { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:28px; }
   .pt { font-size:1.25rem; font-weight:600; letter-spacing:-0.02em; line-height:1.2; }
   .pg .pt { font-size:clamp(2.25rem, 4.2vw, 2.75rem); font-weight:700; letter-spacing:-0.035em; line-height:1.08; }
@@ -705,6 +727,9 @@
     .spend-toolbar-right { flex-wrap: wrap; justify-content: flex-start; }
     .spend-kpi-row { grid-template-columns: 1fr; }
   }
+  @media (max-width: 960px) {
+    .chat-embed-header { padding: 16px; }
+  }
 </style>
 </head>
 <body>
@@ -763,6 +788,9 @@
     </div>
     <div class="ni" data-nav="insights" onclick="nav('insights',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>Insights
+    </div>
+    <div class="ni" data-nav="chat" onclick="nav('chat',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Chat
     </div>
     <!-- Hidden in internal-mode via .nav-public-facing (route/page kept). -->
     <div class="ni nav-public-facing" data-nav="marketing" onclick="nav('marketing',this)">
@@ -1219,6 +1247,15 @@
     </div>
     <div class="ui-internal-facing ph" style="margin-bottom:0;"><div><div class="pt">Marketing</div><div class="ps">Campaigns, leads, and pipeline</div></div></div>
     <div class="ui-internal-facing card"><div style="font-size:13px;color:var(--text2);line-height:1.55;">No marketing data yet. Use Dashboard and Revenue for operational numbers.</div></div>
+  </div>
+
+  <!-- CHAT (Next.js + 21st agent; set chat-embed-url meta for production) -->
+  <div class="pg pg-chat" id="page-chat">
+    <div class="chat-embed-header">
+      <div class="pt">AI Chat</div>
+      <div class="ps">Powered by your 21st agent in <code>my-agent-next</code>. Run <code>npm run dev</code> (port 3000) or change the <code>chat-embed-url</code> meta tag for your deployed chat URL.</div>
+    </div>
+    <iframe id="chat-iframe" title="AI Chat" src="about:blank"></iframe>
   </div>
 
   <!-- SETTINGS -->

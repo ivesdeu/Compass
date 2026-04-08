@@ -7832,6 +7832,15 @@ var spendReportUi = {
       if (target) target.classList.add('on');
       stagePageMotion(target);
 
+      if (pageId === 'chat') {
+        var frame = document.getElementById('chat-iframe');
+        var meta = document.querySelector('meta[name="chat-embed-url"]');
+        var chatUrl = meta ? (meta.getAttribute('content') || '').trim() : '';
+        if (frame && chatUrl && (!frame.getAttribute('src') || frame.getAttribute('src') === 'about:blank')) {
+          frame.setAttribute('src', chatUrl);
+        }
+      }
+
       // Sidebar active state
       var items = document.querySelectorAll('.ni');
       items.forEach(function (n) { n.classList.remove('active'); });
@@ -7853,6 +7862,7 @@ var spendReportUi = {
           performance: 'Projects',
           retention: 'Retention',
           insights: 'Insights',
+          chat: 'AI Chat',
           marketing: 'Marketing',
           settings: 'Settings',
         };
