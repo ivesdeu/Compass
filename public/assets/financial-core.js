@@ -7860,9 +7860,30 @@ var incomePowerState = {
   }
 
   function wireDemoDataLoader() {
-    var btn = $('settings-btn-load-mock');
-    if (!btn) return;
-    btn.addEventListener('click', loadMockDemoData);
+    var btnLoad = $('settings-btn-load-mock');
+    if (btnLoad) {
+      btnLoad.addEventListener('click', loadMockDemoData);
+    }
+
+    var btnReset = $('settings-btn-reset-local');
+    if (btnReset) {
+      btnReset.addEventListener('click', function () {
+        var msg = 'Clear all local workspace data now?\n\nThis removes demo and manual local records saved in this browser (keys starting with \"bizdash:\").';
+        if (!window.confirm(msg)) return;
+        try {
+          var toRemove = [];
+          for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i);
+            if (k && k.indexOf('bizdash:') === 0) toRemove.push(k);
+          }
+          toRemove.forEach(function (k) {
+            try { localStorage.removeItem(k); } catch (_) {}
+          });
+        } catch (_) {}
+        alert('Local workspace reset complete. Reloading now.');
+        window.location.reload();
+      });
+    }
   }
 
   window.refreshCloudSyncStatus = refreshCloudSyncStatus;

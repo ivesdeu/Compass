@@ -138,34 +138,32 @@
   .ps { font-size:0.875rem; font-weight:400; color:var(--text3); margin-top:6px; line-height:1.35; }
   .hr { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
 
-  /* Chat — one centered shell (transcript + composer + chips), ChatGPT-style workspace */
+  /* Chat — full-tab workspace */
   #page-chat.pg.on {
     display: flex;
     flex-direction: column;
-    align-items: center;
-    padding-top: clamp(12px, 3vh, 36px);
-    min-height: calc(100dvh - 80px);
+    align-items: stretch;
+    padding: 0;
+    max-width: none;
+    margin: 0;
+    min-height: calc(100dvh - 74px);
     box-sizing: border-box;
   }
   .chat-shell {
     width: 100%;
-    max-width: 44rem;
+    max-width: none;
     display: flex;
     flex-direction: column;
-    min-height: min(76dvh, 42rem);
-    max-height: calc(100dvh - 96px);
-    background: var(--bg2);
-    border: 1px solid var(--border);
-    border-radius: 24px;
-    box-shadow: 0 8px 40px rgba(0, 0, 0, 0.07);
-    overflow: hidden;
+    min-height: calc(100dvh - 74px);
+    max-height: calc(100dvh - 74px);
+    background: var(--bg);
   }
   .chat-shell-header {
     flex-shrink: 0;
-    padding: 16px 20px 14px;
-    text-align: center;
+    padding: 14px 28px 12px;
+    text-align: left;
     border-bottom: 1px solid var(--border);
-    background: var(--bg2);
+    background: var(--bg);
   }
   .chat-shell-title {
     font-size: 0.6875rem;
@@ -176,11 +174,11 @@
     margin: 0;
   }
   .chat-shell-sub {
-    font-size: 0.8125rem;
+    font-size: 0.8rem;
     color: var(--text2);
     line-height: 1.45;
-    margin: 8px auto 0;
-    max-width: 34rem;
+    margin: 6px 0 0;
+    max-width: 56rem;
   }
   .chat-transcript {
     flex: 1;
@@ -194,33 +192,33 @@
     min-height: 0;
     overflow-y: auto;
     overflow-anchor: none;
-    padding: 18px 20px;
+    padding: 20px 28px;
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 16px;
     background: var(--bg);
   }
   .chat-log::-webkit-scrollbar { width: 6px; }
   .chat-log::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
   .chat-msg {
-    max-width: 92%;
+    max-width: min(78ch, 78%);
     padding: 12px 14px;
-    border-radius: 12px;
+    border-radius: 14px;
     font-size: 0.875rem;
     line-height: 1.55;
     color: var(--text2);
   }
   .chat-msg.user {
     align-self: flex-end;
-    background: var(--coral-bg);
-    border: 1px solid rgba(232, 80, 26, 0.14);
+    background: color-mix(in srgb, var(--coral) 14%, var(--bg2));
+    border: 1px solid color-mix(in srgb, var(--coral) 26%, var(--border));
     color: var(--text);
     font-weight: 500;
   }
   .chat-msg.asst {
     align-self: flex-start;
-    background: var(--bg2);
-    border: 1px solid var(--border);
+    background: transparent;
+    border: 1px solid transparent;
     white-space: pre-wrap;
     word-break: break-word;
   }
@@ -259,28 +257,22 @@
   }
   .chat-composer-stack {
     flex-shrink: 0;
-    padding: 20px 22px 8px;
-    background: var(--bg2);
+    padding: 14px 28px 8px;
+    background: var(--bg);
     border-top: 1px solid var(--border);
   }
   .chat-prompt-heading {
-    text-align: center;
-    font-size: clamp(1.125rem, 2.8vw, 1.5rem);
-    font-weight: 600;
-    letter-spacing: -0.03em;
-    color: var(--text);
-    margin: 0 0 16px;
-    line-height: 1.2;
+    display: none;
   }
   .chat-prompt-box {
     cursor: text;
     display: flex;
     flex-direction: column;
-    border-radius: 28px;
+    border-radius: 18px;
     padding: 8px;
     background: var(--bg2);
     border: 1px solid var(--border2);
-    box-shadow: 0 2px 14px rgba(0, 0, 0, 0.06);
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.05);
     transition: border-color 0.15s, box-shadow 0.15s;
   }
   .chat-prompt-box:focus-within {
@@ -501,31 +493,29 @@
     flex-wrap: wrap;
     gap: 8px;
     margin: 0;
-    padding: 6px 22px max(16px, env(safe-area-inset-bottom, 0px));
-    justify-content: center;
-    background: var(--bg2);
+    padding: 6px 28px max(16px, env(safe-area-inset-bottom, 0px));
+    justify-content: flex-start;
+    background: var(--bg);
   }
-  /* Typing mode: dock composer near viewport bottom like ChatGPT */
+  /* Keep the chat input anchored in flow for full-tab layout */
   #page-chat.chat-compose-docked .chat-shell {
-    padding-bottom: 170px;
+    padding-bottom: 0;
   }
   #page-chat.chat-compose-docked .chat-composer-stack {
-    position: fixed;
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: max(10px, env(safe-area-inset-bottom, 0px));
-    width: min(44rem, calc(100vw - 28px));
-    z-index: 130;
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    background: var(--bg2);
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.14);
-    padding: 12px 14px 10px;
+    position: static;
+    left: auto;
+    transform: none;
+    bottom: auto;
+    width: auto;
+    z-index: auto;
+    border: none;
+    border-radius: 0;
+    background: var(--bg);
+    box-shadow: none;
+    padding: 14px 28px 8px;
   }
-  #page-chat.chat-compose-docked .chat-prompt-heading,
-  #page-chat.chat-compose-docked .chat-starters {
-    display: none;
-  }
+  #page-chat.chat-compose-docked .chat-prompt-heading { display: none; }
+  #page-chat.chat-compose-docked .chat-starters { display: flex; }
   .chat-chip {
     font-size: 12px;
     padding: 7px 12px;
@@ -545,18 +535,16 @@
 
   @media (max-width: 960px) {
     #page-chat.pg.on {
-      padding-left: 14px;
-      padding-right: 14px;
-      min-height: calc(100dvh - 124px);
+      min-height: calc(100dvh - 114px);
     }
     .chat-shell {
-      max-height: calc(100dvh - 136px);
-      border-radius: 18px;
-      min-height: min(68dvh, 34rem);
+      max-height: calc(100dvh - 114px);
+      min-height: calc(100dvh - 114px);
     }
-    .chat-shell-header { padding: 14px 16px 12px; }
+    .chat-shell-header { padding: 12px 16px 10px; }
     .chat-log { padding: 14px 16px; }
-    .chat-composer-stack { padding: 16px 16px 6px; }
+    .chat-msg { max-width: 92%; }
+    .chat-composer-stack { padding: 12px 16px 6px; }
     .chat-starters { padding-left: 16px; padding-right: 16px; }
   }
 
@@ -1787,7 +1775,10 @@
           <div style="font-size:12px;color:var(--text2);line-height:1.55;margin-bottom:10px;">
             Load a realistic mock dataset (clients, projects, transactions, invoices, and campaigns) for demos.
           </div>
-          <button type="button" class="btn btn-p" id="settings-btn-load-mock" style="max-width:240px;font-size:12px;padding:8px 12px;">Load Mock Demo Data</button>
+          <div style="display:flex;gap:8px;flex-wrap:wrap;">
+            <button type="button" class="btn btn-p" id="settings-btn-load-mock" style="font-size:12px;padding:8px 12px;">Load Mock Demo Data</button>
+            <button type="button" class="btn" id="settings-btn-reset-local" style="font-size:12px;padding:8px 12px;color:var(--red);">Clear Demo Data / Reset Workspace</button>
+          </div>
         </div>
       </div>
     </div>
