@@ -22,6 +22,195 @@
     return (s || '').toLowerCase().trim();
   }
 
+  function fmtUsd(n) {
+    var v = Math.round(Number(n) || 0);
+    return '$' + v.toLocaleString('en-US');
+  }
+
+  function ymdFromDate(d) {
+    var y = d.getFullYear();
+    var m = String(d.getMonth() + 1).padStart(2, '0');
+    var day = String(d.getDate()).padStart(2, '0');
+    return y + '-' + m + '-' + day;
+  }
+
+  /** Calendar bounds in local time, aligned with financial-core.js compute({ mode: 'month'|'range' }). */
+  function resolvePeriodBounds(ql) {
+    var ref = new Date();
+    var y = ref.getFullYear();
+    var m = ref.getMonth();
+    var day = ref.getDate();
+
+    if (/\b(all[\s-]?time|lifetime|everything|overall|entire\s+history)\b/.test(ql)) {
+      return { kind: 'all', label: 'all time' };
+    }
+    if (/\b(year\s+to\s+date|ytd)\b/.test(ql)) {
+      var ys = new Date(y, 0, 1);
+      var ye = new Date(y, m, day);
+      return { kind: 'range', start: ymdFromDate(ys), end: ymdFromDate(ye), label: 'year to date' };
+    }
+    if (/\b(last\s+year|previous\s+year)\b/.test(ql)) {
+      var s = new Date(y - 1, 0, 1);
+      var e = new Date(y - 1, 11, 31);
+      return { kind: 'range', start: ymdFromDate(s), end: ymdFromDate(e), label: 'last calendar year' };
+    }
+    if (/\bthis\s+year\b/.test(ql)) {
+      var s2 = new Date(y, 0, 1);
+      var e2 = new Date(y, 11, 31);
+      return { kind: 'range', start: ymdFromDate(s2), end: ymdFromDate(e2), label: 'this calendar year' };
+    }
+    if (/\b(last\s+month|previous\s+month)\b/.test(ql)) {
+      var s3 = new Date(y, m - 1, 1);
+      var e3 = new Date(y, m, 0);
+      return { kind: 'range', start: ymdFromDate(s3), end: ymdFromDate(e3), label: 'last calendar month' };
+    }
+    if (/\b(last\s+30\s+days|past\s+30\s+days|last\s+thirty\s+days)\b/.test(ql)) {
+      var end30 = new Date(y, m, day);
+      var start30 = new Date(end30);
+      start30.setDate(start30.getDate() - 29);
+      return { kind: 'range', start: ymdFromDate(start30), end: ymdFromDate(end30), label: 'the last 30 days' };
+    }
+    if (/\b(last\s+7\s+days|past\s+week|last\s+week)\b/.test(ql)) {
+      var end7 = new Date(y, m, day);
+      var start7 = new Date(end7);
+      start7.setDate(start7.getDate() - 6);
+      return { kind: 'range', start: ymdFromDate(start7), end: ymdFromDate(end7), label: 'the last 7 days' };
+    }
+    if (/\b(this\s+month|current\s+month)\b/.test(ql)) {
+      var s4 = new Date(y, m, 1);
+      var e4 = new Date(y, m + 1, 0);
+      return { kind: 'range', start: ymdFromDate(s4), end: ymdFromDate(e4), label: 'this calendar month' };
+    }
+    return null;
+  }
+
+  function tryLedgerFinancialAnswer(q) {
+    if (typeof window.bizDashLedgerSummaryRange !== 'function' || typeof window.bizDashLedgerSummaryAll !== 'function') {
+      return null;
+    }
+
+    var ql = norm(q);
+    if (!ql) return null;
+
+    var wantsBreakdown = /\b(break\s*down|by\s+category|split|each\s+category)\b/.test(ql);
+    var wantsGross = /\bgross\s+profit\b/.test(ql) || /\bgross\s+margin\b/.test(ql);
+    var wantsNet = /\bnet\s+profit\b/.test(ql) || /\bnet\s+income\b/.test(ql) || /\bbottom\s*line\b/.test(ql);
+    var wantsProfitGeneric = /\bprofit\b/.test(ql) && !wantsGross && !wantsNet;
+    var wantsExpense =
+      /\b(expenses?|spending|spend|costs?|burn)\b/.test(ql) ||
+      /\b(how\s+much)\b.*\b(spent|spend|pay|paid)\b/.test(ql) ||
+      (/\bwhat\s+are\b/.test(ql) && /\bexpenses?\b/.test(ql));
+    var wantsRevenue =
+      (!wantsNet && !wantsGross && (/\b(revenue|turnover)\b/.test(ql) || /\b(total\s+)?income\b/.test(ql))) ||
+      /\b(sales|earnings)\b/.test(ql) ||
+      /\b(how\s+much)\b.*\b(make|made|earn|earned)\b/.test(ql);
+    if (/\bnet\s+profit\b/.test(ql) || /\bnet\s+income\b/.test(ql)) wantsRevenue = false;
+
+    if (!wantsExpense && !wantsRevenue && !wantsNet && !wantsProfitGeneric && !wantsGross) return null;
+
+    var period = resolvePeriodBounds(ql);
+    var defaultedPeriod = false;
+    if (!period && (wantsExpense || wantsRevenue || wantsNet || wantsProfitGeneric || wantsGross)) {
+      var ref = new Date();
+      var y = ref.getFullYear();
+      var m = ref.getMonth();
+      var s = new Date(y, m, 1);
+      var e = new Date(y, m + 1, 0);
+      period = { kind: 'range', start: ymdFromDate(s), end: ymdFromDate(e), label: 'this calendar month' };
+      defaultedPeriod = true;
+    }
+    if (!period) return null;
+
+    var s;
+    if (period.kind === 'all') {
+      s = window.bizDashLedgerSummaryAll();
+    } else {
+      s = window.bizDashLedgerSummaryRange(period.start, period.end);
+    }
+    if (!s) return null;
+
+    var header =
+      'From your loaded transaction ledger (same rules as the dashboard: categories lab/sw/ads/oth = expenses, svc/ret = revenue, owner equity “own” excluded):\n\n';
+    var when =
+      period.kind === 'all'
+        ? 'Period: ' + period.label + '.'
+        : 'Period: ' + period.label + ' (' + (s.startYmd || period.start) + ' → ' + (s.endYmd || period.end) + ').';
+    if (defaultedPeriod) {
+      when += ' (No explicit range in your message—I used the current calendar month.)';
+    }
+    when += '\nTransaction lines in range: ' + s.transactionCount + '.\n\n';
+
+    var catExpenseLabels = { lab: 'Labor (delivery / COGS)', sw: 'Software & tools', ads: 'Advertising', oth: 'Other' };
+    var catRevenueLabels = { svc: 'Service revenue', ret: 'Retainer revenue' };
+
+    var singleCat = null;
+    if (wantsExpense && /\blabor\b|\bcogs\b|\bdelivery\b/.test(ql)) singleCat = 'lab';
+    else if (wantsExpense && /\bsoftware\b|\bsaas\b|\btools?\b/.test(ql)) singleCat = 'sw';
+    else if (wantsExpense && /\bad(s|vertising)?\b/.test(ql)) singleCat = 'ads';
+    else if (wantsExpense && /\bother\s+expenses?\b/.test(ql)) singleCat = 'oth';
+
+    var lines = [header + when];
+
+    function pushBreakdownExpense() {
+      lines.push('Expense breakdown:');
+      lines.push(
+        '• ' +
+          catExpenseLabels.lab +
+          ': ' +
+          fmtUsd(s.expenseByCat.lab) +
+          '\n• ' +
+          catExpenseLabels.sw +
+          ': ' +
+          fmtUsd(s.expenseByCat.sw) +
+          '\n• ' +
+          catExpenseLabels.ads +
+          ': ' +
+          fmtUsd(s.expenseByCat.ads) +
+          '\n• ' +
+          catExpenseLabels.oth +
+          ': ' +
+          fmtUsd(s.expenseByCat.oth),
+      );
+    }
+
+    function pushBreakdownRevenue() {
+      lines.push('Revenue breakdown:');
+      lines.push('• ' + catRevenueLabels.svc + ': ' + fmtUsd(s.revenueByCat.svc) + '\n• ' + catRevenueLabels.ret + ': ' + fmtUsd(s.revenueByCat.ret));
+    }
+
+    if (wantsExpense) {
+      if (singleCat && s.expenseByCat[singleCat] != null) {
+        lines.push(catExpenseLabels[singleCat] + ': ' + fmtUsd(s.expenseByCat[singleCat]) + '.');
+      } else {
+        lines.push('Total expenses: ' + fmtUsd(s.expenseTotal) + '.');
+        if (wantsBreakdown || s.expenseTotal > 0) pushBreakdownExpense();
+      }
+    }
+    if (wantsRevenue) {
+      lines.push('Total revenue: ' + fmtUsd(s.revenueTotal) + '.');
+      if (wantsBreakdown || s.revenueTotal > 0) pushBreakdownRevenue();
+    }
+    if (wantsGross) {
+      lines.push(
+        'Gross profit (revenue minus labor/COGS only): ' +
+          fmtUsd(s.grossProfit) +
+          '.' +
+          (s.grossMarginPct != null && !isNaN(s.grossMarginPct)
+            ? ' Gross margin: ' + Math.round(s.grossMarginPct * 10) / 10 + '%.'
+            : ''),
+      );
+    }
+    if (wantsNet || wantsProfitGeneric) {
+      lines.push('Net profit (revenue minus all expense buckets): ' + fmtUsd(s.netProfit) + '.');
+    }
+
+    if (s.transactionCount === 0) {
+      lines.push('\nNo transactions fall in that range. Add lines on Income/Expenses or widen the period.');
+    }
+
+    return lines.join('\n');
+  }
+
   function appendBubble(logEl, role, text) {
     var div = document.createElement('div');
     div.className = 'chat-msg ' + (role === 'user' ? 'user' : 'asst');
@@ -71,6 +260,7 @@
     if (/\b(help|what can you|what do you do|capabilities)\b/.test(ql)) {
       return (
         'I can answer:\n' +
+        '• Money questions from your loaded ledger (same math as the dashboard): expenses, revenue, gross/net profit by period\n' +
         '• Which Supabase tables and columns the dashboard expects\n' +
         '• How RLS scopes data to your account\n' +
         '• Where SQL migrations and Edge Functions live\n' +
@@ -162,6 +352,9 @@
       ? 'Images aren’t analyzed in this built-in helper—only text and your Supabase session are used.\n\n'
       : '';
 
+    var ledgerAns = tryLedgerFinancialAnswer(q);
+    if (ledgerAns) return imageNote + ledgerAns;
+
     var live = await tryLiveCount(q, supabase, user);
     if (live) return imageNote + live;
 
@@ -174,8 +367,10 @@
 
     return (
       imageNote +
-      'I don’t have a scripted answer for that. Try rephrasing, or ask about: Supabase tables, RLS, Stripe invoice fields, ' +
-      'build/deploy, MRR/retainers, or “how many [clients|transactions|projects|invoices|campaigns|timesheet entries] do I have?” when signed in.'
+      'I don’t have a scripted answer for that. Try rephrasing, or ask about:\n' +
+      '• Expenses / revenue / profit for a period (e.g. “What are my expenses this month?”, “Revenue YTD”, “Net profit last month”)\n' +
+      '• Supabase tables, RLS, Stripe invoice fields, build/deploy, MRR/retainers\n' +
+      '• “How many [clients|transactions|projects|…] do I have?” when signed in'
     );
   }
 

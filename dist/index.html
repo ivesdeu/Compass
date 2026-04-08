@@ -139,25 +139,32 @@
   .hr { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
 
   /* In-app assistant — ChatGPT-style prompt shell (vanilla port; no React/shadcn in this repo) */
+  .chat-page-body {
+    max-width: 42rem;
+    width: 100%;
+    margin: 0 auto;
+  }
   .chat-card {
     display: flex;
     flex-direction: column;
-    min-height: min(520px, calc(100vh - 220px));
+    min-height: 12rem;
+    max-height: min(52vh, 30rem);
     max-width: 42rem;
     margin: 0 auto;
+    width: 100%;
     padding: 0;
     overflow: hidden;
     border-radius: var(--rl);
   }
   .chat-log {
     flex: 1;
+    min-height: 0;
     overflow-y: auto;
     padding: 20px 22px;
     display: flex;
     flex-direction: column;
     gap: 14px;
     background: var(--bg);
-    min-height: 240px;
   }
   .chat-log::-webkit-scrollbar { width: 6px; }
   .chat-log::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
@@ -183,11 +190,25 @@
     white-space: pre-wrap;
     word-break: break-word;
   }
+  /* Sticky composer: stays at bottom of .main viewport while messages scroll above */
+  .chat-composer-sticky {
+    position: sticky;
+    bottom: 0;
+    z-index: 35;
+    max-width: 42rem;
+    width: 100%;
+    margin: 12px auto 0;
+    padding: 12px 0 max(10px, env(safe-area-inset-bottom, 0px));
+    background: linear-gradient(180deg, rgba(250, 250, 250, 0) 0%, var(--bg) 18px, var(--bg) 100%);
+    box-sizing: border-box;
+  }
   .chat-prompt-section {
     flex-shrink: 0;
-    padding: 16px 18px 20px;
-    border-top: 1px solid var(--border);
+    padding: 16px 18px 18px;
+    border: 1px solid var(--border);
+    border-radius: var(--rl);
     background: var(--bg2);
+    box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.04);
   }
   .chat-prompt-heading {
     text-align: center;
@@ -425,10 +446,8 @@
     display: flex;
     flex-wrap: wrap;
     gap: 8px;
-    margin-top: 14px;
-    max-width: 42rem;
-    margin-left: auto;
-    margin-right: auto;
+    margin-top: 12px;
+    justify-content: center;
   }
   .chat-chip {
     font-size: 12px;
@@ -1541,8 +1560,11 @@
         <div class="ps">Ask how the app is built, what lives in Supabase, or (when signed in) how many records you have. Replies use this codebase and your session—no external AI API key.</div>
       </div>
     </div>
+    <div class="chat-page-body">
     <div class="card chat-card">
       <div id="chat-log" class="chat-log" role="log" aria-live="polite" aria-relevant="additions"></div>
+    </div>
+    <div class="chat-composer-sticky">
       <div class="chat-prompt-section">
         <p class="chat-prompt-heading">How can I help you?</p>
         <div class="chat-prompt-box" id="chat-prompt-box" role="group" aria-label="Message composer">
@@ -1606,16 +1628,18 @@
           </div>
         </div>
       </div>
+      <div class="chat-starters" id="chat-starters">
+        <button type="button" class="chat-chip" data-chat-q="What tables are in Supabase for this dashboard?">Supabase tables</button>
+        <button type="button" class="chat-chip" data-chat-q="How does row level security work?">RLS</button>
+        <button type="button" class="chat-chip" data-chat-q="What are my expenses this month?">Expenses this month</button>
+        <button type="button" class="chat-chip" data-chat-q="How many clients do I have?">Count clients</button>
+        <button type="button" class="chat-chip" data-chat-q="Where is the production build defined?">Build</button>
+      </div>
+    </div>
     </div>
     <div class="chat-lightbox" id="chat-lightbox" hidden role="dialog" aria-modal="true" aria-label="Image preview">
       <button type="button" class="chat-lightbox-close" id="chat-lightbox-close" aria-label="Close">&times;</button>
       <img id="chat-lightbox-img" src="" alt="Full size attachment" />
-    </div>
-    <div class="chat-starters" id="chat-starters">
-      <button type="button" class="chat-chip" data-chat-q="What tables are in Supabase for this dashboard?">Supabase tables</button>
-      <button type="button" class="chat-chip" data-chat-q="How does row level security work?">RLS</button>
-      <button type="button" class="chat-chip" data-chat-q="How many clients do I have?">Count clients</button>
-      <button type="button" class="chat-chip" data-chat-q="Where is the production build defined?">Build</button>
     </div>
   </div>
 

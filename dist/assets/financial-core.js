@@ -8156,6 +8156,57 @@ var incomePowerState = {
   // Expose so supabase-auth.js can trigger a reload after login.
   window.initDataFromSupabase = initDataFromSupabase;
 
+  /**
+   * Read-only ledger rollups for the in-dashboard assistant (same rules as compute(): categories svc/ret = revenue, lab/sw/ads/oth = expense, own excluded).
+   * @returns {object|null} null if range is invalid
+   */
+  window.bizDashLedgerSummaryRange = function (startYmd, endYmd) {
+    if (!startYmd || !endYmd) return null;
+    var c = computeForYmdRange(startYmd, endYmd);
+    return {
+      startYmd: startYmd,
+      endYmd: endYmd,
+      expenseTotal: c.expenseTotal,
+      revenueTotal: c.revenueTotal,
+      netProfit: c.netProfit,
+      grossProfit: c.grossProfit,
+      grossMarginPct: c.grossMarginPct,
+      cogsTotal: c.cogsTotal,
+      expenseByCat: {
+        lab: c.expenseByCat.lab,
+        sw: c.expenseByCat.sw,
+        ads: c.expenseByCat.ads,
+        oth: c.expenseByCat.oth,
+      },
+      revenueByCat: { svc: c.revenueByCat.svc, ret: c.revenueByCat.ret },
+      expenseFixedTotal: c.expenseFixedTotal,
+      expenseVariableTotal: c.expenseVariableTotal,
+      transactionCount: c.txs.length,
+    };
+  };
+
+  window.bizDashLedgerSummaryAll = function () {
+    var c = compute({ mode: 'all', start: null, end: null });
+    return {
+      expenseTotal: c.expenseTotal,
+      revenueTotal: c.revenueTotal,
+      netProfit: c.netProfit,
+      grossProfit: c.grossProfit,
+      grossMarginPct: c.grossMarginPct,
+      cogsTotal: c.cogsTotal,
+      expenseByCat: {
+        lab: c.expenseByCat.lab,
+        sw: c.expenseByCat.sw,
+        ads: c.expenseByCat.ads,
+        oth: c.expenseByCat.oth,
+      },
+      revenueByCat: { svc: c.revenueByCat.svc, ret: c.revenueByCat.ret },
+      expenseFixedTotal: c.expenseFixedTotal,
+      expenseVariableTotal: c.expenseVariableTotal,
+      transactionCount: c.txs.length,
+    };
+  };
+
   function init() {
     state.filter = { mode: 'all', start: null, end: null };
     wireTransactionForm();
