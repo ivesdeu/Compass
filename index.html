@@ -133,12 +133,20 @@
   /* PAGES */
   .pg { display:none; padding:36px 40px 32px; min-height:100%; max-width:1440px; margin:0 auto; width:100%; box-sizing:border-box; }
   .pg.on { display:block; }
-  .pg.pg-chat.on { display:flex; flex-direction:column; }
+  .main.main-chat-active {
+    display:flex;
+    flex-direction:column;
+    min-height:0;
+  }
+  .pg.pg-chat.on {
+    display:flex;
+    flex-direction:column;
+    flex:1;
+    min-height:0;
+  }
   .pg-chat {
     padding:0 !important;
     max-width:none !important;
-    min-height:0;
-    flex:1;
   }
   .chat-embed-header {
     padding:20px 40px 14px;
@@ -150,10 +158,21 @@
   #chat-iframe {
     flex:1;
     width:100%;
-    min-height:min(70vh, 720px);
+    min-height:min(68vh, 800px);
     border:0;
     background:var(--bg);
   }
+  .chat-embed-actions {
+    flex-shrink:0;
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    align-items:center;
+    padding:12px 40px 24px;
+    border-top:1px solid var(--border);
+    background:var(--bg2);
+  }
+  .chat-embed-actions a.btn { text-decoration:none; display:inline-flex; align-items:center; }
   .ph { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:28px; }
   .pt { font-size:1.25rem; font-weight:600; letter-spacing:-0.02em; line-height:1.2; }
   .pg .pt { font-size:clamp(2.25rem, 4.2vw, 2.75rem); font-weight:700; letter-spacing:-0.035em; line-height:1.08; }
@@ -789,12 +808,12 @@
     <div class="ni" data-nav="insights" onclick="nav('insights',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>Insights
     </div>
-    <div class="ni" data-nav="chat" onclick="nav('chat',this)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Chat
-    </div>
     <!-- Hidden in internal-mode via .nav-public-facing (route/page kept). -->
     <div class="ni nav-public-facing" data-nav="marketing" onclick="nav('marketing',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Marketing
+    </div>
+    <div class="ni" data-nav="chat" onclick="nav('chat',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Chat
     </div>
     <div class="sb-spacer"></div>
     <div class="sb-div"></div>
@@ -1253,9 +1272,13 @@
   <div class="pg pg-chat" id="page-chat">
     <div class="chat-embed-header">
       <div class="pt">AI Chat</div>
-      <div class="ps">Powered by your 21st agent in <code>my-agent-next</code>. Run <code>npm run dev</code> (port 3000) or change the <code>chat-embed-url</code> meta tag for your deployed chat URL.</div>
+      <div class="ps">Embedded from the Next.js app in <code>my-agent-next</code> (21st agent <code>my-agent</code>). <strong>If the frame below is empty:</strong> run <code>cd my-agent-next && npm install && npm run dev</code> (port 3000), add <code>API_KEY_21ST</code> in <code>.env.local</code>, then click <strong>Reload embed</strong>. For production, point <code>chat-embed-url</code> at your HTTPS chat URL.</div>
     </div>
     <iframe id="chat-iframe" title="AI Chat" src="about:blank"></iframe>
+    <div class="chat-embed-actions">
+      <a id="chat-open-tab" class="btn btn-p" href="http://localhost:3000/chat" target="_blank" rel="noopener noreferrer">Open chat in new tab</a>
+      <button type="button" class="btn" id="chat-reload-embed">Reload embed</button>
+    </div>
   </div>
 
   <!-- SETTINGS -->

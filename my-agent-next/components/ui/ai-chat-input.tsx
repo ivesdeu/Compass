@@ -44,7 +44,12 @@ const AIChatInput = ({
   const [thinkActive, setThinkActive] = useState(false)
   const [deepSearchActive, setDeepSearchActive] = useState(false)
   const [inputValue, setInputValue] = useState("")
+  const [motionReady, setMotionReady] = useState(false)
   const wrapperRef = useRef<HTMLDivElement>(null)
+
+  useEffect(() => {
+    setMotionReady(true)
+  }, [])
 
   useEffect(() => {
     if (isActive || inputValue || disabled) return
@@ -157,7 +162,7 @@ const AIChatInput = ({
         className="w-full max-w-3xl mx-auto"
         variants={containerVariants}
         animate={expanded ? "expanded" : "collapsed"}
-        initial="collapsed"
+        initial={false}
         style={{ overflow: "hidden", borderRadius: 32, background: "#fff" }}
         onClick={handleActivate}
       >
@@ -185,36 +190,58 @@ const AIChatInput = ({
                 onFocus={handleActivate}
               />
               <div className="absolute left-0 top-0 w-full h-full pointer-events-none flex items-center px-3 py-2">
-                <AnimatePresence mode="wait">
-                  {showPlaceholder && !isActive && !inputValue && !disabled && (
-                    <motion.span
-                      key={placeholderIndex}
-                      className="absolute left-0 top-1/2 -translate-y-1/2 text-zinc-400 select-none pointer-events-none"
-                      style={{
-                        whiteSpace: "nowrap",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        zIndex: 0,
-                      }}
-                      variants={placeholderContainerVariants}
-                      initial="initial"
-                      animate="animate"
-                      exit="exit"
-                    >
-                      {PLACEHOLDERS[placeholderIndex]
-                        .split("")
-                        .map((char, i) => (
-                          <motion.span
-                            key={i}
-                            variants={letterVariants}
-                            style={{ display: "inline-block" }}
-                          >
-                            {char === " " ? "\u00A0" : char}
-                          </motion.span>
-                        ))}
-                    </motion.span>
-                  )}
-                </AnimatePresence>
+                {!motionReady &&
+                showPlaceholder &&
+                !isActive &&
+                !inputValue &&
+                !disabled ? (
+                  <span
+                    className="absolute left-0 top-1/2 -translate-y-1/2 text-zinc-400 select-none pointer-events-none"
+                    style={{
+                      whiteSpace: "nowrap",
+                      overflow: "hidden",
+                      textOverflow: "ellipsis",
+                      zIndex: 0,
+                    }}
+                  >
+                    {PLACEHOLDERS[placeholderIndex]}
+                  </span>
+                ) : null}
+                {motionReady ? (
+                  <AnimatePresence mode="wait">
+                    {showPlaceholder &&
+                    !isActive &&
+                    !inputValue &&
+                    !disabled && (
+                      <motion.span
+                        key={placeholderIndex}
+                        className="absolute left-0 top-1/2 -translate-y-1/2 text-zinc-400 select-none pointer-events-none"
+                        style={{
+                          whiteSpace: "nowrap",
+                          overflow: "hidden",
+                          textOverflow: "ellipsis",
+                          zIndex: 0,
+                        }}
+                        variants={placeholderContainerVariants}
+                        initial="initial"
+                        animate="animate"
+                        exit="exit"
+                      >
+                        {PLACEHOLDERS[placeholderIndex]
+                          .split("")
+                          .map((char, i) => (
+                            <motion.span
+                              key={i}
+                              variants={letterVariants}
+                              style={{ display: "inline-block" }}
+                            >
+                              {char === " " ? "\u00A0" : char}
+                            </motion.span>
+                          ))}
+                      </motion.span>
+                    )}
+                  </AnimatePresence>
+                ) : null}
               </div>
             </div>
 
@@ -270,7 +297,7 @@ const AIChatInput = ({
                 transition: { duration: 0.35, delay: 0.08 },
               },
             }}
-            initial="hidden"
+            initial={false}
             animate={expanded ? "visible" : "hidden"}
             style={{ marginTop: 8 }}
           >

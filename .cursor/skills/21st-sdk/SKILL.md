@@ -17,5 +17,5 @@ description: Use for any interaction with @21st-sdk packages or 21st Agents. If 
 ## This repo
 
 - Next.js + 21st chat UI lives in `my-agent-next/`.
-- Deployable agent source: `my-agent-next/agents/my-agent.ts` (slug `my-agent`).
+- Deployable agent source: `my-agent-next/agents/my-agent/index.ts` (slug `my-agent`).
 - Token route: `my-agent-next/app/api/an-token/route.ts`.

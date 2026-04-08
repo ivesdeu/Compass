@@ -2195,6 +2195,49 @@ var spendReportUi = {
   q: '',
   costType: 'all',
 };
+var INCOME_POWER_PREFS_KEY = 'bizdash:income-power-prefs:v1';
+var incomePowerColumns = [
+  { id: 'date', label: 'Date', type: 'date' },
+  { id: 'source', label: 'Source', type: 'text' },
+  { id: 'client', label: 'Client', type: 'text' },
+  { id: 'project', label: 'Project', type: 'text' },
+  { id: 'category', label: 'Category', type: 'enum' },
+  { id: 'amount', label: 'Amount', type: 'number' },
+  { id: 'invoice', label: 'Invoice', type: 'enum' },
+];
+var incomePowerState = {
+  search: '',
+  filters: [],
+  visible: { date: true, source: true, client: true, project: true, category: true, amount: true, invoice: true },
+  selected: {},
+};
+
+  function loadIncomePowerPrefs() {
+    try {
+      var raw = localStorage.getItem(INCOME_POWER_PREFS_KEY);
+      var parsed = raw ? JSON.parse(raw) : null;
+      if (!parsed || typeof parsed !== 'object') return;
+      if (typeof parsed.search === 'string') incomePowerState.search = parsed.search;
+      if (Array.isArray(parsed.filters)) incomePowerState.filters = parsed.filters.slice(0, 6);
+      if (parsed.visible && typeof parsed.visible === 'object') {
+        incomePowerColumns.forEach(function (col) {
+          if (Object.prototype.hasOwnProperty.call(parsed.visible, col.id)) {
+            incomePowerState.visible[col.id] = parsed.visible[col.id] !== false;
+          }
+        });
+      }
+    } catch (_) {}
+  }
+
+  function saveIncomePowerPrefs() {
+    try {
+      localStorage.setItem(INCOME_POWER_PREFS_KEY, JSON.stringify({
+        search: incomePowerState.search || '',
+        filters: incomePowerState.filters || [],
+        visible: incomePowerState.visible || {},
+      }));
+    } catch (_) {}
+  }
 
   // Light UI chart theme: orange primary, muted grays for secondary series
   var CHART_ORANGE = '#e8501a';
@@ -4992,6 +5035,84 @@ var spendReportUi = {
 
   // ---------- Income (revenue page) ----------
 
+  function incomeRuleOptionsForColumn(colId) {
+    if (colId === 'amount') return ['eq', 'gt', 'gte', 'lt', 'lte', 'between'];
+    if (colId === 'date') return ['on', 'after', 'before', 'between'];
+    if (colId === 'category' || colId === 'invoice') return ['is', 'not'];
+    return ['contains', 'is', 'starts'];
+  }
+
+  function incomeCellRaw(row, colId) {
+    if (colId === 'amount') return Number(row.amount || 0);
+    return row[colId] == null ? '' : String(row[colId]);
+  }
+
+  function incomeMatchesRule(row, rule) {
+    if (!rule || !rule.column || !rule.op) return true;
+    var v = incomeCellRaw(row, rule.column);
+    var q = String(rule.value == null ? '' : rule.value).trim();
+    var q2 = String(rule.value2 == null ? '' : rule.value2).trim();
+    if (!q && rule.op !== 'between') return true;
+    if (rule.column === 'amount') {
+      var n = Number(v || 0);
+      var a = Number(q || 0);
+      var b = Number(q2 || 0);
+      if (rule.op === 'eq') return n === a;
+      if (rule.op === 'gt') return n > a;
+      if (rule.op === 'gte') return n >= a;
+      if (rule.op === 'lt') return n < a;
+      if (rule.op === 'lte') return n <= a;
+      if (rule.op === 'between') return n >= Math.min(a, b) && n <= Math.max(a, b);
+      return true;
+    }
+    var sv = String(v || '').toLowerCase();
+    var sq = q.toLowerCase();
+    if (rule.column === 'date') {
+      if (rule.op === 'on') return sv === sq;
+      if (rule.op === 'after') return sv >= sq;
+      if (rule.op === 'before') return sv <= sq;
+      if (rule.op === 'between') {
+        var a2 = q.toLowerCase();
+        var b2 = q2.toLowerCase();
+        if (!a2 || !b2) return true;
+        var lo = a2 < b2 ? a2 : b2;
+        var hi = a2 < b2 ? b2 : a2;
+        return sv >= lo && sv <= hi;
+      }
+      return true;
+    }
+    if (rule.op === 'contains') return sv.indexOf(sq) !== -1;
+    if (rule.op === 'starts') return sv.indexOf(sq) === 0;
+    if (rule.op === 'is') return sv === sq;
+    if (rule.op === 'not') return sv !== sq;
+    return true;
+  }
+
+  function exportIncomeRowsCsv(rows, onlySelected) {
+    if (!rows || !rows.length) {
+      alert('No rows to export.');
+      return;
+    }
+    var out = ['Date,Source,Client,Project,Category,Amount,Invoice status'];
+    rows.forEach(function (r) {
+      out.push(
+        '"' + String(r.date || '').replace(/"/g, '""') + '",' +
+        '"' + String(r.source || '').replace(/"/g, '""') + '",' +
+        '"' + String(r.client || '').replace(/"/g, '""') + '",' +
+        '"' + String(r.project || '').replace(/"/g, '""') + '",' +
+        '"' + String(r.category || '').replace(/"/g, '""') + '",' +
+        Number(r.amount || 0) + ',' +
+        '"' + String(r.invoice || '').replace(/"/g, '""') + '"'
+      );
+    });
+    var blob = new Blob([out.join('\n')], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = onlySelected ? 'income-selected.csv' : 'income-filtered.csv';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
   function renderIncomeSection(c) {
     // Revenue-only transactions, respecting current date filter (c.txs already filtered).
     var revTxs = c.txs.filter(function (tx) {
@@ -5089,65 +5210,100 @@ var spendReportUi = {
     if (bar61) bar61.style.width = Math.round((bucket61 / denom) * 100) + '%';
     if (bar90) bar90.style.width = Math.round((bucket90 / denom) * 100) + '%';
 
-    // Income entries table
+    // Income entries table (power-table view: column chooser, filters, bulk actions, export)
     var tbody = $('income-tbody');
+    var thead = $('income-thead');
     var empty = $('income-empty');
     var table = $('income-table');
+    var meta = $('income-power-meta');
     if (tbody) {
-      if (!revTxs.length) {
+      var sourceRows = revTxs.slice().sort(function (a, b) {
+        return (b.date || '').localeCompare(a.date || '');
+      }).map(function (tx) {
+        var cl = tx.clientId ? clients.find(function (c2) { return c2.id === tx.clientId; }) : null;
+        var pr = tx.projectId ? projects.find(function (p2) { return p2.id === tx.projectId; }) : null;
+        var inv2 = invoiceForTx[tx.id] || null;
+        return {
+          tx: tx,
+          id: tx.id,
+          date: tx.date || '—',
+          source: tx.description || '—',
+          client: (cl && cl.companyName) || '—',
+          project: (pr && pr.name) || '—',
+          category: tx.category === 'ret' ? 'Retainer' : 'Services',
+          amount: Number(tx.amount || 0),
+          invoice: inv2 ? (inv2.status === 'paid' ? 'Paid' : 'Sent') : 'No invoice',
+          invoiceObj: inv2,
+        };
+      });
+      var sourceIdMap = {};
+      sourceRows.forEach(function (r) { sourceIdMap[r.id] = true; });
+      Object.keys(incomePowerState.selected || {}).forEach(function (sid) {
+        if (!sourceIdMap[sid]) delete incomePowerState.selected[sid];
+      });
+      var q = String(incomePowerState.search || '').trim().toLowerCase();
+      var filteredRows = sourceRows.filter(function (row) {
+        var textHit = true;
+        if (q) {
+          var hay = [row.date, row.source, row.client, row.project, row.category, row.invoice]
+            .join(' ')
+            .toLowerCase();
+          textHit = hay.indexOf(q) !== -1;
+        }
+        if (!textHit) return false;
+        return (incomePowerState.filters || []).every(function (rule) {
+          return incomeMatchesRule(row, rule);
+        });
+      });
+      if (meta) {
+        var selCount = Object.keys(incomePowerState.selected || {}).filter(function (id) { return incomePowerState.selected[id]; }).length;
+        meta.textContent = filteredRows.length + ' rows' + (selCount ? ' · ' + selCount + ' selected' : '');
+      }
+      if (!filteredRows.length) {
         tbody.innerHTML = '';
+        if (thead) thead.innerHTML = '<tr><th class="selcol"><input type="checkbox" disabled /></th><th>Results</th><th>Actions</th></tr>';
         if (empty) empty.style.display = 'block';
         if (table) table.style.display = 'none';
       } else {
         if (empty) empty.style.display = 'none';
         if (table) table.style.display = 'table';
-        var rows = revTxs.slice().sort(function (a, b) {
-          return (b.date || '').localeCompare(a.date || '');
-        }).map(function (tx) {
-          var clientName = '—';
-          if (tx.clientId) {
-            var cl = clients.find(function (c) { return c.id === tx.clientId; });
-            if (cl && cl.companyName) clientName = cl.companyName;
-          }
-          var projectName = '—';
-          if (tx.projectId) {
-            var pr = projects.find(function (p) { return p.id === tx.projectId; });
-            if (pr && pr.name) projectName = pr.name;
-          }
-          var catLabel = tx.category === 'ret' ? 'Retainer' : 'Services';
-          var inv = invoiceForTx[tx.id];
+        var visibleCols = incomePowerColumns.filter(function (col) { return incomePowerState.visible[col.id] !== false; });
+        var allSelected = filteredRows.length > 0 && filteredRows.every(function (r) { return !!incomePowerState.selected[r.id]; });
+        if (thead) {
+          thead.innerHTML = '<tr>' +
+            '<th class="selcol"><input type="checkbox" id="income-power-select-all"' + (allSelected ? ' checked' : '') + ' /></th>' +
+            visibleCols.map(function (col) { return '<th>' + esc(col.label) + '</th>'; }).join('') +
+            '<th style="width:360px;">Actions</th>' +
+            '</tr>';
+        }
+        tbody.innerHTML = filteredRows.map(function (row) {
+          var tx = row.tx;
+          var inv = row.invoiceObj;
           var invBadge = inv
-            ? ('<span class="pl ' + (inv.status === 'paid' ? 'pg-g' : 'pg-a') + '" style="margin-right:6px;">' +
-              (inv.status === 'paid' ? 'Paid' : 'Sent') + '</span>')
+            ? ('<span class="pl ' + (inv.status === 'paid' ? 'pg-g' : 'pg-a') + '" style="margin-right:6px;">' + (inv.status === 'paid' ? 'Paid' : 'Sent') + '</span>')
             : '<span class="pl" style="margin-right:6px;background:var(--bg3);color:var(--text3);">No invoice</span>';
+          var colCells = visibleCols.map(function (col) {
+            if (col.id === 'amount') return '<td class="tdp">' + fmtCurrency(row.amount) + '</td>';
+            return '<td>' + esc(row[col.id]) + '</td>';
+          }).join('');
           return '<tr>' +
-            '<td>' + (tx.date || '—') + '</td>' +
-            '<td>' + (tx.description || '—') + '</td>' +
-            '<td>' + clientName + '</td>' +
-            '<td>' + projectName + '</td>' +
-            '<td>' + catLabel + '</td>' +
-            '<td class="tdp">' + fmtCurrency(tx.amount) + '</td>' +
+            '<td class="selcol"><input type="checkbox" data-income-select="' + esc(row.id) + '"' + (incomePowerState.selected[row.id] ? ' checked' : '') + ' /></td>' +
+            colCells +
             '<td style="white-space:nowrap;">' +
               invBadge +
               (inv
                 ? '<button type="button" class="btn" data-income-invoice-edit="' + tx.id + '" style="margin-right:6px;">Edit invoice</button>'
                 : '<button type="button" class="btn" data-income-invoice-create="' + tx.id + '" style="margin-right:6px;">Create invoice</button>') +
-              (inv
-                ? '<button type="button" class="btn" data-income-invoice-view="' + tx.id + '" style="margin-right:6px;">View invoice</button>'
-                : '') +
-              (inv && inv.status !== 'paid'
-                ? '<button type="button" class="btn btn-p" data-income-invoice-pay="' + tx.id + '" style="margin-right:6px;">Pay now</button>'
-                : '') +
-              (inv && inv.status !== 'paid'
-                ? '<button type="button" class="btn" data-income-invoice-paid="' + tx.id + '" style="margin-right:6px;">Mark received</button>'
-                : '') +
+              (inv ? '<button type="button" class="btn" data-income-invoice-view="' + tx.id + '" style="margin-right:6px;">View invoice</button>' : '') +
+              (inv && inv.status !== 'paid' ? '<button type="button" class="btn btn-p" data-income-invoice-pay="' + tx.id + '" style="margin-right:6px;">Pay now</button>' : '') +
+              (inv && inv.status !== 'paid' ? '<button type="button" class="btn" data-income-invoice-paid="' + tx.id + '" style="margin-right:6px;">Mark received</button>' : '') +
               '<button type="button" class="btn" data-income-edit="' + tx.id + '" style="margin-right:6px;">Edit</button>' +
               '<button type="button" class="btn" data-income-del="' + tx.id + '" style="color:var(--red);">Delete</button>' +
             '</td>' +
           '</tr>';
         }).join('');
-        tbody.innerHTML = rows;
       }
+      window.__incomePowerFilteredRows = filteredRows;
     }
 
     // Revenue Trend chart (cRevT)
@@ -5841,6 +5997,204 @@ var spendReportUi = {
   }
 
   // ---------- UI wiring ----------
+
+  function renderIncomePowerFilterRows() {
+    var host = $('income-power-filters');
+    if (!host) return;
+    var rows = incomePowerState.filters || [];
+    host.innerHTML = rows.map(function (rule, idx) {
+      var colOptions = incomePowerColumns.map(function (col) {
+        return '<option value="' + col.id + '"' + (col.id === rule.column ? ' selected' : '') + '>' + esc(col.label) + '</option>';
+      }).join('');
+      var ops = incomeRuleOptionsForColumn(rule.column || 'source');
+      var opOptions = ops.map(function (op) {
+        return '<option value="' + op + '"' + (op === rule.op ? ' selected' : '') + '>' + esc(op) + '</option>';
+      }).join('');
+      var needsSecond = rule.op === 'between';
+      return '<div class="power-filter-row" data-income-filter-row="' + idx + '">' +
+        '<select class="fi" data-income-filter-col="' + idx + '">' + colOptions + '</select>' +
+        '<select class="fi" data-income-filter-op="' + idx + '">' + opOptions + '</select>' +
+        '<input class="fi" data-income-filter-value="' + idx + '" value="' + esc(rule.value || '') + '" placeholder="value" />' +
+        (needsSecond ? '<input class="fi" data-income-filter-value2="' + idx + '" value="' + esc(rule.value2 || '') + '" placeholder="and value" />' : '') +
+        '<button type="button" class="btn" data-income-filter-remove="' + idx + '">Remove</button>' +
+      '</div>';
+    }).join('');
+  }
+
+  function renderIncomePowerColumnChooser() {
+    var grid = $('income-power-columns-grid');
+    if (!grid) return;
+    grid.innerHTML = incomePowerColumns.map(function (col) {
+      var checked = incomePowerState.visible[col.id] !== false ? ' checked' : '';
+      return '<label class="power-col-item"><input type="checkbox" data-income-col="' + esc(col.id) + '"' + checked + ' />' + esc(col.label) + '</label>';
+    }).join('');
+  }
+
+  function applyIncomeBulkAction(action) {
+    var selectedIds = Object.keys(incomePowerState.selected || {}).filter(function (id) { return incomePowerState.selected[id]; });
+    if (!selectedIds.length) {
+      alert('Select at least one row.');
+      return;
+    }
+    if (action === 'export:selected') {
+      var rows = (window.__incomePowerFilteredRows || []).filter(function (r) { return incomePowerState.selected[r.id]; });
+      exportIncomeRowsCsv(rows, true);
+      return;
+    }
+    if (action === 'delete:selected') {
+      if (!confirm('Delete ' + selectedIds.length + ' selected income entr' + (selectedIds.length === 1 ? 'y' : 'ies') + '?')) return;
+      deleteTransactionsByIds(selectedIds);
+      incomePowerState.selected = {};
+      return;
+    }
+    var txMap = {};
+    selectedIds.forEach(function (id) { txMap[id] = true; });
+    if (action === 'category:svc' || action === 'category:ret') {
+      var nextCat = action.split(':')[1];
+      state.transactions = state.transactions.map(function (tx) {
+        if (!txMap[tx.id]) return tx;
+        var next = Object.assign({}, tx, { category: nextCat });
+        persistTransactionToSupabase(next);
+        return next;
+      });
+      saveTransactions(state.transactions);
+      recomputeAndRender();
+      return;
+    }
+    if (action === 'invoice:paid' || action === 'invoice:sent') {
+      var nextStatus = action.split(':')[1];
+      invoices = invoices.map(function (inv) {
+        if (!txMap[inv.incomeTxId]) return inv;
+        var nextInv = Object.assign({}, inv, {
+          status: nextStatus,
+          paidAt: nextStatus === 'paid' ? new Date().toISOString().slice(0, 10) : null,
+        });
+        persistInvoiceToSupabase(nextInv);
+        return nextInv;
+      });
+      saveInvoices(invoices);
+      recomputeAndRender();
+    }
+  }
+
+  function wireIncomePowerTable() {
+    loadIncomePowerPrefs();
+    renderIncomePowerColumnChooser();
+    renderIncomePowerFilterRows();
+
+    var search = $('income-power-search');
+    if (search) {
+      search.value = incomePowerState.search || '';
+      search.addEventListener('input', function () {
+        incomePowerState.search = search.value || '';
+        saveIncomePowerPrefs();
+        if (state.computed) renderIncomeSection(state.computed);
+      });
+    }
+
+    var addFilter = $('income-power-add-filter');
+    if (addFilter) {
+      addFilter.addEventListener('click', function () {
+        incomePowerState.filters.push({ column: 'source', op: 'contains', value: '' });
+        saveIncomePowerPrefs();
+        renderIncomePowerFilterRows();
+      });
+    }
+
+    var colsBtn = $('income-power-columns');
+    var colsPanel = $('income-power-columns-panel');
+    if (colsBtn && colsPanel) {
+      colsBtn.addEventListener('click', function () {
+        colsPanel.classList.toggle('on');
+      });
+    }
+
+    var filtersHost = $('income-power-filters');
+    if (filtersHost) {
+      filtersHost.addEventListener('input', function (ev) {
+        var colIdx = ev.target.getAttribute('data-income-filter-col');
+        var opIdx = ev.target.getAttribute('data-income-filter-op');
+        var vIdx = ev.target.getAttribute('data-income-filter-value');
+        var v2Idx = ev.target.getAttribute('data-income-filter-value2');
+        if (colIdx != null) {
+          var i = Number(colIdx);
+          incomePowerState.filters[i].column = ev.target.value;
+          incomePowerState.filters[i].op = incomeRuleOptionsForColumn(ev.target.value)[0];
+        } else if (opIdx != null) {
+          incomePowerState.filters[Number(opIdx)].op = ev.target.value;
+        } else if (vIdx != null) {
+          incomePowerState.filters[Number(vIdx)].value = ev.target.value;
+        } else if (v2Idx != null) {
+          incomePowerState.filters[Number(v2Idx)].value2 = ev.target.value;
+        } else {
+          return;
+        }
+        saveIncomePowerPrefs();
+        renderIncomePowerFilterRows();
+        if (state.computed) renderIncomeSection(state.computed);
+      });
+      filtersHost.addEventListener('click', function (ev) {
+        var ridx = ev.target.getAttribute('data-income-filter-remove');
+        if (ridx == null) return;
+        incomePowerState.filters.splice(Number(ridx), 1);
+        saveIncomePowerPrefs();
+        renderIncomePowerFilterRows();
+        if (state.computed) renderIncomeSection(state.computed);
+      });
+    }
+
+    var colGrid = $('income-power-columns-grid');
+    if (colGrid) {
+      colGrid.addEventListener('change', function (ev) {
+        var col = ev.target.getAttribute('data-income-col');
+        if (!col) return;
+        incomePowerState.visible[col] = !!ev.target.checked;
+        var visibleCount = incomePowerColumns.filter(function (c) { return incomePowerState.visible[c.id] !== false; }).length;
+        if (!visibleCount) {
+          incomePowerState.visible[col] = true;
+          ev.target.checked = true;
+          alert('Keep at least one column visible.');
+        }
+        saveIncomePowerPrefs();
+        if (state.computed) renderIncomeSection(state.computed);
+      });
+    }
+
+    var applyBulk = $('income-power-apply-bulk');
+    if (applyBulk) {
+      applyBulk.addEventListener('click', function () {
+        var sel = $('income-power-bulk-action');
+        var action = sel ? sel.value : '';
+        if (!action) return;
+        applyIncomeBulkAction(action);
+      });
+    }
+    var exportAll = $('income-power-export-all');
+    if (exportAll) {
+      exportAll.addEventListener('click', function () {
+        exportIncomeRowsCsv(window.__incomePowerFilteredRows || [], false);
+      });
+    }
+
+    var incomeTable = $('income-table');
+    if (incomeTable) {
+      incomeTable.addEventListener('change', function (ev) {
+        var rid = ev.target.getAttribute('data-income-select');
+        if (rid) {
+          incomePowerState.selected[rid] = !!ev.target.checked;
+          if (state.computed) renderIncomeSection(state.computed);
+          return;
+        }
+        if (ev.target.id === 'income-power-select-all') {
+          var checked = !!ev.target.checked;
+          (window.__incomePowerFilteredRows || []).forEach(function (r) {
+            incomePowerState.selected[r.id] = checked;
+          });
+          if (state.computed) renderIncomeSection(state.computed);
+        }
+      });
+    }
+  }
 
   function syncTransactionModalOtherFields() {
     var cat = $('tx-category') ? $('tx-category').value : '';
@@ -7802,6 +8156,29 @@ var spendReportUi = {
   // Expose so supabase-auth.js can trigger a reload after login.
   window.initDataFromSupabase = initDataFromSupabase;
 
+  function getChatEmbedUrl() {
+    var meta = document.querySelector('meta[name="chat-embed-url"]');
+    return meta ? (meta.getAttribute('content') || '').trim() : '';
+  }
+
+  function wireChatEmbed() {
+    var openTab = document.getElementById('chat-open-tab');
+    if (openTab) {
+      var u = getChatEmbedUrl();
+      if (u) openTab.setAttribute('href', u);
+    }
+    var reloadBtn = document.getElementById('chat-reload-embed');
+    if (reloadBtn) {
+      reloadBtn.addEventListener('click', function () {
+        var frame = document.getElementById('chat-iframe');
+        var chatUrl = getChatEmbedUrl();
+        if (!frame || !chatUrl) return;
+        var sep = chatUrl.indexOf('?') >= 0 ? '&' : '?';
+        frame.setAttribute('src', chatUrl + sep + '_cb=' + Date.now());
+      });
+    }
+  }
+
   function init() {
     state.filter = { mode: 'all', start: null, end: null };
     wireTransactionForm();
@@ -7813,10 +8190,12 @@ var spendReportUi = {
     wireInvoicePreviewModal();
     wireProjectsAndStatuses();
     wireFilter();
+    wireIncomePowerTable();
     wireSpendingReport();
     wireSettingsSave();
     wireCloudSyncPanel();
     wireMarketingCampaign();
+    wireChatEmbed();
 
     // Simple page navigation wiring to replace the original bundle's nav().
     // Exposed globally so existing onclick="nav('dashboard', this)" continues to work.
@@ -7831,6 +8210,12 @@ var spendReportUi = {
       var target = document.getElementById('page-' + pageId);
       if (target) target.classList.add('on');
       stagePageMotion(target);
+
+      var mainEl = document.querySelector('.main');
+      if (mainEl) {
+        if (pageId === 'chat') mainEl.classList.add('main-chat-active');
+        else mainEl.classList.remove('main-chat-active');
+      }
 
       if (pageId === 'chat') {
         var frame = document.getElementById('chat-iframe');

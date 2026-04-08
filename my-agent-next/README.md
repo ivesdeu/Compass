@@ -23,7 +23,7 @@ API_KEY_21ST=your_key npx @21st-sdk/cli login --api-key "$API_KEY_21ST"
 npx @21st-sdk/cli deploy --agent my-agent
 ```
 
-Agent source: `agents/my-agent.ts` (CLI scans `agents/`). The file `src/agent.ts` re-exports the same default for parity with the “src/agent.ts” quickstart.
+Agent source: `agents/my-agent/index.ts` (one folder per slug; CLI scans `agents/`). The file `src/agent.ts` re-exports the same default for parity with the “src/agent.ts” quickstart.
 
 ## Run the Next.js app
 
@@ -72,6 +72,13 @@ cd my-agent-next && npm run dev
 
 - **Rotate** any API key that has appeared in chat, logs, or screenshots.
 - Never commit `.env.local` (repo root `.gitignore` includes it).
+
+## Performance
+
+- **First reply** can be slow: 21st runs your agent in a **sandbox** (default `claude-code` runtime). Cold starts and tool use add latency; later messages in the same session are often quicker.
+- **Model:** this repo’s agent uses **Claude Haiku 4.5** for speed. For harder reasoning, set `model` to `claude-sonnet-4-6` in `agents/my-agent/index.ts` and run `npm run deploy:agent` again.
+- **Local dev:** `next dev` compiles on demand. For a fair speed check use `npm run build && npm start`.
+- **UI:** `/chat` prefetches the `chat-session` chunk while the “Preparing chat…” shell is visible so the full UI appears faster.
 
 ## Troubleshooting
 

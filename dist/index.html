@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-<meta name="chat-embed-url" content="http://localhost:3000/chat" />
+<meta name="chat-embed-url" content="https://example.com/chat" />
 <title>Business Dashboard</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23e8501a'/%3E%3Ctext x='50%25' y='52%25' text-anchor='middle' font-size='32' fill='white' font-family='sans-serif'%3EBD%3C/text%3E%3C/svg%3E">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
@@ -133,12 +133,20 @@
   /* PAGES */
   .pg { display:none; padding:36px 40px 32px; min-height:100%; max-width:1440px; margin:0 auto; width:100%; box-sizing:border-box; }
   .pg.on { display:block; }
-  .pg.pg-chat.on { display:flex; flex-direction:column; }
+  .main.main-chat-active {
+    display:flex;
+    flex-direction:column;
+    min-height:0;
+  }
+  .pg.pg-chat.on {
+    display:flex;
+    flex-direction:column;
+    flex:1;
+    min-height:0;
+  }
   .pg-chat {
     padding:0 !important;
     max-width:none !important;
-    min-height:0;
-    flex:1;
   }
   .chat-embed-header {
     padding:20px 40px 14px;
@@ -150,10 +158,21 @@
   #chat-iframe {
     flex:1;
     width:100%;
-    min-height:min(70vh, 720px);
+    min-height:min(68vh, 800px);
     border:0;
     background:var(--bg);
   }
+  .chat-embed-actions {
+    flex-shrink:0;
+    display:flex;
+    flex-wrap:wrap;
+    gap:10px;
+    align-items:center;
+    padding:12px 40px 24px;
+    border-top:1px solid var(--border);
+    background:var(--bg2);
+  }
+  .chat-embed-actions a.btn { text-decoration:none; display:inline-flex; align-items:center; }
   .ph { display:flex; align-items:flex-start; justify-content:space-between; margin-bottom:28px; }
   .pt { font-size:1.25rem; font-weight:600; letter-spacing:-0.02em; line-height:1.2; }
   .pg .pt { font-size:clamp(2.25rem, 4.2vw, 2.75rem); font-weight:700; letter-spacing:-0.035em; line-height:1.08; }
@@ -651,6 +670,16 @@
   .spend-kpi-val { font-size: 28px; font-weight: 700; letter-spacing: -0.03em; line-height: 1.05; color: var(--text); font-variant-numeric: tabular-nums; }
   .spend-kpi-cents { font-size: 0.55em; font-weight: 500; color: var(--text2); margin-left: 1px; }
   .spend-kpi-brk { font-size: 12px; font-weight: 500; color: var(--text2); margin-top: 8px; line-height: 1.4; font-variant-numeric: tabular-nums; display: none; }
+  .power-toolbar { display:flex; flex-wrap:wrap; gap:8px; align-items:center; margin: 8px 0 12px; }
+  .power-toolbar .fi { min-width: 120px; }
+  .power-chip { font-size:11px; color:var(--text2); border:1px solid var(--border); border-radius:999px; padding:3px 8px; background:var(--bg2); }
+  .power-filters { display:flex; flex-direction:column; gap:8px; margin-bottom:10px; }
+  .power-filter-row { display:flex; flex-wrap:wrap; gap:8px; align-items:center; }
+  .power-cols { display:none; border:1px solid var(--border); border-radius:10px; padding:10px; margin-bottom:10px; background:var(--bg2); }
+  .power-cols.on { display:block; }
+  .power-cols-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(170px,1fr)); gap:8px 12px; }
+  .power-col-item { display:flex; align-items:center; gap:6px; font-size:12px; color:var(--text2); }
+  .dt th.selcol, .dt td.selcol { width:34px; text-align:center; padding-left:10px; padding-right:10px; }
   .kc .kpi-exp-split { font-size: 12px; font-weight: 500; color: var(--text2); margin-top: 6px; line-height: 1.35; font-variant-numeric: tabular-nums; min-height: 1.35em; }
   .spend-chart-wrap { border: 1px solid var(--border); border-radius: var(--rl); background: var(--bg2); padding: 14px 16px 12px; }
   .spend-chart-top { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; }
@@ -779,12 +808,12 @@
     <div class="ni" data-nav="insights" onclick="nav('insights',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>Insights
     </div>
-    <div class="ni" data-nav="chat" onclick="nav('chat',this)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Chat
-    </div>
     <!-- Hidden in internal-mode via .nav-public-facing (route/page kept). -->
     <div class="ni nav-public-facing" data-nav="marketing" onclick="nav('marketing',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>Marketing
+    </div>
+    <div class="ni" data-nav="chat" onclick="nav('chat',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>Chat
     </div>
     <div class="sb-spacer"></div>
     <div class="sb-div"></div>
@@ -928,9 +957,30 @@
     </div>
     <div class="card">
       <div class="sh"><div class="st">Income entries</div></div>
+      <div class="power-toolbar">
+        <input type="search" class="fi" id="income-power-search" placeholder="Search source, client, project, invoice..." autocomplete="off" />
+        <button type="button" class="btn" id="income-power-add-filter">+ Filter rule</button>
+        <button type="button" class="btn" id="income-power-columns">Columns</button>
+        <select class="fi" id="income-power-bulk-action" title="Bulk action">
+          <option value="">Bulk action...</option>
+          <option value="category:svc">Set category: Services</option>
+          <option value="category:ret">Set category: Retainer</option>
+          <option value="invoice:paid">Mark invoice paid</option>
+          <option value="invoice:sent">Mark invoice sent</option>
+          <option value="export:selected">Export selected CSV</option>
+          <option value="delete:selected">Delete selected</option>
+        </select>
+        <button type="button" class="btn btn-p" id="income-power-apply-bulk">Apply</button>
+        <button type="button" class="btn" id="income-power-export-all">Export filtered CSV</button>
+        <span class="power-chip" id="income-power-meta">0 rows</span>
+      </div>
+      <div id="income-power-columns-panel" class="power-cols">
+        <div class="power-cols-grid" id="income-power-columns-grid"></div>
+      </div>
+      <div id="income-power-filters" class="power-filters"></div>
       <div id="income-empty" style="font-size:13px;color:var(--text3);padding:8px 0;">No income recorded yet.</div>
       <table class="dt" id="income-table" style="display:none;">
-        <thead><tr><th>Date</th><th>Source</th><th>Client</th><th>Project</th><th>Category</th><th>Amount</th><th style="width:360px;">Actions</th></tr></thead>
+        <thead id="income-thead"></thead>
         <tbody id="income-tbody"></tbody>
       </table>
     </div>
@@ -1222,9 +1272,13 @@
   <div class="pg pg-chat" id="page-chat">
     <div class="chat-embed-header">
       <div class="pt">AI Chat</div>
-      <div class="ps">Powered by your 21st agent in <code>my-agent-next</code>. Run <code>npm run dev</code> (port 3000) or change the <code>chat-embed-url</code> meta tag for your deployed chat URL.</div>
+      <div class="ps">Embedded from the Next.js app in <code>my-agent-next</code> (21st agent <code>my-agent</code>). <strong>If the frame below is empty:</strong> run <code>cd my-agent-next && npm install && npm run dev</code> (port 3000), add <code>API_KEY_21ST</code> in <code>.env.local</code>, then click <strong>Reload embed</strong>. For production, point <code>chat-embed-url</code> at your HTTPS chat URL.</div>
     </div>
     <iframe id="chat-iframe" title="AI Chat" src="about:blank"></iframe>
+    <div class="chat-embed-actions">
+      <a id="chat-open-tab" class="btn btn-p" href="http://localhost:3000/chat" target="_blank" rel="noopener noreferrer">Open chat in new tab</a>
+      <button type="button" class="btn" id="chat-reload-embed">Reload embed</button>
+    </div>
   </div>
 
   <!-- SETTINGS -->

@@ -8156,6 +8156,29 @@ var incomePowerState = {
   // Expose so supabase-auth.js can trigger a reload after login.
   window.initDataFromSupabase = initDataFromSupabase;
 
+  function getChatEmbedUrl() {
+    var meta = document.querySelector('meta[name="chat-embed-url"]');
+    return meta ? (meta.getAttribute('content') || '').trim() : '';
+  }
+
+  function wireChatEmbed() {
+    var openTab = document.getElementById('chat-open-tab');
+    if (openTab) {
+      var u = getChatEmbedUrl();
+      if (u) openTab.setAttribute('href', u);
+    }
+    var reloadBtn = document.getElementById('chat-reload-embed');
+    if (reloadBtn) {
+      reloadBtn.addEventListener('click', function () {
+        var frame = document.getElementById('chat-iframe');
+        var chatUrl = getChatEmbedUrl();
+        if (!frame || !chatUrl) return;
+        var sep = chatUrl.indexOf('?') >= 0 ? '&' : '?';
+        frame.setAttribute('src', chatUrl + sep + '_cb=' + Date.now());
+      });
+    }
+  }
+
   function init() {
     state.filter = { mode: 'all', start: null, end: null };
     wireTransactionForm();
@@ -8172,6 +8195,7 @@ var incomePowerState = {
     wireSettingsSave();
     wireCloudSyncPanel();
     wireMarketingCampaign();
+    wireChatEmbed();
 
     // Simple page navigation wiring to replace the original bundle's nav().
     // Exposed globally so existing onclick="nav('dashboard', this)" continues to work.
@@ -8186,6 +8210,12 @@ var incomePowerState = {
       var target = document.getElementById('page-' + pageId);
       if (target) target.classList.add('on');
       stagePageMotion(target);
+
+      var mainEl = document.querySelector('.main');
+      if (mainEl) {
+        if (pageId === 'chat') mainEl.classList.add('main-chat-active');
+        else mainEl.classList.remove('main-chat-active');
+      }
 
       if (pageId === 'chat') {
         var frame = document.getElementById('chat-iframe');
