@@ -505,6 +505,27 @@
     justify-content: center;
     background: var(--bg2);
   }
+  /* Typing mode: dock composer near viewport bottom like ChatGPT */
+  #page-chat.chat-compose-docked .chat-shell {
+    padding-bottom: 170px;
+  }
+  #page-chat.chat-compose-docked .chat-composer-stack {
+    position: fixed;
+    left: 50%;
+    transform: translateX(-50%);
+    bottom: max(10px, env(safe-area-inset-bottom, 0px));
+    width: min(44rem, calc(100vw - 28px));
+    z-index: 130;
+    border: 1px solid var(--border);
+    border-radius: 20px;
+    background: var(--bg2);
+    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.14);
+    padding: 12px 14px 10px;
+  }
+  #page-chat.chat-compose-docked .chat-prompt-heading,
+  #page-chat.chat-compose-docked .chat-starters {
+    display: none;
+  }
   .chat-chip {
     font-size: 12px;
     padding: 7px 12px;
@@ -1758,6 +1779,15 @@
           <div style="font-size:12px;color:var(--text2);line-height:1.55;margin-top:10px;">
             Clients and transactions sync per signed-in account. Use the <strong>same email</strong> on each browser, then tap <strong>Sync</strong> to pull uploads from your other device.
           </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="fst">Demo Data</div>
+        <div class="fg">
+          <div style="font-size:12px;color:var(--text2);line-height:1.55;margin-bottom:10px;">
+            Load a realistic mock dataset (clients, projects, transactions, invoices, and campaigns) for demos.
+          </div>
+          <button type="button" class="btn btn-p" id="settings-btn-load-mock" style="max-width:240px;font-size:12px;padding:8px 12px;">Load Mock Demo Data</button>
         </div>
       </div>
     </div>
