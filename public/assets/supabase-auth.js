@@ -24,6 +24,11 @@
       return;
     }
     if (session && session.user) {
+      try {
+        if (typeof window.setBizdashScreenshotNoCloud === 'function') {
+          window.setBizdashScreenshotNoCloud(false);
+        }
+      } catch (_) {}
       setCurrentUser(session.user);
       if (event === 'INITIAL_SESSION' || event === 'SIGNED_IN' || event === 'TOKEN_REFRESHED') {
         showApp(session.user);
@@ -62,6 +67,31 @@
     if (loading) loading.style.display = 'none';
     if (shell) shell.style.display = 'flex';
     if (app) app.classList.remove('on');
+  }
+
+  window.__dashboardShowLogin = showLogin;
+
+  function showDemoDashboard() {
+    var demoId = window.DEMO_DASHBOARD_USER_ID || '00000000-0000-4000-8000-000000000001';
+    var demoUser = { id: demoId, email: 'demo@preview.local', app_metadata: {}, user_metadata: {} };
+    setCurrentUser(demoUser);
+    var loading = $('auth-loading');
+    var shell = $('auth-login-shell');
+    var app = $('app-shell');
+    if (loading) loading.style.display = 'none';
+    if (shell) shell.style.display = 'none';
+    if (app) app.classList.add('on');
+    var nameEl = $('user-name');
+    var roleEl = $('user-role');
+    var avatarEl = $('user-avatar');
+    if (nameEl) nameEl.textContent = 'Demo';
+    if (roleEl) roleEl.textContent = 'Preview';
+    if (avatarEl) avatarEl.textContent = 'D';
+    if (typeof window.loadScreenshotMockData === 'function') {
+      window.loadScreenshotMockData();
+    } else {
+      console.error('financial-core: loadScreenshotMockData not available (script order?)');
+    }
   }
 
   function showApp(user) {
@@ -146,6 +176,11 @@
             setError(res.error.message || 'Could not sign in.');
             return;
           }
+          try {
+            if (typeof window.setBizdashScreenshotNoCloud === 'function') {
+              window.setBizdashScreenshotNoCloud(false);
+            }
+          } catch (_) {}
           setCurrentUser(res.data.user);
           showApp(res.data.user);
         } catch (err) {
@@ -191,6 +226,13 @@
           console.error('signUp error', err);
           setError('Unexpected error signing up.');
         }
+      });
+    }
+
+    var btnViewDemo = $('gate-view-demo');
+    if (btnViewDemo) {
+      btnViewDemo.addEventListener('click', function () {
+        showDemoDashboard();
       });
     }
 

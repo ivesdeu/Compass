@@ -165,7 +165,15 @@
     });
   }
 
-  /** When set, initDataFromSupabase skips automatic upload/backfill so screenshot demo stays local. */
+  /** Login “View Demo” uses this id so data is isolated from real accounts in localStorage. */
+  var DEMO_DASHBOARD_USER_ID = '00000000-0000-4000-8000-000000000001';
+  function isDemoDashboardUser() {
+    var u = window.currentUser || currentUser;
+    return !!(u && u.id === DEMO_DASHBOARD_USER_ID);
+  }
+  window.DEMO_DASHBOARD_USER_ID = DEMO_DASHBOARD_USER_ID;
+
+  /** When set, initDataFromSupabase skips backfill uploads (used with screenshot/mock flows). */
   var SCREENSHOT_NO_CLOUD_KEY = 'bizdash_screenshot_no_cloud';
   function setScreenshotNoCloudUpload(on) {
     try {
@@ -689,6 +697,7 @@
    */
   async function persistClientToSupabase(client, writeMode) {
     persistClientLastError = '';
+    if (isDemoDashboardUser()) return 'skipped';
     supabase = window.supabaseClient || supabase;
     if (!supabase) {
       persistClientLastError = 'Supabase client is not loaded.';
@@ -1662,6 +1671,7 @@
     supabase = window.supabaseClient || supabase;
     currentUser = window.currentUser || currentUser;
     if (!supabase || !currentUser) return;
+    if (isDemoDashboardUser()) return;
     try {
       var dash = includeDashboard ? collectDashboardSettingsForCloud() : null;
       var existingSettings = null;
@@ -1824,7 +1834,6 @@
   }
 
   async function addCrmEvent(kind, title, details, clientId, idempotencyKey) {
-    if (isScreenshotNoCloudUpload()) return;
     supabase = window.supabaseClient || supabase;
     currentUser = window.currentUser || currentUser;
     if (!supabase || !currentUser) return;
@@ -3764,20 +3773,6 @@ var incomePowerState = {
         var orig = saveBtn.textContent;
         saveBtn.textContent = 'Saved!';
         setTimeout(function () { saveBtn.textContent = orig; }, 1400);
-      });
-    }
-
-    var demoLoad = document.getElementById('btn-screenshot-demo-load');
-    if (demoLoad) {
-      demoLoad.addEventListener('click', function () {
-        if (!confirm('Load sample clients, projects, transactions, and campaigns for screenshots? Data is saved in this browser only. Automatic upload to the cloud is paused until you tap “Resume cloud upload”.')) return;
-        loadScreenshotMockData();
-      });
-    }
-    var demoResume = document.getElementById('btn-screenshot-demo-resume');
-    if (demoResume) {
-      demoResume.addEventListener('click', function () {
-        resumeScreenshotCloudUpload();
       });
     }
   }
@@ -8368,15 +8363,15 @@ var incomePowerState = {
       if (authBtn) authBtn.textContent = 'Sign in';
       return;
     }
+    if (isDemoDashboardUser()) {
+      el.textContent = 'Demo mode: sample data only. Tap Exit demo to return to the login screen.';
+      if (syncBtn) syncBtn.disabled = true;
+      if (authBtn) authBtn.textContent = 'Exit demo';
+      return;
+    }
     el.textContent = 'Cloud: ' + (user.email || 'Signed in') + ' · ' + (clients && clients.length) + ' client(s) in this workspace';
     if (syncBtn) syncBtn.disabled = false;
     if (authBtn) authBtn.textContent = 'Sign out';
-    var shot = $('settings-screenshot-status');
-    if (shot) {
-      shot.textContent = isScreenshotNoCloudUpload()
-        ? 'Active: automatic cloud upload (empty-remote backfill) is paused. Tap Resume when finished.'
-        : 'Inactive. Loading the demo pauses auto-upload until you resume.';
-    }
   }
 
   function openCloudAuthModal() {
@@ -8399,6 +8394,19 @@ var incomePowerState = {
       authBtn.addEventListener('click', async function () {
         supabase = window.supabaseClient || supabase;
         var user = window.currentUser || currentUser;
+        if (user && isDemoDashboardUser()) {
+          window.currentUser = null;
+          currentUser = null;
+          setScreenshotNoCloudUpload(false);
+          if (typeof window.clearRuntimeDataForAuthChange === 'function') {
+            window.clearRuntimeDataForAuthChange(null);
+          }
+          if (typeof window.__dashboardShowLogin === 'function') {
+            window.__dashboardShowLogin();
+          }
+          refreshCloudSyncStatus();
+          return;
+        }
         if (user && supabase) {
           try {
             await supabase.auth.signOut();
@@ -8433,7 +8441,7 @@ var incomePowerState = {
           alert('Sync failed: ' + ((e && e.message) || String(e)));
           syncBtn.textContent = label || 'Sync';
         } finally {
-          syncBtn.disabled = !window.currentUser;
+          refreshCloudSyncStatus();
         }
       });
     }
@@ -9015,20 +9023,18 @@ var incomePowerState = {
       projectStatuses = loadStatuses();
       normalizeLocalIdsForSupabase();
 
-      if (supabase && currentUser) {
+      if (supabase && currentUser && !isDemoDashboardUser()) {
         var remoteTxs = await fetchTransactionsFromSupabase();
         var remoteClients = await fetchClientsFromSupabase();
 
         // One-time backfill: if remote is empty but local has data, upload local records.
-        if (!isScreenshotNoCloudUpload()) {
-          if (!remoteTxs.length && state.transactions.length) {
-            await uploadTransactionsToSupabase(state.transactions);
-            remoteTxs = await fetchTransactionsFromSupabase();
-          }
-          if (!remoteClients.length && clients.length) {
-            await uploadClientsToSupabase(clients);
-            remoteClients = await fetchClientsFromSupabase();
-          }
+        if (!isScreenshotNoCloudUpload() && !remoteTxs.length && state.transactions.length) {
+          await uploadTransactionsToSupabase(state.transactions);
+          remoteTxs = await fetchTransactionsFromSupabase();
+        }
+        if (!isScreenshotNoCloudUpload() && !remoteClients.length && clients.length) {
+          await uploadClientsToSupabase(clients);
+          remoteClients = await fetchClientsFromSupabase();
         }
 
         // Prefer remote when available; otherwise keep local fallback.
@@ -9142,8 +9148,8 @@ var incomePowerState = {
   }
 
   /**
-   * Fills local dashboard state for screenshots. Sets session flag so initDataFromSupabase does not
-   * backfill mock rows to Supabase. Does not call persist* / upload* itself.
+   * Fills local dashboard state for screenshots / “View Demo”. Sets session flag so sync does not
+   * backfill mock rows to Supabase for signed-in users who load mock from settings.
    */
   function loadScreenshotMockData() {
     setScreenshotNoCloudUpload(true);
@@ -9343,6 +9349,9 @@ var incomePowerState = {
   function clearRuntimeDataForAuthChange(nextUser) {
     currentUser = nextUser || null;
     window.currentUser = currentUser;
+    if (!nextUser || nextUser.id !== DEMO_DASHBOARD_USER_ID) {
+      setScreenshotNoCloudUpload(false);
+    }
     customersColumnPrefs = loadCustomersColumnPrefs();
     renderCustomersColumnsPanel();
     state.transactions = [];
@@ -9364,6 +9373,7 @@ var incomePowerState = {
   window.initDataFromSupabase = initDataFromSupabase;
   window.loadScreenshotMockData = loadScreenshotMockData;
   window.resumeScreenshotCloudUpload = resumeScreenshotCloudUpload;
+  window.setBizdashScreenshotNoCloud = setScreenshotNoCloudUpload;
 
   /**
    * Read-only ledger rollups for the in-dashboard assistant (same rules as compute(): categories svc/ret = revenue, lab/sw/ads/oth = expense, own excluded).
