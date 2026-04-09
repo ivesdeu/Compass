@@ -671,6 +671,8 @@
   .td-sub { display:block; font-size:0.75rem; font-weight:400; opacity:0.72; margin-top:2px; line-height:1.35; }
 
   .dt .btn { font-size:0.75rem; padding:5px 10px; border-radius:6px; font-weight:500; }
+  #customers-table th:last-child,
+  #customers-table td:last-child { min-width: 120px; }
   .dt select.fi {
     border-radius:6px;
     background-color:transparent;
@@ -1301,9 +1303,9 @@
         <button type="button" class="btn btn-p" id="btn-open-input">Update totals</button>
       </div>
     </div>
-    <div class="card mb">
-      <div class="sh" style="align-items:flex-start;gap:14px;">
-        <div>
+    <div style="margin-bottom:10px;">
+      <div style="display:flex;align-items:flex-start;gap:14px;">
+        <div style="padding:2px 2px 0;">
           <div class="st" id="crm-welcome">Good day</div>
           <div class="ss" id="crm-local-date">—</div>
         </div>

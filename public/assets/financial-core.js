@@ -5962,9 +5962,11 @@ var incomePowerState = {
           '<td class="tdp" style="' + profitStyle + '">' + fmtCurrency(pr.profit) + '</td>' +
           '<td>' + pr.marginStr + '</td>' +
           '<td>' + pr.roiStr + '</td>' +
-          '<td style="white-space:nowrap;">' +
-            '<button type="button" class="btn" data-client-edit="' + c.id + '" style="margin-right:6px;">Edit</button>' +
-            '<button type="button" class="btn" data-client-del="' + c.id + '" style="color:var(--red);">Delete</button>' +
+          '<td style="min-width:120px;">' +
+            '<div style="display:flex;gap:6px;flex-wrap:wrap;">' +
+              '<button type="button" class="btn" data-client-edit="' + c.id + '">Edit</button>' +
+              '<button type="button" class="btn" data-client-del="' + c.id + '" style="color:var(--red);">Delete</button>' +
+            '</div>' +
           '</td>' +
         '</tr>';
       }).join('');
