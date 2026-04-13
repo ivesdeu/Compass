@@ -2765,10 +2765,15 @@ var incomePowerState = {
           oth: 'Other',
         }[tx.category] || tx.category || '—';
       }
+      var isInflow = tx.category === 'svc' || tx.category === 'ret' || tx.category === 'own';
+      var isOutflow = tx.category === 'lab' || tx.category === 'sw' || tx.category === 'ads' || tx.category === 'oth';
+      var amountNumber = Math.abs(Number(tx.amount || 0));
+      var amountSign = (isOutflow || (!isInflow && Number(tx.amount || 0) < 0)) ? '-' : '+';
+      var amountColor = amountSign === '-' ? 'var(--red)' : 'var(--green)';
       return '<tr>' +
         '<td>' + d + '</td>' +
         '<td>' + catLabel + '</td>' +
-        '<td class="tdp">' + fmtCurrency(tx.amount) + '</td>' +
+        '<td class="tdp" style="color:' + amountColor + ' !important;">' + amountSign + fmtCurrency(amountNumber) + '</td>' +
         '<td style="max-width:220px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="' + (tx.description || '') + '">' + (tx.description || '—') + '</td>' +
         '<td style="white-space:nowrap;"><button type="button" class="btn" data-tx-del="' + tx.id + '" style="color:var(--red);">Delete</button></td>' +
         '</tr>';
