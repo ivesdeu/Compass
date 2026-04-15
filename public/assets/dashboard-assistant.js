@@ -398,6 +398,21 @@
     return null;
   }
 
+  function mergeAdvisorCrmDraft(contactRequest, crmProposal) {
+    var o = {};
+    if (contactRequest && typeof contactRequest === 'object') {
+      ['id', 'source', 'companyName', 'contactName', 'email', 'phone', 'notes', 'receivedAt'].forEach(function (k) {
+        if (contactRequest[k] != null && String(contactRequest[k]).trim() !== '') o[k] = contactRequest[k];
+      });
+    }
+    if (crmProposal && typeof crmProposal === 'object') {
+      ['companyName', 'contactName', 'email', 'phone', 'notes', 'status', 'industry'].forEach(function (k) {
+        if (crmProposal[k] != null && String(crmProposal[k]).trim() !== '') o[k] = crmProposal[k];
+      });
+    }
+    return o;
+  }
+
   function normalizeTask(task, message) {
     if (task && ADVISOR_TASKS[task]) return task;
     var q = norm(message || '');
@@ -777,6 +792,80 @@
       messageEl.appendChild(row);
     }
 
+    function appendCrmProposalControls(messageEl, usageMeta, crmProposal, contactRequestSnapshot) {
+      if (!messageEl || !usageMeta || !usageMeta.usageEventId) return;
+      var prop = crmProposal && typeof crmProposal === 'object' ? crmProposal : null;
+      if (!prop || !String(prop.companyName || '').trim()) return;
+      var merged = mergeAdvisorCrmDraft(contactRequestSnapshot, prop);
+      delete merged.confidence;
+      var row = document.createElement('div');
+      row.className = 'advisor-crm-proposal-actions';
+      row.style.display = 'flex';
+      row.style.gap = '6px';
+      row.style.flexWrap = 'wrap';
+      row.style.marginTop = '10px';
+      var review = document.createElement('button');
+      review.type = 'button';
+      review.className = 'btn';
+      review.textContent = 'Review in CRM';
+      var addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'btn btn-p';
+      addBtn.textContent = 'Add to CRM';
+      review.addEventListener('click', async function () {
+        if (typeof window.bizDashOpenClientModalWithDraft !== 'function') return;
+        review.disabled = true;
+        try {
+          if (typeof window.nav === 'function') window.nav('customers', null);
+          await window.bizDashOpenClientModalWithDraft(merged);
+          await logAdvisorActionOutcome({
+            id: mkUuid(),
+            user_id: window.currentUser && window.currentUser.id ? window.currentUser.id : null,
+            usage_event_id: usageMeta.usageEventId,
+            task: usageMeta.task,
+            action_id: 'crm-review-modal',
+            action_label: 'Review in CRM',
+            outcome: 'applied',
+            details: { companyName: merged.companyName || null },
+            created_at: new Date().toISOString(),
+          });
+        } finally {
+          review.disabled = false;
+        }
+      });
+      addBtn.addEventListener('click', async function () {
+        if (typeof window.bizDashCreateClientFromDraft !== 'function') return;
+        var label = String(merged.companyName || 'this contact').trim();
+        if (!window.confirm('Add ' + label + ' to your CRM now?')) return;
+        addBtn.disabled = true;
+        review.disabled = true;
+        var result = await window.bizDashCreateClientFromDraft(merged);
+        await logAdvisorActionOutcome({
+          id: mkUuid(),
+          user_id: window.currentUser && window.currentUser.id ? window.currentUser.id : null,
+          usage_event_id: usageMeta.usageEventId,
+          task: usageMeta.task,
+          action_id: 'crm-add-client',
+          action_label: 'Add to CRM',
+          outcome: result && result.ok ? 'applied' : 'error',
+          details: {
+            clientId: result && result.client && result.client.id ? result.client.id : null,
+            error: result && result.error ? result.error : null,
+          },
+          created_at: new Date().toISOString(),
+        });
+        if (result && result.ok && typeof window.nav === 'function') window.nav('customers', null);
+        else if (!result || !result.ok) {
+          window.alert((result && result.error) || 'Could not add client.');
+          addBtn.disabled = false;
+          review.disabled = false;
+        }
+      });
+      row.appendChild(review);
+      row.appendChild(addBtn);
+      messageEl.appendChild(row);
+    }
+
     async function handleSend(text) {
       if (isThinking) return;
       var t = (text || '').trim();
@@ -799,8 +888,13 @@
       var t0 = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
       var out;
       var usageMeta = null;
+      var contactSnapshot = null;
       try {
         var task = normalizeTask(pendingTask, t);
+        contactSnapshot =
+          typeof window.bizDashGetAdvisorContactContext === 'function' ? window.bizDashGetAdvisorContactContext() : null;
+        var clientsDigest =
+          typeof window.bizDashGetClientsDigestForAdvisor === 'function' ? window.bizDashGetClientsDigestForAdvisor() : [];
         var request = {
           task: task,
           message: t,
@@ -808,6 +902,8 @@
             page: 'advisor',
             hadImage: !!hadImage,
             selectedTool: selectedTool || null,
+            contactRequest: contactSnapshot,
+            clientsDigest: clientsDigest,
           },
           constraints: { maxBullets: 5, tone: 'concise' },
         };
@@ -841,6 +937,9 @@
         thinkingEl.removeChild(thinkingEl.firstChild);
       }
       renderAdvisorPayload(thinkingEl, out && out.response ? out.response : { text: 'No response.' });
+      if (out && out.response && out.response.crmProposal && usageMeta) {
+        appendCrmProposalControls(thinkingEl, usageMeta, out.response.crmProposal, contactSnapshot);
+      }
       if (out && out.response && Array.isArray(out.response.actions) && usageMeta) {
         appendActionButtons(thinkingEl, usageMeta, out.response.actions);
       }
@@ -885,6 +984,24 @@
 
     syncSendDisabled();
     autoResizeTa();
+
+    window.bizDashAskAdvisorToAddContactRequest = function (contactRequest) {
+      if (typeof window.bizDashSetAdvisorContactContext === 'function') {
+        window.bizDashSetAdvisorContactContext(contactRequest || null);
+      }
+      if (typeof window.nav === 'function') window.nav('chat', null);
+      seedWelcome();
+      var c = contactRequest && typeof contactRequest === 'object' ? contactRequest : {};
+      var company = String(c.companyName || '').trim();
+      var contact = String(c.contactName || '').trim();
+      var who = [contact, company].filter(Boolean).join(' at ');
+      ta.value = who
+        ? 'Add this contact request to my CRM: ' + who + '. Use Lead status and suggest any missing fields.'
+        : 'Add this contact request to my CRM with Lead status and suggest any missing fields.';
+      autoResizeTa();
+      syncSendDisabled();
+      ta.focus();
+    };
 
     window.seedDashboardChatWelcome = seedWelcome;
   };

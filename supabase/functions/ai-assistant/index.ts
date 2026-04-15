@@ -11,6 +11,17 @@ type RequestBody = {
   healthCheck?: boolean;
 };
 
+type CrmProposal = {
+  companyName: string;
+  contactName?: string;
+  email?: string;
+  phone?: string;
+  notes?: string;
+  status?: string;
+  industry?: string;
+  confidence?: "high" | "low";
+};
+
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
   "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
@@ -33,7 +44,54 @@ function normalizeTask(task?: string): AdvisorTask {
   return "general";
 }
 
-function buildStubPayload(task: AdvisorTask, message: string) {
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+function clampText(v: unknown, max: number) {
+  const s = String(v ?? "").trim();
+  return s.length > max ? s.slice(0, max) : s;
+}
+
+function parseCrmProposal(value: unknown): CrmProposal | null {
+  if (!isRecord(value)) return null;
+  const allowed = new Set(["companyName", "contactName", "email", "phone", "notes", "status", "industry", "confidence"]);
+  const keys = Object.keys(value);
+  if (keys.some((k) => !allowed.has(k))) return null;
+  const companyName = clampText(value.companyName, 200);
+  if (!companyName) return null;
+  const out: CrmProposal = { companyName };
+  const contactName = clampText(value.contactName, 200);
+  const email = clampText(value.email, 320);
+  const phone = clampText(value.phone, 80);
+  const notes = clampText(value.notes, 4000);
+  const status = clampText(value.status, 120);
+  const industry = clampText(value.industry, 120);
+  if (contactName) out.contactName = contactName;
+  if (email) out.email = email;
+  if (phone) out.phone = phone;
+  if (notes) out.notes = notes;
+  if (status) out.status = status;
+  if (industry) out.industry = industry;
+  if (value.confidence === "high" || value.confidence === "low") out.confidence = value.confidence;
+  return out;
+}
+
+function buildStubPayload(task: AdvisorTask, message: string, context?: Record<string, unknown>) {
+  const wantsCrm = /\b(add|create|save|insert)\b.*\b(crm|client|contact)\b|\bcrm\b.*\b(add|create|save|insert)\b/i.test(message);
+  const ctxContact = isRecord(context?.contactRequest) ? context?.contactRequest : null;
+  const stubProposal =
+    wantsCrm && ctxContact
+      ? parseCrmProposal({
+          companyName: ctxContact.companyName || "New contact",
+          contactName: ctxContact.contactName || "",
+          email: ctxContact.email || "",
+          phone: ctxContact.phone || "",
+          notes: ctxContact.notes || "Added from contact request via Advisor.",
+          status: "Lead",
+          confidence: "high",
+        })
+      : null;
   switch (task) {
     case "daily_brief":
       return {
@@ -92,6 +150,7 @@ function buildStubPayload(task: AdvisorTask, message: string) {
           "Use a specific task for richer structured output.",
         ],
         draft: message ? `Received request: "${message.slice(0, 220)}"` : "",
+        crmProposal: stubProposal,
         meta: { provider: "stub", apiConnected: false },
       };
   }
@@ -122,7 +181,8 @@ async function callAnthropic(
   const systemPrompt =
     "You are a business advisor assistant for a dashboard app. " +
     "Return ONLY valid JSON with this exact shape: " +
-    '{"title":"string","bullets":["string"],"actions":[{"id":"string","label":"string"}],"draft":"string","meta":{"provider":"anthropic","apiConnected":true}}. ' +
+    '{"title":"string","bullets":["string"],"actions":[{"id":"string","label":"string"}],"draft":"string","crmProposal":{"companyName":"string","contactName":"string","email":"string","phone":"string","notes":"string","status":"string","industry":"string","confidence":"high|low"},"meta":{"provider":"anthropic","apiConnected":true}}. ' +
+    "crmProposal is optional; include it only when the user asks to add/create a CRM contact or client. " +
     "Do not include markdown fences or extra text. Keep bullets <= 5.";
 
   const userPrompt =
@@ -184,12 +244,14 @@ async function callAnthropic(
         .filter((a) => a.id && a.label)
     : [];
   const draft = String(parsed.draft || "");
+  const crmProposal = parseCrmProposal(parsed.crmProposal);
 
   return {
     title,
     bullets: bullets.slice(0, 5),
     actions: actions.slice(0, 4),
     draft,
+    crmProposal,
     meta: { provider: "anthropic", apiConnected: true },
   };
 }
@@ -287,7 +349,7 @@ serve(async (req) => {
   const context = body.context && typeof body.context === "object" ? body.context : {};
   const constraints = body.constraints && typeof body.constraints === "object" ? body.constraints : {};
   if (!anthropicApiKey) {
-    const stub = buildStubPayload(task, message);
+    const stub = buildStubPayload(task, message, context);
     return jsonResponse(200, stub);
   }
 
@@ -296,7 +358,7 @@ serve(async (req) => {
     return jsonResponse(200, payload);
   } catch (err) {
     const details = err instanceof Error ? err.message : "Unknown Anthropic error";
-    const fallback = buildStubPayload(task, message);
+    const fallback = buildStubPayload(task, message, context);
     return jsonResponse(200, {
       ...fallback,
       meta: {

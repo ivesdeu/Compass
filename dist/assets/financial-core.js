@@ -101,6 +101,25 @@
     if (client.custTabAllocatedCost != null && isFinite(Number(client.custTabAllocatedCost))) {
       out.custTabAllocatedCost = Math.max(0, Number(client.custTabAllocatedCost));
     }
+    [
+      'salutation',
+      'firstName',
+      'lastName',
+      'title',
+      'reportsTo',
+      'description',
+      'owner',
+      'accountName',
+      'mailingCountry',
+      'mailingStreet',
+      'mailingCity',
+      'mailingState',
+      'mailingZip',
+    ].forEach(function (k) {
+      var v = client && client[k] != null ? String(client[k]).trim() : '';
+      if (v) out[k] = v;
+    });
+    if (client && client.emailOptOut === true) out.emailOptOut = true;
     return Object.keys(out).length ? out : null;
   }
 
@@ -115,6 +134,24 @@
     if (meta.custTabAllocatedCost != null && isFinite(Number(meta.custTabAllocatedCost))) {
       out.custTabAllocatedCost = Math.max(0, Number(meta.custTabAllocatedCost));
     }
+    [
+      'salutation',
+      'firstName',
+      'lastName',
+      'title',
+      'reportsTo',
+      'description',
+      'owner',
+      'accountName',
+      'mailingCountry',
+      'mailingStreet',
+      'mailingCity',
+      'mailingState',
+      'mailingZip',
+    ].forEach(function (k) {
+      if (meta[k] != null) out[k] = String(meta[k]);
+    });
+    if (meta.emailOptOut === true) out.emailOptOut = true;
     return out;
   }
 
@@ -147,6 +184,8 @@
       total_revenue: rev,
       created_at: createdIso,
       is_retainer: client.retainer === true,
+      pipeline_id: client.pipelineId || null,
+      pipeline_stage_id: client.pipelineStageId || null,
     };
     var cmeta = buildClientMetadata(client);
     row.metadata = cmeta || {};
@@ -265,6 +304,8 @@
   }
 
   var clients = [];
+  /** In-memory payload for Advisor “add to CRM” flows (set via window.bizDashSetAdvisorContactContext). */
+  var advisorContactContext = null;
   var customersColumnPrefs = loadCustomersColumnPrefs();
   var crmEvents = [];
   var weeklySummaries = [];
@@ -599,6 +640,10 @@
     if (tx.incomeCategoryLabel && String(tx.incomeCategoryLabel).trim()) {
       m.incomeCategoryLabel = String(tx.incomeCategoryLabel).trim();
     }
+    if (tx.importBatchId && String(tx.importBatchId).trim()) m.importBatchId = String(tx.importBatchId).trim();
+    if (tx.importSource && String(tx.importSource).trim()) m.importSource = String(tx.importSource).trim();
+    if (tx.externalId != null && String(tx.externalId).trim()) m.externalId = String(tx.externalId).trim();
+    if (tx.rawMemo != null && String(tx.rawMemo).trim()) m.rawMemo = String(tx.rawMemo).trim();
     return Object.keys(m).length ? m : null;
   }
 
@@ -617,6 +662,10 @@
     if (meta.incomeCategoryLabel != null && String(meta.incomeCategoryLabel).trim()) {
       out.incomeCategoryLabel = String(meta.incomeCategoryLabel).trim();
     }
+    if (meta.importBatchId != null && String(meta.importBatchId).trim()) out.importBatchId = String(meta.importBatchId).trim();
+    if (meta.importSource != null && String(meta.importSource).trim()) out.importSource = String(meta.importSource).trim();
+    if (meta.externalId != null && String(meta.externalId).trim()) out.externalId = String(meta.externalId).trim();
+    if (meta.rawMemo != null && String(meta.rawMemo).trim()) out.rawMemo = String(meta.rawMemo).trim();
     return out;
   }
 
@@ -791,6 +840,16 @@
           changed = true;
           console.warn('bizdash: retrying client persist without metadata — run ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS metadata jsonb DEFAULT \'{}\'::jsonb;');
         }
+        if (!changed && (/pipeline_id|pipeline_stage_id|schema|could not find.*column/i.test(errStr))) {
+          if (Object.prototype.hasOwnProperty.call(body, 'pipeline_id')) {
+            delete body.pipeline_id;
+            changed = true;
+          }
+          if (!changed && Object.prototype.hasOwnProperty.call(body, 'pipeline_stage_id')) {
+            delete body.pipeline_stage_id;
+            changed = true;
+          }
+        }
         if (!changed) {
           ['birthday', 'communication_style', 'preferred_channel', 'last_touch_at', 'next_follow_up_at', 'relationship_notes'].some(function (col) {
             if (changed) return true;
@@ -814,6 +873,92 @@
       persistClientLastError = String(err && err.message ? err.message : err);
       return 'error';
     }
+  }
+
+  var ADVISOR_CTX_MAX = {
+    id: 80,
+    source: 120,
+    companyName: 200,
+    contactName: 200,
+    email: 320,
+    phone: 80,
+    notes: 4000,
+    receivedAt: 40,
+  };
+
+  function sliceField(s, max) {
+    var t = String(s == null ? '' : s).trim();
+    return t.length > max ? t.slice(0, max) : t;
+  }
+
+  function normalizeAdvisorContactContext(obj) {
+    if (!obj || typeof obj !== 'object') return null;
+    var out = {
+      id: sliceField(obj.id, ADVISOR_CTX_MAX.id) || null,
+      source: sliceField(obj.source, ADVISOR_CTX_MAX.source) || null,
+      companyName: sliceField(obj.companyName, ADVISOR_CTX_MAX.companyName) || null,
+      contactName: sliceField(obj.contactName, ADVISOR_CTX_MAX.contactName) || null,
+      email: sliceField(obj.email, ADVISOR_CTX_MAX.email) || null,
+      phone: sliceField(obj.phone, ADVISOR_CTX_MAX.phone) || null,
+      notes: sliceField(obj.notes, ADVISOR_CTX_MAX.notes) || null,
+      receivedAt: sliceField(obj.receivedAt, ADVISOR_CTX_MAX.receivedAt) || null,
+    };
+    var has = !!(out.id || out.source || out.companyName || out.contactName || out.email || out.phone || out.notes || out.receivedAt);
+    return has ? out : null;
+  }
+
+  /**
+   * Build a new in-memory client row from a CRM draft (Advisor proposal or contact context).
+   * @returns {object|null} null if company name missing
+   */
+  function buildNewClientObjectFromDraft(draft) {
+    var d = draft || {};
+    var company = sliceField(d.companyName, ADVISOR_CTX_MAX.companyName);
+    if (!company) return null;
+    var firstName = sliceField(d.firstName, 120);
+    var lastName = sliceField(d.lastName, 120);
+    var contactName = sliceField(d.contactName, ADVISOR_CTX_MAX.contactName);
+    if (!contactName && (firstName || lastName)) {
+      contactName = [firstName, lastName].filter(Boolean).join(' ');
+    }
+    var client = {
+      id: uuid(),
+      companyName: company,
+      contactName: contactName,
+      status: sliceField(d.status, 120) || 'Lead',
+      industry: sliceField(d.industry, 120),
+      email: sliceField(d.email, ADVISOR_CTX_MAX.email),
+      phone: sliceField(d.phone, ADVISOR_CTX_MAX.phone),
+      notes: sliceField(d.notes, ADVISOR_CTX_MAX.notes),
+      birthday: d.birthday ? String(d.birthday).slice(0, 32) : '',
+      preferredChannel: sliceField(d.preferredChannel, 120),
+      communicationStyle: sliceField(d.communicationStyle, 120),
+      lastTouchAt: d.lastTouchAt ? String(d.lastTouchAt).slice(0, 32) : '',
+      nextFollowUpAt: d.nextFollowUpAt ? String(d.nextFollowUpAt).slice(0, 32) : '',
+      relationshipNotes: sliceField(d.relationshipNotes, 2000),
+      salutation: sliceField(d.salutation, 80),
+      firstName: firstName,
+      lastName: lastName,
+      title: sliceField(d.title, 160),
+      reportsTo: sliceField(d.reportsTo, 160),
+      description: sliceField(d.description, 4000),
+      owner: sliceField(d.owner, 160),
+      accountName: company,
+      mailingCountry: sliceField(d.mailingCountry, 120),
+      mailingStreet: sliceField(d.mailingStreet, 400),
+      mailingCity: sliceField(d.mailingCity, 120),
+      mailingState: sliceField(d.mailingState, 80),
+      mailingZip: sliceField(d.mailingZip, 32),
+      emailOptOut: d.emailOptOut === true,
+      totalRevenue: 0,
+      createdAt: Date.now(),
+      retainer: !!d.retainer,
+    };
+    if (d.pipelineId && d.pipelineStageId) {
+      client.pipelineId = d.pipelineId;
+      client.pipelineStageId = d.pipelineStageId;
+    }
+    return client;
   }
 
   async function deleteClientRemote(id) {
@@ -1512,7 +1657,7 @@
         phone: val('setting-phone'),
         address: val('setting-address'),
         period: val('setting-period'),
-        accent: val('setting-accent') || '#e8501a',
+        accent: parseAccentHexOrNull(val('setting-accent-hex')) || normalizeHexColor(val('setting-accent'), '#e8501a'),
         terms: Math.max(0, Math.round(numEl('setting-terms', 30))),
         tax: Math.max(0, numEl('setting-tax', 0)),
         currency: curEl && curEl.value ? curEl.value : 'USD',
@@ -1574,14 +1719,18 @@
       if (biz.phone != null) setv('setting-phone', biz.phone);
       if (biz.address != null) setv('setting-address', biz.address);
       if (biz.period != null) setv('setting-period', biz.period);
-      if (biz.accent) setv('setting-accent', biz.accent);
+      if (biz.accent) {
+        var accentNorm = normalizeHexColor(biz.accent, '#e8501a');
+        setv('setting-accent', accentNorm);
+        setv('setting-accent-hex', accentNorm);
+      }
       if (biz.terms != null) setv('setting-terms', String(biz.terms));
       if (biz.tax != null) setv('setting-tax', String(biz.tax));
       var cur = gid('setting-currency');
       if (cur && biz.currency) cur.value = biz.currency;
       var fis = gid('setting-fiscal');
       if (fis && biz.fiscal) fis.value = biz.fiscal;
-      if (biz.accent) applyAccentBranding(biz.accent);
+      if (biz.accent) applyAccentBranding(normalizeHexColor(biz.accent, '#e8501a'));
       applyBrandLogo(biz.logo_light_url || '', biz.logo_dark_url || '');
     }
     if (raw.budgets && typeof raw.budgets === 'object') {
@@ -1619,6 +1768,12 @@
     var m6 = s.match(/^#([0-9a-fA-F]{6})$/);
     if (m6) return '#' + m6[1].toLowerCase();
     return fallback;
+  }
+
+  /** Valid #rgb / #rrggbb only; otherwise null (use when empty string must not fall back to a default). */
+  function parseAccentHexOrNull(raw) {
+    var n = normalizeHexColor(raw, '');
+    return n && n.length === 7 ? n : null;
   }
 
   function hexToRgb(hex) {
@@ -1663,11 +1818,14 @@
     root.style.setProperty('--coral2', darkenHex(accent, 0.1));
     root.style.setProperty('--coral-bg', 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.08)');
 
-    // Keep chart palette aligned with each user's accent choice.
+    // Chart "branding kit" derived from accent (revenue line, bars, doughnut slices, spend borders).
     CHART_ORANGE = accent;
     CHART_ORANGE_FILL = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.1)';
     CHART_ORANGE_FILL_BAR = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.32)';
-    CHART_EXPENSE_ADVERTISING = accent;
+    CHART_ORANGE_BORDER_BAR = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.45)';
+    CHART_EXPENSE_LABOR = accent;
+    CHART_EXPENSE_SOFTWARE = darkenHex(accent, 0.14);
+    CHART_EXPENSE_ADVERTISING = darkenHex(accent, 0.26);
     CHART_VENDOR_PAL = [CHART_ORANGE, '#71717a', '#64748b', '#a1a1aa', '#94a3b8', '#78716c', '#d4d4d8', '#cbd5e1'];
   }
 
@@ -1798,6 +1956,8 @@
       totalRevenue: Number(row.total_revenue || 0),
       createdAt: row.created_at || null,
       retainer: retainer,
+      pipelineId: row.pipeline_id || null,
+      pipelineStageId: row.pipeline_stage_id || null,
     };
     return applyClientMetadata(base, meta);
   }
@@ -1862,6 +2022,584 @@
       var res = await supabase.from('crm_events').insert(payload);
       if (!res.error) crmEvents.unshift(mapCrmEventRow(payload));
     } catch (_) {}
+  }
+
+  // ---------- Workflow automation (schema v1; see supabase/workflow_automation.sql) ----------
+  // trigger: { v:1, type: 'client.stage_entered'|'client.status_changed'|'activity.created'|'campaign.status_changed', ... }
+  // actions: [{ type: 'set_client_stage'|'set_client_field'|'create_task'|'add_crm_event'|'notify_external', ... }]
+  var wfPipelines = [];
+  var wfStages = [];
+  var wfRules = [];
+  var wfTasks = [];
+  var wfDispatchDepth = 0;
+  var WF_MAX_ACTIONS = 8;
+  var WF_TRIGGER_TYPES = {
+    CLIENT_STAGE_ENTERED: 'client.stage_entered',
+    CLIENT_STATUS_CHANGED: 'client.status_changed',
+    ACTIVITY_CREATED: 'activity.created',
+    CAMPAIGN_STATUS_CHANGED: 'campaign.status_changed',
+  };
+
+  function wfStageSlugById(stageId) {
+    if (!stageId) return '';
+    var s = wfStages.find(function (x) { return x.id === stageId; });
+    return s ? String(s.slug || '') : '';
+  }
+
+  function wfDefaultClientPipelineId() {
+    var def = wfPipelines.find(function (p) { return p.entity === 'client' && p.is_default; });
+    if (def) return def.id;
+    var any = wfPipelines.find(function (p) { return p.entity === 'client'; });
+    return any ? any.id : null;
+  }
+
+  function wfStagesForPipeline(pid) {
+    if (!pid) return [];
+    return wfStages.filter(function (s) { return s.pipelineId === pid; }).sort(function (a, b) {
+      return (a.sortOrder || 0) - (b.sortOrder || 0);
+    });
+  }
+
+  function wfFillClientPipelineSelect(selEl, client) {
+    if (!selEl) return;
+    function escOpt(t) {
+      return String(t || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/"/g, '&quot;');
+    }
+    var pid = (client && client.pipelineId) || wfDefaultClientPipelineId();
+    var stages = wfStagesForPipeline(pid);
+    selEl.innerHTML = '<option value="">— None —</option>' +
+      stages.map(function (s) {
+        return '<option value="' + String(s.id).replace(/"/g, '&quot;') + '">' + escOpt(s.label) + '</option>';
+      }).join('');
+    if (client && client.pipelineStageId) selEl.value = client.pipelineStageId;
+    else selEl.value = '';
+  }
+
+  function mapWorkspaceTaskRow(row) {
+    return {
+      id: row.id,
+      title: row.title || '',
+      body: row.body || '',
+      status: row.status || 'open',
+      dueAt: row.due_at || null,
+      clientId: row.client_id || null,
+      campaignId: row.campaign_id || null,
+      createdBy: row.created_by || 'user',
+      workflowRunId: row.workflow_run_id || null,
+    };
+  }
+
+  async function wfRefreshFromSupabase() {
+    wfPipelines = [];
+    wfStages = [];
+    wfRules = [];
+    wfTasks = [];
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || isDemoDashboardUser()) return;
+    try {
+      var pr = await supabase.from('pipelines').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: true });
+      wfPipelines = pr.error ? [] : (pr.data || []).map(function (r) {
+        return { id: r.id, name: r.name, entity: r.entity, isDefault: !!r.is_default };
+      });
+      var sr = await supabase.from('pipeline_stages').select('*').eq('user_id', currentUser.id).order('sort_order', { ascending: true });
+      wfStages = sr.error ? [] : (sr.data || []).map(function (r) {
+        return { id: r.id, pipelineId: r.pipeline_id, label: r.label, slug: r.slug, sortOrder: r.sort_order || 0, color: r.color || '' };
+      });
+      var rr = await supabase.from('workflow_rules').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: true });
+      wfRules = rr.error ? [] : (rr.data || []).map(function (r) {
+        return {
+          id: r.id,
+          name: r.name,
+          enabled: r.enabled !== false,
+          pipelineId: r.pipeline_id || null,
+          trigger: typeof r.trigger === 'object' && r.trigger ? r.trigger : {},
+          actions: Array.isArray(r.actions) ? r.actions : [],
+        };
+      });
+      var tr = await supabase.from('workspace_tasks').select('*').eq('user_id', currentUser.id).order('due_at', { ascending: true }).limit(200);
+      wfTasks = tr.error ? [] : (tr.data || []).map(mapWorkspaceTaskRow);
+    } catch (e) {
+      console.warn('wfRefreshFromSupabase', e);
+    }
+  }
+
+  function wfValidateRule(rule) {
+    var errs = [];
+    if (!rule || typeof rule !== 'object') return { ok: false, errors: ['invalid rule'] };
+    var tr = rule.trigger || {};
+    if (tr.v !== 1) errs.push('trigger.v must be 1');
+    var tt = tr.type;
+    var okT = [
+      WF_TRIGGER_TYPES.CLIENT_STAGE_ENTERED,
+      WF_TRIGGER_TYPES.CLIENT_STATUS_CHANGED,
+      WF_TRIGGER_TYPES.ACTIVITY_CREATED,
+      WF_TRIGGER_TYPES.CAMPAIGN_STATUS_CHANGED,
+    ];
+    if (!tt || okT.indexOf(tt) === -1) errs.push('trigger.type must be a supported v1 type');
+    var acts = rule.actions;
+    if (!Array.isArray(acts)) errs.push('actions must be an array');
+    else if (acts.length > WF_MAX_ACTIONS) errs.push('at most ' + WF_MAX_ACTIONS + ' actions');
+    else {
+      var okActs = {
+        set_client_stage: 1,
+        set_client_field: 1,
+        create_task: 1,
+        add_crm_event: 1,
+        notify_external: 1,
+      };
+      acts.forEach(function (a, i) {
+        if (!a || typeof a !== 'object' || !a.type) errs.push('action ' + i + ' needs type');
+        else if (!okActs[a.type]) errs.push('action ' + i + ' unknown type ' + a.type);
+      });
+    }
+    return { ok: !errs.length, errors: errs };
+  }
+
+  function wfMatchTrigger(rule, evt) {
+    var t = rule.trigger || {};
+    if (t.v !== 1) return false;
+    if (evt.kind === 'client_updated' && t.type === WF_TRIGGER_TYPES.CLIENT_STAGE_ENTERED) {
+      if (!evt.after) return false;
+      var prev = evt.before ? evt.before.pipelineStageId : null;
+      var next = evt.after.pipelineStageId || null;
+      if (prev === next) return false;
+      if (t.stage_slug && wfStageSlugById(next) !== t.stage_slug) return false;
+      if (t.from_slug && wfStageSlugById(prev) !== t.from_slug) return false;
+      if (rule.pipelineId && evt.after.pipelineId && rule.pipelineId !== evt.after.pipelineId) return false;
+      return true;
+    }
+    if (evt.kind === 'client_updated' && t.type === WF_TRIGGER_TYPES.CLIENT_STATUS_CHANGED) {
+      if (!evt.after) return false;
+      var bs = (evt.before && evt.before.status) || '';
+      var as = evt.after.status || '';
+      if (bs === as) return false;
+      if (t.status_contains && as.toLowerCase().indexOf(String(t.status_contains).toLowerCase()) === -1) return false;
+      return true;
+    }
+    if (evt.kind === 'activity_created' && t.type === WF_TRIGGER_TYPES.ACTIVITY_CREATED) {
+      if (!evt.activity) return false;
+      if (t.activity_type && evt.activity.activity_type !== t.activity_type) return false;
+      return true;
+    }
+    if (evt.kind === 'campaign_updated' && t.type === WF_TRIGGER_TYPES.CAMPAIGN_STATUS_CHANGED) {
+      if (!evt.after) return false;
+      var bs2 = evt.before && evt.before.status;
+      var as2 = evt.after.status;
+      if (bs2 === as2) return false;
+      if (t.status && evt.after.status !== t.status) return false;
+      return true;
+    }
+    return false;
+  }
+
+  function wfIdempotencyKey(rule, evt) {
+    var day = new Date().toISOString().slice(0, 10);
+    if (evt.kind === 'client_updated') {
+      return rule.id + ':client:' + (evt.after && evt.after.id) + ':' + String(evt.after && evt.after.pipelineStageId || '') + ':' + day;
+    }
+    if (evt.kind === 'activity_created' && evt.activity && evt.activity.id) {
+      return rule.id + ':activity:' + evt.activity.id;
+    }
+    if (evt.kind === 'campaign_updated') {
+      return rule.id + ':campaign:' + (evt.after && evt.after.id) + ':' + String(evt.after && evt.after.status || '') + ':' + day;
+    }
+    return rule.id + ':misc:' + day + ':' + String(Math.random()).slice(2, 10);
+  }
+
+  function wfCloneClientForWorkflow(c) {
+    if (!c) return null;
+    try {
+      return JSON.parse(JSON.stringify(c));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function wfCloneCampaign(c) {
+    if (!c) return null;
+    try {
+      return JSON.parse(JSON.stringify(c));
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function wfTryInsertWorkflowRun(ruleId, idempotencyKey, triggerPayload) {
+    var rid = uuid();
+    var row = {
+      id: rid,
+      user_id: currentUser.id,
+      rule_id: ruleId,
+      idempotency_key: idempotencyKey,
+      trigger_payload: triggerPayload,
+      status: 'running',
+    };
+    try {
+      var res = await supabase.from('workflow_runs').insert(row);
+      if (res.error) {
+        var es = JSON.stringify(res.error || {});
+        if (/duplicate|23505|unique/i.test(es)) return null;
+        console.error('workflow_runs insert', res.error);
+        return null;
+      }
+      return rid;
+    } catch (e) {
+      console.error('workflow_runs insert', e);
+      return null;
+    }
+  }
+
+  async function wfUpdateWorkflowRun(runId, status, errMsg) {
+    if (!runId) return;
+    try {
+      await supabase.from('workflow_runs').update({ status: status, error: errMsg || null }).eq('id', runId).eq('user_id', currentUser.id);
+    } catch (_) {}
+  }
+
+  async function wfInsertOutboxStub(channel, payload) {
+    try {
+      await supabase.from('workflow_outbox').insert({
+        id: uuid(),
+        user_id: currentUser.id,
+        channel: channel || 'stub',
+        payload: payload || {},
+      });
+    } catch (_) {}
+  }
+
+  function wfFindStageBySlug(pipelineId, slug) {
+    return wfStages.find(function (s) {
+      return s.pipelineId === pipelineId && s.slug === slug;
+    });
+  }
+
+  async function wfExecuteActions(rule, evt, runId) {
+    var acts = Array.isArray(rule.actions) ? rule.actions : [];
+    var err = '';
+    try {
+      for (var i = 0; i < acts.length; i++) {
+        var a = acts[i];
+        if (!a || !a.type) continue;
+        if (a.type === 'set_client_stage') {
+          var client = evt.kind === 'client_updated' && evt.after ? evt.after : evt.client;
+          if (!client || !client.id) continue;
+          var pid = rule.pipelineId || client.pipelineId || wfDefaultClientPipelineId();
+          if (!pid || !a.stage_slug) continue;
+          var st = wfFindStageBySlug(pid, a.stage_slug);
+          if (!st) continue;
+          clients = clients.map(function (c) {
+            if (c.id !== client.id) return c;
+            var n = Object.assign({}, c, { pipelineId: pid, pipelineStageId: st.id, status: st.label });
+            return n;
+          });
+          var updated = clients.find(function (c) { return c.id === client.id; });
+          saveClients(clients);
+          if (updated) await persistClientToSupabase(updated, 'update');
+        } else if (a.type === 'set_client_field') {
+          var fld = String(a.field || '').trim();
+          var allowed = { status: 1, notes: 1, nextFollowUpAt: 1 };
+          if (!allowed[fld]) continue;
+          var cid = (evt.after && evt.after.id) || (evt.client && evt.client.id);
+          if (!cid) continue;
+          var val = a.value != null ? String(a.value) : '';
+          clients = clients.map(function (c) {
+            if (c.id !== cid) return c;
+            var n = Object.assign({}, c);
+            if (fld === 'notes' && a.append) {
+              n.notes = (n.notes || '') + (n.notes ? '\n' : '') + val;
+            } else {
+              n[fld] = val;
+            }
+            return n;
+          });
+          var u2 = clients.find(function (c) { return c.id === cid; });
+          saveClients(clients);
+          if (u2) await persistClientToSupabase(u2, 'update');
+        } else if (a.type === 'create_task') {
+          var title = String(a.title || 'Follow up').slice(0, 500);
+          var dueDays = Math.max(0, Math.min(365, parseInt(a.due_days, 10) || 0));
+          var due = new Date();
+          due.setDate(due.getDate() + dueDays);
+          var cliId = (evt.after && evt.after.id) || (evt.client && evt.client.id) || null;
+          var taskRow = {
+            id: uuid(),
+            user_id: currentUser.id,
+            title: title,
+            body: String(a.body || ''),
+            status: 'open',
+            due_at: due.toISOString(),
+            client_id: cliId,
+            campaign_id: evt.after && evt.kind === 'campaign_updated' ? evt.after.id : null,
+            created_by: 'workflow',
+            workflow_run_id: runId,
+          };
+          var ins = await supabase.from('workspace_tasks').insert(taskRow);
+          if (!ins.error) wfTasks.push(mapWorkspaceTaskRow(taskRow));
+        } else if (a.type === 'add_crm_event') {
+          var k = String(a.kind || 'workflow').slice(0, 40);
+          var ttl = String(a.title || rule.name || 'Workflow').slice(0, 200);
+          await addCrmEvent(k, ttl, { ruleId: rule.id, runId: runId }, evt.after && evt.after.id || evt.client && evt.client.id || null, 'wf:' + runId + ':' + i);
+        } else if (a.type === 'notify_external') {
+          await wfInsertOutboxStub(a.channel || 'stub', { ruleId: rule.id, runId: runId, message: a.message || '' });
+          await addCrmEvent('workflow', 'External notify (stub): ' + String(a.message || 'queued').slice(0, 120), { channel: a.channel }, evt.after && evt.after.id || null, 'wf-out:' + runId + ':' + i);
+        }
+      }
+      await wfUpdateWorkflowRun(runId, 'success', null);
+    } catch (e) {
+      err = String(e && e.message ? e.message : e);
+      await wfUpdateWorkflowRun(runId, 'error', err);
+    }
+  }
+
+  async function runWorkflowDispatch(evt) {
+    if (!evt || !evt.kind) return;
+    if (wfDispatchDepth > 0) return;
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || isDemoDashboardUser()) return;
+    await wfRefreshFromSupabase();
+    if (!wfRules.length) return;
+    wfDispatchDepth++;
+    try {
+      for (var ri = 0; ri < wfRules.length; ri++) {
+        var rule = wfRules[ri];
+        if (!rule || !rule.enabled) continue;
+        var v = wfValidateRule(rule);
+        if (!v.ok) continue;
+        if (!wfMatchTrigger(rule, evt)) continue;
+        var idem = wfIdempotencyKey(rule, evt);
+        var runId = await wfTryInsertWorkflowRun(rule.id, idem, evt);
+        if (!runId) continue;
+        await wfExecuteActions(rule, evt, runId);
+      }
+    } finally {
+      wfDispatchDepth--;
+    }
+  }
+
+  async function wfCreateDefaultClientPipeline() {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser) return { ok: false, error: 'Sign in required' };
+    await wfRefreshFromSupabase();
+    if (wfPipelines.some(function (p) { return p.entity === 'client'; })) {
+      return { ok: false, error: 'You already have a client pipeline. Delete stages in Supabase or reuse it.' };
+    }
+    var pid = uuid();
+    var insP = await supabase.from('pipelines').insert({
+      id: pid,
+      user_id: currentUser.id,
+      name: 'Sales',
+      entity: 'client',
+      is_default: true,
+    });
+    if (insP.error) return { ok: false, error: formatSupabaseErr(insP.error) };
+    var stages = [
+      { label: 'Lead', slug: 'lead', sort: 0 },
+      { label: 'Qualified', slug: 'qualified', sort: 1 },
+      { label: 'Customer', slug: 'customer', sort: 2 },
+    ];
+    for (var i = 0; i < stages.length; i++) {
+      var st = stages[i];
+      await supabase.from('pipeline_stages').insert({
+        id: uuid(),
+        pipeline_id: pid,
+        user_id: currentUser.id,
+        label: st.label,
+        slug: st.slug,
+        sort_order: st.sort,
+      });
+    }
+    await wfRefreshFromSupabase();
+    return { ok: true };
+  }
+
+  async function wfInsertActivity(clientId, activityType, notes, occurredAt) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !clientId) return null;
+    var row = {
+      id: uuid(),
+      user_id: currentUser.id,
+      client_id: clientId,
+      activity_type: activityType || 'meeting',
+      notes: notes || '',
+      occurred_at: occurredAt || new Date().toISOString(),
+    };
+    try {
+      var res = await supabase.from('crm_activities').insert(row).select('id');
+      if (res.error || !res.data || !res.data.length) {
+        if (res.error) console.error('crm_activities insert', res.error);
+        return null;
+      }
+      return Object.assign({}, row, { id: res.data[0].id, activity_type: row.activity_type });
+    } catch (e) {
+      console.error('crm_activities insert', e);
+      return null;
+    }
+  }
+
+  async function wfUpsertRuleToSupabase(rule) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser) return { ok: false, error: 'Sign in required' };
+    var v = wfValidateRule(rule);
+    if (!v.ok) return { ok: false, error: v.errors.join('; ') };
+    var row = {
+      id: rule.id || uuid(),
+      user_id: currentUser.id,
+      name: rule.name || 'Rule',
+      enabled: rule.enabled !== false,
+      pipeline_id: rule.pipelineId || null,
+      trigger: rule.trigger,
+      actions: rule.actions,
+      updated_at: new Date().toISOString(),
+    };
+    try {
+      var res = await supabase.from('workflow_rules').upsert(row, { onConflict: 'id' });
+      if (res.error) return { ok: false, error: formatSupabaseErr(res.error) };
+      await wfRefreshFromSupabase();
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: String(e && e.message ? e.message : e) };
+    }
+  }
+
+  async function wfDeleteRuleById(ruleId) {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !ruleId) return;
+    try {
+      await supabase.from('workflow_rules').delete().eq('id', ruleId).eq('user_id', currentUser.id);
+      await wfRefreshFromSupabase();
+    } catch (_) {}
+  }
+
+  async function wfSeedExampleMeetingRule() {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser) {
+      alert('Sign in to create automation rules.');
+      return;
+    }
+    await wfRefreshFromSupabase();
+    var pid = wfDefaultClientPipelineId();
+    if (!pid) {
+      alert('Create a default client pipeline first (button above).');
+      return;
+    }
+    if (!wfFindStageBySlug(pid, 'qualified')) {
+      alert('Default pipeline must include a stage with slug \"qualified\" (included in the default template).');
+      return;
+    }
+    var r = {
+      id: uuid(),
+      name: 'Meeting logged → Qualified + follow-up task',
+      enabled: true,
+      pipelineId: pid,
+      trigger: { v: 1, type: WF_TRIGGER_TYPES.ACTIVITY_CREATED, activity_type: 'meeting' },
+      actions: [
+        { type: 'set_client_stage', stage_slug: 'qualified' },
+        { type: 'create_task', title: 'Follow up after meeting', due_days: 2, body: 'Created by workflow automation' },
+        { type: 'add_crm_event', kind: 'workflow', title: 'Post-meeting automation ran' },
+      ],
+    };
+    var out = await wfUpsertRuleToSupabase(r);
+    if (!out.ok) alert(out.error || 'Could not save rule');
+    else renderAutomationSettings();
+  }
+
+  function renderAutomationSettings() {
+    var host = $('wf-automation-dynamic');
+    if (!host) return;
+    var pline = wfPipelines.filter(function (p) { return p.entity === 'client'; }).map(function (p) {
+      return '<li style="margin:4px 0;">' + esc(p.name) + ' · ' + wfStages.filter(function (s) { return s.pipelineId === p.id; }).length + ' stages</li>';
+    }).join('');
+    var rules = wfRules.map(function (r) {
+      return '<div style="display:flex;justify-content:space-between;align-items:center;padding:10px 0;border-bottom:1px solid var(--border);gap:10px;">' +
+        '<div style="min-width:0;"><div style="font-weight:600;font-size:13px;">' + esc(r.name) + '</div>' +
+        '<div style="font-size:11px;color:var(--text3);">' + (r.enabled ? 'On' : 'Off') + ' · ' + esc((r.trigger && r.trigger.type) || '') + '</div></div>' +
+        '<button type="button" class="btn" data-wf-del-rule="' + esc(r.id) + '" style="color:var(--red);">Delete</button></div>';
+    }).join('');
+    host.innerHTML =
+      '<div style="font-size:12px;color:var(--text2);margin-bottom:8px;">Client pipelines</div>' +
+      (pline ? '<ul style="margin:0 0 14px 18px;padding:0;">' + pline + '</ul>' : '<p style="font-size:12px;color:var(--text3);">No client pipeline yet.</p>') +
+      '<div style="font-size:12px;color:var(--text2);margin-bottom:8px;">Rules (' + wfRules.length + ')</div>' +
+      (rules || '<p style="font-size:12px;color:var(--text3);">No rules yet.</p>');
+  }
+
+  function renderTasksPage() {
+    var body = $('wf-tasks-tbody');
+    if (!body) return;
+    var open = wfTasks.filter(function (t) { return t.status === 'open'; });
+    if (!open.length) {
+      body.innerHTML = '<tr><td colspan="4" style="font-size:13px;color:var(--text3);padding:12px;">No open tasks. Workflows can create tasks when triggers fire.</td></tr>';
+      return;
+    }
+    body.innerHTML = open.map(function (t) {
+      var cl = t.clientId ? (clients.find(function (c) { return c.id === t.clientId; }) || {}) : {};
+      var cn = cl.companyName || '—';
+      var due = t.dueAt ? String(t.dueAt).slice(0, 10) : '—';
+      return '<tr>' +
+        '<td style="font-size:13px;">' + esc(t.title) + '</td>' +
+        '<td style="font-size:12px;color:var(--text3);">' + esc(cn) + '</td>' +
+        '<td style="font-size:12px;">' + esc(due) + '</td>' +
+        '<td><button type="button" class="btn" data-wf-task-done="' + esc(t.id) + '">Done</button></td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  function wireWorkflowAutomation() {
+    var dyn = $('wf-automation-dynamic');
+    if (dyn && dyn.getAttribute('data-wf-wired') !== '1') {
+      dyn.setAttribute('data-wf-wired', '1');
+      dyn.addEventListener('click', async function (ev) {
+        var del = ev.target.closest('[data-wf-del-rule]');
+        if (del) {
+          var rid = del.getAttribute('data-wf-del-rule');
+          if (rid && confirm('Delete this rule?')) {
+            await wfDeleteRuleById(rid);
+            renderAutomationSettings();
+          }
+        }
+      });
+    }
+    var btnP = $('btn-wf-create-pipeline');
+    if (btnP && btnP.getAttribute('data-wf-wired') !== '1') {
+      btnP.setAttribute('data-wf-wired', '1');
+      btnP.addEventListener('click', async function () {
+        var r = await wfCreateDefaultClientPipeline();
+        if (!r.ok) alert(r.error || 'Could not create pipeline');
+        await wfRefreshFromSupabase();
+        renderAutomationSettings();
+      });
+    }
+    var btnS = $('btn-wf-seed-rule');
+    if (btnS && btnS.getAttribute('data-wf-wired') !== '1') {
+      btnS.setAttribute('data-wf-wired', '1');
+      btnS.addEventListener('click', function () {
+        wfSeedExampleMeetingRule();
+      });
+    }
+    var tasksTable = $('wf-tasks-table');
+    if (tasksTable && tasksTable.getAttribute('data-wf-wired') !== '1') {
+      tasksTable.setAttribute('data-wf-wired', '1');
+      tasksTable.addEventListener('click', async function (ev) {
+        var b = ev.target.closest('[data-wf-task-done]');
+        if (!b) return;
+        var tid = b.getAttribute('data-wf-task-done');
+        supabase = window.supabaseClient || supabase;
+        currentUser = window.currentUser || currentUser;
+        if (!supabase || !currentUser || !tid) return;
+        await supabase.from('workspace_tasks').update({ status: 'done', updated_at: new Date().toISOString() }).eq('id', tid).eq('user_id', currentUser.id);
+        await wfRefreshFromSupabase();
+        renderTasksPage();
+      });
+    }
   }
 
   /**
@@ -2408,17 +3146,19 @@ var incomePowerState = {
     } catch (_) {}
   }
 
-  // Light UI chart theme: orange primary, muted grays for secondary series
+  // Light UI chart theme: primary series follow Settings accent; muted grays for secondary series.
   var CHART_ORANGE = '#e8501a';
   var CHART_ORANGE_FILL = 'rgba(232, 80, 26, 0.1)';
   var CHART_ORANGE_FILL_BAR = 'rgba(232, 80, 26, 0.32)';
+  var CHART_ORANGE_BORDER_BAR = 'rgba(232, 80, 26, 0.45)';
   var CHART_EMPTY = '#e4e4e7';
   var CHART_TICK = '#71717a';
   var CHART_GRID = 'rgba(0, 0, 0, 0.04)';
   var CHART_EXPENSE_GRAY = '#d4d4d8';
-  /** Dashboard expense doughnut: keep brand palette while preserving clear contrast. */
-  var CHART_EXPENSE_SOFTWARE = '#52525b';
-  var CHART_EXPENSE_ADVERTISING = '#ea580c';
+  /** Expense doughnut / budget bars: accent + stepped shades (updated in applyAccentBranding). */
+  var CHART_EXPENSE_LABOR = CHART_ORANGE;
+  var CHART_EXPENSE_SOFTWARE = darkenHex(CHART_ORANGE, 0.14);
+  var CHART_EXPENSE_ADVERTISING = darkenHex(CHART_ORANGE, 0.26);
   var CHART_PALETTE_REST = ['#71717a', '#a1a1aa', '#d4d4d8', '#e4e4e7', '#52525b', '#94a3b8'];
   var CHART_VENDOR_PAL = [CHART_ORANGE, '#71717a', '#64748b', '#a1a1aa', '#94a3b8', '#78716c', '#d4d4d8', '#cbd5e1'];
 
@@ -2428,6 +3168,15 @@ var incomePowerState = {
       c.push(i === 0 ? CHART_ORANGE : CHART_PALETTE_REST[(i - 1) % CHART_PALETTE_REST.length]);
     }
     return c;
+  }
+
+  /** Re-apply current branding kit to a revenue-style line dataset (Chart.js caches colors on first create). */
+  function syncBrandedRevenueLineDataset(ds) {
+    if (!ds) return;
+    ds.borderColor = CHART_ORANGE;
+    ds.backgroundColor = CHART_ORANGE_FILL;
+    ds.pointBackgroundColor = CHART_ORANGE;
+    ds.pointHoverBackgroundColor = CHART_ORANGE;
   }
 
   function renderExpenseChart(c) {
@@ -2446,9 +3195,9 @@ var incomePowerState = {
 
     function expenseBreakdownSliceColor(label) {
       switch (label) {
-        case 'Labor': return '#f97316';
-        case 'Software': return CHART_EXPENSE_ADVERTISING;
-        case 'Advertising': return CHART_EXPENSE_SOFTWARE;
+        case 'Labor': return CHART_EXPENSE_LABOR;
+        case 'Software': return CHART_EXPENSE_SOFTWARE;
+        case 'Advertising': return CHART_EXPENSE_ADVERTISING;
         case 'Other': return CHART_EXPENSE_GRAY;
         default: return CHART_PALETTE_REST[0];
       }
@@ -2583,6 +3332,7 @@ var incomePowerState = {
       revExpChart.data.labels = labels;
       revExpChart.data.datasets[0].data = revData; // Revenue
       revExpChart.data.datasets[1].data = expData; // Expenses
+      revExpChart.data.datasets[0].backgroundColor = CHART_ORANGE;
       revExpChart.update('none');
     }
   }
@@ -2850,7 +3600,12 @@ var incomePowerState = {
     });
 
     var catLabels = { lab: 'Labor', sw: 'Software & Tools', ads: 'Advertising', oth: 'Other' };
-    var catColors = { lab: '#e8501a', sw: '#3366aa', ads: '#a86e28', oth: '#c8c7c2' };
+    var catColors = {
+      lab: CHART_EXPENSE_LABOR,
+      sw: CHART_EXPENSE_SOFTWARE,
+      ads: CHART_EXPENSE_ADVERTISING,
+      oth: CHART_EXPENSE_GRAY,
+    };
 
     var hasAnyBudget = (budgets.lab + budgets.sw + budgets.ads + budgets.oth) > 0;
     var totalBudget = budgets.lab + budgets.sw + budgets.ads + budgets.oth;
@@ -2939,12 +3694,16 @@ var incomePowerState = {
   }
 
   var SPEND_EXP_CATS = ['lab', 'sw', 'ads', 'oth'];
-  var SPEND_CAT_META = {
-    lab: { label: 'Labor', color: CHART_ORANGE },
-    sw: { label: 'Software', color: '#64748b' },
-    ads: { label: 'Advertising', color: '#78716c' },
-    oth: { label: 'Other', color: CHART_EXPENSE_GRAY },
-  };
+
+  function spendCategoryPillMeta(catKey) {
+    var m = {
+      lab: { label: 'Labor', color: CHART_EXPENSE_LABOR },
+      sw: { label: 'Software', color: CHART_EXPENSE_SOFTWARE },
+      ads: { label: 'Advertising', color: CHART_EXPENSE_ADVERTISING },
+      oth: { label: 'Other', color: CHART_EXPENSE_GRAY },
+    };
+    return m[catKey] || { label: String(catKey), color: CHART_EXPENSE_GRAY };
+  }
 
   function spendStartOfWeekMonday(d) {
     var x = new Date(d.getFullYear(), d.getMonth(), d.getDate(), 12, 0, 0, 0);
@@ -3242,7 +4001,10 @@ var incomePowerState = {
     if (slice === 'category') {
       SPEND_EXP_CATS.forEach(function (k) {
         var has = forPills.some(function (tx) { return tx.category === k; });
-        if (has) pillDefs.push({ id: 'cat:' + k, label: SPEND_CAT_META[k].label, color: SPEND_CAT_META[k].color });
+        if (has) {
+          var catMeta = spendCategoryPillMeta(k);
+          pillDefs.push({ id: 'cat:' + k, label: catMeta.label, color: catMeta.color });
+        }
       });
     } else if (slice === 'client') {
       var cliTot = {};
@@ -3554,7 +4316,7 @@ var incomePowerState = {
             data: dataValsFixed,
             stack: 'spend',
             backgroundColor: CHART_ORANGE_FILL_BAR,
-            borderColor: 'rgba(232,80,26,0.45)',
+            borderColor: CHART_ORANGE_BORDER_BAR,
             borderWidth: 1,
             borderRadius: { topLeft: 0, topRight: 0, bottomLeft: 4, bottomRight: 4 },
             order: 3,
@@ -3590,7 +4352,7 @@ var incomePowerState = {
             label: 'Spend',
             data: dataVals,
             backgroundColor: CHART_ORANGE_FILL_BAR,
-            borderColor: 'rgba(232,80,26,0.45)',
+            borderColor: CHART_ORANGE_BORDER_BAR,
             borderWidth: 1,
             borderRadius: 4,
             order: 2,
@@ -3720,22 +4482,45 @@ var incomePowerState = {
     }
     populateBudgetInputs();
     var accentInput = document.getElementById('setting-accent');
+    var accentHexInput = document.getElementById('setting-accent-hex');
     if (accentInput) {
-      applyAccentBranding(accentInput.value || '#e8501a');
-      accentInput.addEventListener('input', function () {
-        applyAccentBranding(accentInput.value || '#e8501a');
+      function accentHexNow() {
+        return parseAccentHexOrNull(accentHexInput && accentHexInput.value) || normalizeHexColor(accentInput.value, '#e8501a');
+      }
+      function syncAccentFieldsAndApply(hex) {
+        var h = normalizeHexColor(hex, '#e8501a');
+        accentInput.value = h;
+        if (accentHexInput) accentHexInput.value = h;
+        applyAccentBranding(h);
         if (state.computed) {
           renderAll();
           renderProjects();
         }
+      }
+      if (accentHexInput && !accentHexInput.value.trim()) {
+        accentHexInput.value = normalizeHexColor(accentInput.value, '#e8501a');
+      }
+      syncAccentFieldsAndApply(accentHexNow());
+      accentInput.addEventListener('input', function () {
+        syncAccentFieldsAndApply(normalizeHexColor(accentInput.value, '#e8501a'));
       });
       accentInput.addEventListener('change', function () {
-        applyAccentBranding(accentInput.value || '#e8501a');
-        if (state.computed) {
-          renderAll();
-          renderProjects();
-        }
+        syncAccentFieldsAndApply(normalizeHexColor(accentInput.value, '#e8501a'));
       });
+      if (accentHexInput) {
+        accentHexInput.addEventListener('input', function () {
+          var p = parseAccentHexOrNull(accentHexInput.value);
+          if (p) syncAccentFieldsAndApply(p);
+        });
+        accentHexInput.addEventListener('change', function () {
+          var p = parseAccentHexOrNull(accentHexInput.value);
+          if (p) {
+            syncAccentFieldsAndApply(p);
+          } else {
+            syncAccentFieldsAndApply(normalizeHexColor(accentInput.value, '#e8501a'));
+          }
+        });
+      }
     }
 
     function readBudgetInputsIntoState() {
@@ -4053,6 +4838,10 @@ var incomePowerState = {
     renderRetention();
     renderTimesheet();
     renderPersonableCards();
+    var pgTasks = document.getElementById('page-tasks');
+    if (pgTasks && pgTasks.classList.contains('on')) renderTasksPage();
+    var pgSet = document.getElementById('page-settings');
+    if (pgSet && pgSet.classList.contains('on')) renderAutomationSettings();
   }
 
   function renderPersonableCards() {
@@ -4345,6 +5134,8 @@ var incomePowerState = {
               backgroundColor: CHART_ORANGE_FILL,
               borderWidth: 2,
               pointRadius: 3,
+              pointBackgroundColor: CHART_ORANGE,
+              pointHoverBackgroundColor: CHART_ORANGE,
               fill: true,
               tension: 0.3,
             }],
@@ -4371,6 +5162,7 @@ var incomePowerState = {
       } else {
         retTrendChart.data.labels = labels;
         retTrendChart.data.datasets[0].data = values;
+        syncBrandedRevenueLineDataset(retTrendChart.data.datasets[0]);
         retTrendChart.update('none');
       }
     }
@@ -5031,6 +5823,10 @@ var incomePowerState = {
               backgroundColor: CHART_ORANGE_FILL,
               borderWidth: 2,
               pointRadius: 3,
+              pointBackgroundColor: CHART_ORANGE,
+              pointBorderColor: '#ffffff',
+              pointBorderWidth: 2,
+              pointHoverBackgroundColor: CHART_ORANGE,
               fill: true,
               tension: 0.35,
             }],
@@ -5048,6 +5844,7 @@ var incomePowerState = {
       } else {
         insTrendChart.data.labels = trendLabels;
         insTrendChart.data.datasets[0].data = trendData;
+        syncBrandedRevenueLineDataset(insTrendChart.data.datasets[0]);
         insTrendChart.update('none');
       }
     }
@@ -5945,6 +6742,7 @@ var incomePowerState = {
               pointBorderWidth: 2,
               pointRadius: 4,
               pointHoverRadius: 6,
+              pointHoverBackgroundColor: CHART_ORANGE,
             }],
           },
           options: {
@@ -5974,6 +6772,7 @@ var incomePowerState = {
       } else {
         revTrendChart.data.labels = labels;
         revTrendChart.data.datasets[0].data = data;
+        syncBrandedRevenueLineDataset(revTrendChart.data.datasets[0]);
         revTrendChart.update('none');
       }
     }
@@ -6126,6 +6925,7 @@ var incomePowerState = {
       } else {
         projMonthlyChart.data.labels = monthLabels;
         projMonthlyChart.data.datasets[0].data = monthCounts;
+        projMonthlyChart.data.datasets[0].backgroundColor = CHART_ORANGE;
         projMonthlyChart.update('none');
       }
     }
@@ -6322,6 +7122,7 @@ var incomePowerState = {
           '<td style="min-width:120px;">' +
             '<div style="display:flex;gap:6px;flex-wrap:nowrap;">' +
               '<button type="button" class="btn" data-client-edit="' + c.id + '">Edit</button>' +
+              '<button type="button" class="btn" data-log-meeting="' + c.id + '">Meeting</button>' +
               '<button type="button" class="btn" data-client-del="' + c.id + '" style="color:var(--red);">Delete</button>' +
             '</div>' +
           '</td>' +
@@ -7808,6 +8609,849 @@ var incomePowerState = {
     return tx.category === 'ret' ? 'Retainer' : 'Services';
   }
 
+  // ---------- CSV import & journal export (BYO data pipe) ----------
+
+  var LAST_IMPORT_BATCH_KEY = 'last-import-batch:v1';
+  var CSV_IMPORT_MAX_ROWS = 5000;
+
+  function csvImportStoragePayload(batchId, ids) {
+    return JSON.stringify({ batchId: batchId, ids: ids, at: Date.now() });
+  }
+
+  function loadLastImportBatch() {
+    try {
+      var raw = localStorage.getItem(storageKey(LAST_IMPORT_BATCH_KEY));
+      if (!raw) return null;
+      var o = JSON.parse(raw);
+      if (!o || !Array.isArray(o.ids) || !o.batchId) return null;
+      if (Date.now() - (o.at || 0) > 86400000) return null;
+      return o;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  function saveLastImportBatch(batchId, ids) {
+    try {
+      localStorage.setItem(storageKey(LAST_IMPORT_BATCH_KEY), csvImportStoragePayload(batchId, ids));
+    } catch (_) {}
+  }
+
+  function clearLastImportBatch() {
+    try {
+      localStorage.removeItem(storageKey(LAST_IMPORT_BATCH_KEY));
+    } catch (_) {}
+  }
+
+  function refreshUndoImportButtons() {
+    var last = loadLastImportBatch();
+    var en = !!(last && last.ids && last.ids.length);
+    ['btn-undo-last-import', 'btn-undo-last-import-settings'].forEach(function (id) {
+      var b = $(id);
+      if (b) b.disabled = !en;
+    });
+  }
+
+  function parseCsvLine(line) {
+    var out = [];
+    var cur = '';
+    var inQuotes = false;
+    for (var i = 0; i < line.length; i++) {
+      var ch = line[i];
+      if (ch === '"') {
+        if (inQuotes && line[i + 1] === '"') {
+          cur += '"';
+          i++;
+          continue;
+        }
+        inQuotes = !inQuotes;
+        continue;
+      }
+      if (!inQuotes && (ch === ',' || ch === ';')) {
+        out.push(cur);
+        cur = '';
+        continue;
+      }
+      cur += ch;
+    }
+    out.push(cur);
+    return out;
+  }
+
+  function detectCsvDelimiter(firstLine) {
+    if (!firstLine) return ',';
+    var semi = (firstLine.match(/;/g) || []).length;
+    var com = (firstLine.match(/,/g) || []).length;
+    return semi > com ? ';' : ',';
+  }
+
+  function splitCsvRows(text, delim) {
+    var rows = [];
+    var cur = '';
+    var inQuotes = false;
+    for (var i = 0; i < text.length; i++) {
+      var ch = text[i];
+      if (ch === '"') {
+        if (inQuotes && text[i + 1] === '"') {
+          cur += '"';
+          i++;
+          continue;
+        }
+        inQuotes = !inQuotes;
+        cur += ch;
+        continue;
+      }
+      if (!inQuotes && ch === '\n') {
+        if (cur.length || rows.length === 0) rows.push(cur);
+        cur = '';
+        continue;
+      }
+      if (!inQuotes && ch === '\r') continue;
+      cur += ch;
+    }
+    if (cur.length || rows.length === 0) rows.push(cur);
+    return rows.filter(function (r) {
+      return String(r).trim().length > 0;
+    });
+  }
+
+  function parseCsvToMatrix(text) {
+    var lines = String(text || '').replace(/^\uFEFF/, '').split(/\r?\n/).filter(function (l) {
+      return l.trim().length > 0;
+    });
+    if (!lines.length) return { headers: [], rows: [], delim: ',', warnings: ['File is empty.'] };
+    var delim = detectCsvDelimiter(lines[0]);
+    var headers = parseCsvLine(lines[0]).map(function (h) {
+      return String(h || '').trim();
+    });
+    var rows = [];
+    var warnings = [];
+    var max = Math.min(lines.length - 1, CSV_IMPORT_MAX_ROWS);
+    if (lines.length - 1 > CSV_IMPORT_MAX_ROWS) {
+      warnings.push('Only the first ' + CSV_IMPORT_MAX_ROWS + ' data rows will be imported.');
+    }
+    for (var r = 1; r <= max; r++) {
+      var cells = parseCsvLine(lines[r]);
+      if (cells.length < headers.length) {
+        while (cells.length < headers.length) cells.push('');
+      } else if (cells.length > headers.length) {
+        cells = cells.slice(0, headers.length);
+      }
+      rows.push(cells);
+    }
+    return { headers: headers, rows: rows, delim: delim, warnings: warnings };
+  }
+
+  function headerMatchScore(name, patterns) {
+    var n = String(name || '').toLowerCase();
+    var best = 0;
+    for (var i = 0; i < patterns.length; i++) {
+      if (n.indexOf(patterns[i]) !== -1) best = Math.max(best, patterns[i].length);
+    }
+    return best;
+  }
+
+  function guessCsvColumnIndices(headers) {
+    var bestDate = -1;
+    var bestDateScore = 0;
+    var bestAmt = -1;
+    var bestAmtScore = 0;
+    var bestDebit = -1;
+    var bestDebitScore = 0;
+    var bestCredit = -1;
+    var bestCreditScore = 0;
+    var bestDesc = -1;
+    var bestDescScore = 0;
+    var bestExt = -1;
+    var bestExtScore = 0;
+    headers.forEach(function (h, idx) {
+      var hs = headerMatchScore(h, [
+        'transaction date',
+        'posting date',
+        'posted date',
+        'date',
+        'value date',
+        'booking date',
+      ]);
+      if (hs > bestDateScore) {
+        bestDateScore = hs;
+        bestDate = idx;
+      }
+      hs = headerMatchScore(h, ['amount', 'amt', 'value']);
+      if (hs > bestAmtScore && headerMatchScore(h, ['debit', 'credit']) === 0) {
+        bestAmtScore = hs;
+        bestAmt = idx;
+      }
+      hs = headerMatchScore(h, ['debit', 'withdraw', 'payment', 'outflow']);
+      if (hs > bestDebitScore) {
+        bestDebitScore = hs;
+        bestDebit = idx;
+      }
+      hs = headerMatchScore(h, ['credit', 'deposit', 'inflow']);
+      if (hs > bestCreditScore) {
+        bestCreditScore = hs;
+        bestCredit = idx;
+      }
+      hs = headerMatchScore(h, ['description', 'memo', 'details', 'narrative', 'payee', 'name', 'merchant']);
+      if (hs > bestDescScore) {
+        bestDescScore = hs;
+        bestDesc = idx;
+      }
+      hs = headerMatchScore(h, ['transaction id', 'trans id', 'reference', 'fitid', 'id']);
+      if (hs > bestExtScore) {
+        bestExtScore = hs;
+        bestExt = idx;
+      }
+    });
+    return {
+      dateIdx: bestDate,
+      amountIdx: bestAmt,
+      debitIdx: bestDebit,
+      creditIdx: bestCredit,
+      descIdx: bestDesc,
+      extIdx: bestExt,
+    };
+  }
+
+  function fillImpColumnSelects(headers, guess) {
+    function opts(includeNone) {
+      var o = [];
+      if (includeNone) o.push('<option value="-1">— None —</option>');
+      headers.forEach(function (h, i) {
+        var lab = esc(String(h || 'Column ' + (i + 1)));
+        o.push('<option value="' + i + '">' + lab + '</option>');
+      });
+      return o.join('');
+    }
+    var dateSel = $('imp-col-date');
+    var amtSel = $('imp-col-amount');
+    var debSel = $('imp-col-debit');
+    var credSel = $('imp-col-credit');
+    var descSel = $('imp-col-description');
+    var extSel = $('imp-col-external');
+    if (dateSel) dateSel.innerHTML = opts(false);
+    if (amtSel) amtSel.innerHTML = opts(true);
+    if (debSel) debSel.innerHTML = opts(true);
+    if (credSel) credSel.innerHTML = opts(true);
+    if (descSel) descSel.innerHTML = opts(false);
+    if (extSel) extSel.innerHTML = opts(true);
+    function setVal(sel, idx) {
+      if (!sel || idx == null || idx < 0) return;
+      if (idx < headers.length) sel.value = String(idx);
+    }
+    setVal(dateSel, guess.dateIdx);
+    setVal(amtSel, guess.amountIdx);
+    setVal(debSel, guess.debitIdx >= 0 ? guess.debitIdx : -1);
+    setVal(credSel, guess.creditIdx >= 0 ? guess.creditIdx : -1);
+    setVal(descSel, guess.descIdx >= 0 ? guess.descIdx : 0);
+    setVal(extSel, guess.extIdx >= 0 ? guess.extIdx : -1);
+  }
+
+  function parseFlexibleMoney(raw) {
+    if (raw == null) return null;
+    var s = String(raw).trim();
+    if (!s) return null;
+    var neg = false;
+    if (/^\(.*\)$/.test(s)) {
+      neg = true;
+      s = s.slice(1, -1).trim();
+    }
+    if (s[0] === '-') {
+      neg = !neg;
+      s = s.slice(1).trim();
+    }
+    s = s.replace(/[$€£\s]/g, '');
+    var hasComma = s.indexOf(',') !== -1;
+    var hasDot = s.indexOf('.') !== -1;
+    if (hasComma && hasDot) {
+      if (s.lastIndexOf(',') > s.lastIndexOf('.')) {
+        s = s.replace(/\./g, '').replace(',', '.');
+      } else {
+        s = s.replace(/,/g, '');
+      }
+    } else if (hasComma && !hasDot) {
+      if (/^-?\d{1,3}(,\d{3})+$/.test(s)) s = s.replace(/,/g, '');
+      else s = s.replace(',', '.');
+    } else if (!hasComma && hasDot && /^-?\d{1,3}(\.\d{3})+$/.test(s)) {
+      s = s.replace(/\./g, '');
+    }
+    var n = parseFloat(s);
+    if (isNaN(n)) return null;
+    if (neg) n = -n;
+    return n;
+  }
+
+  function parseFlexibleDate(raw) {
+    if (raw == null) return null;
+    var s = String(raw).trim();
+    if (!s) return null;
+    var d = parseDate(s);
+    if (d && !isNaN(d.getTime())) return dateYMD(d);
+    var m = s.match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})$/);
+    if (m) {
+      var mo = +m[1] - 1;
+      var day = +m[2];
+      var y = +m[3];
+      if (y < 100) y += 2000;
+      var d2 = new Date(y, mo, day, 12, 0, 0, 0);
+      if (!isNaN(d2.getTime())) return dateYMD(d2);
+    }
+    m = s.match(/^(\d{4})-(\d{2})-(\d{2})/);
+    if (m) {
+      var d3 = new Date(+m[1], +m[2] - 1, +m[3], 12, 0, 0, 0);
+      if (!isNaN(d3.getTime())) return dateYMD(d3);
+    }
+    m = s.match(/^(\d{4})(\d{2})(\d{2})$/);
+    if (m) {
+      var d4 = new Date(+m[1], +m[2] - 1, +m[3], 12, 0, 0, 0);
+      if (!isNaN(d4.getTime())) return dateYMD(d4);
+    }
+    return null;
+  }
+
+  function impSelectedIndex(sel) {
+    if (!sel) return -1;
+    var v = parseInt(sel.value, 10);
+    return isNaN(v) ? -1 : v;
+  }
+
+  function txFingerprintForImport(dateYmd, amount, desc, ext) {
+    var d = (desc || '').toLowerCase().replace(/\s+/g, ' ').trim();
+    return (dateYmd || '') + '|' + String(amount) + '|' + d + '|' + String(ext || '').trim();
+  }
+
+  function buildExistingImportFingerprints() {
+    var ext = {};
+    var fp = {};
+    (state.transactions || []).forEach(function (t) {
+      if (!t || !t.id) return;
+      if (t.externalId) ext[String(t.externalId).trim()] = true;
+      fp[txFingerprintForImport(t.date, t.amount, t.description || t.note || '', t.externalId)] = true;
+    });
+    return { extIds: ext, fps: fp };
+  }
+
+  function categoryLabelForJournal(code, tx) {
+    if (code === 'svc' || code === 'ret') return displayIncomeCategory(tx);
+    var m = {
+      lab: 'Labor',
+      sw: 'Software & tools',
+      ads: 'Advertising',
+      oth: 'Other',
+      own: 'Owner investment',
+    };
+    return m[code] || code || '—';
+  }
+
+  function journalFlowForTx(tx) {
+    var c = tx && tx.category;
+    if (c === 'svc' || c === 'ret' || c === 'own') return 'Inflow';
+    return 'Outflow';
+  }
+
+  function defaultJournalExportRange() {
+    var f = state.filter || { mode: 'all', start: null, end: null };
+    var end = new Date();
+    var start = new Date(end.getTime());
+    if (f.mode === 'range' && f.start && f.end) {
+      return { start: f.start, end: f.end };
+    }
+    if (f.mode === 'month') {
+      var y = end.getFullYear();
+      var m0 = end.getMonth();
+      var first = new Date(y, m0, 1, 12, 0, 0, 0);
+      var last = new Date(y, m0 + 1, 0, 12, 0, 0, 0);
+      return { start: dateYMD(first), end: dateYMD(last) };
+    }
+    start.setDate(start.getDate() - 89);
+    return { start: dateYMD(start), end: dateYMD(end) };
+  }
+
+  function journalCsvEscapeCell(v) {
+    return '"' + String(v == null ? '' : v).replace(/"/g, '""') + '"';
+  }
+
+  function buildJournalCsvLines(startYmd, endYmd, format) {
+    var lines = [];
+    var txs = (state.transactions || []).filter(function (t) {
+      if (!t || !t.date) return false;
+      if (t.date < startYmd || t.date > endYmd) return false;
+      return true;
+    }).slice()
+      .sort(function (a, b) {
+        return (a.date || '').localeCompare(b.date || '') || String(a.id).localeCompare(String(b.id));
+      });
+    if (format === 'split') {
+      lines.push('Date,Type,CategoryCode,CategoryLabel,Debit,Credit,Memo,ClientName,ProjectName,ExternalId');
+    } else {
+      lines.push('Date,Type,CategoryCode,CategoryLabel,Amount,Description,ClientName,ProjectName,ExternalId');
+    }
+    txs.forEach(function (tx) {
+      var code = tx.category || '';
+      var lab = categoryLabelForJournal(code, tx);
+      var flow = journalFlowForTx(tx);
+      var amt = Math.abs(Number(tx.amount || 0));
+      var desc = tx.description || tx.note || tx.title || '';
+      var ext = tx.externalId || '';
+      var clientName = '';
+      if (tx.clientId) {
+        var cl = clients.find(function (c) { return c.id === tx.clientId; });
+        if (cl) clientName = cl.companyName || cl.contactName || '';
+      }
+      var projName = '';
+      if (tx.projectId) {
+        var pr = projects.find(function (p) { return p.id === tx.projectId; });
+        if (pr) projName = pr.name || '';
+      }
+      if (format === 'split') {
+        var debit = '';
+        var credit = '';
+        if (flow === 'Outflow') debit = String(amt);
+        else credit = String(amt);
+        lines.push(
+          journalCsvEscapeCell(tx.date) + ',' +
+          journalCsvEscapeCell(flow) + ',' +
+          journalCsvEscapeCell(code) + ',' +
+          journalCsvEscapeCell(lab) + ',' +
+          journalCsvEscapeCell(debit) + ',' +
+          journalCsvEscapeCell(credit) + ',' +
+          journalCsvEscapeCell(desc) + ',' +
+          journalCsvEscapeCell(clientName) + ',' +
+          journalCsvEscapeCell(projName) + ',' +
+          journalCsvEscapeCell(ext)
+        );
+      } else {
+        lines.push(
+          journalCsvEscapeCell(tx.date) + ',' +
+          journalCsvEscapeCell(flow) + ',' +
+          journalCsvEscapeCell(code) + ',' +
+          journalCsvEscapeCell(lab) + ',' +
+          String(amt) + ',' +
+          journalCsvEscapeCell(desc) + ',' +
+          journalCsvEscapeCell(clientName) + ',' +
+          journalCsvEscapeCell(projName) + ',' +
+          journalCsvEscapeCell(ext)
+        );
+      }
+    });
+    return lines;
+  }
+
+  function downloadTextFile(filename, text) {
+    var blob = new Blob([text], { type: 'text/csv;charset=utf-8' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = filename;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  var impWizardState = {
+    step: 1,
+    matrix: null,
+    previewTxs: [],
+    batchId: null,
+    lastSkipCount: 0,
+  };
+
+  function setImpStep(n) {
+    impWizardState.step = n;
+    var s1 = $('imp-step-1');
+    var s2 = $('imp-step-2');
+    var s3 = $('imp-step-3');
+    var back = $('imp-back');
+    var next = $('imp-next');
+    var commit = $('imp-commit');
+    if (s1) s1.style.display = n === 1 ? 'flex' : 'none';
+    if (s2) s2.style.display = n === 2 ? 'block' : 'none';
+    if (s3) s3.style.display = n === 3 ? 'flex' : 'none';
+    if (back) back.style.display = n === 1 ? 'none' : 'inline-block';
+    if (next) next.style.display = n === 3 ? 'none' : 'inline-block';
+    if (commit) commit.style.display = n === 3 ? 'inline-block' : 'none';
+  }
+
+  function syncImpAmountModeUi() {
+    var split = $('imp-amount-mode-split') && $('imp-amount-mode-split').checked;
+    var wAmt = $('imp-wrap-col-amount');
+    var wDeb = $('imp-wrap-col-debit');
+    var wCred = $('imp-wrap-col-credit');
+    if (wAmt) wAmt.style.display = split ? 'none' : '';
+    if (wDeb) wDeb.style.display = split ? '' : 'none';
+    if (wCred) wCred.style.display = split ? '' : 'none';
+  }
+
+  function buildImportPreviewTransactions() {
+    var headers = impWizardState.matrix && impWizardState.matrix.headers;
+    var rows = impWizardState.matrix && impWizardState.matrix.rows;
+    if (!headers || !rows) return [];
+    var dateIdx = impSelectedIndex($('imp-col-date'));
+    var descIdx = impSelectedIndex($('imp-col-description'));
+    var extIdx = impSelectedIndex($('imp-col-external'));
+    var split = $('imp-amount-mode-split') && $('imp-amount-mode-split').checked;
+    var amtIdx = impSelectedIndex($('imp-col-amount'));
+    var debIdx = impSelectedIndex($('imp-col-debit'));
+    var credIdx = impSelectedIndex($('imp-col-credit'));
+    var defCat = $('imp-default-exp-cat') ? $('imp-default-exp-cat').value : 'infer';
+    var importRev = $('imp-import-revenue') && $('imp-import-revenue').checked;
+    var skipDup = $('imp-skip-dupes') && $('imp-skip-dupes').checked;
+    var existing = skipDup ? buildExistingImportFingerprints() : { extIds: {}, fps: {} };
+    var out = [];
+    var skipped = 0;
+    for (var r = 0; r < rows.length; r++) {
+      var cells = rows[r];
+      if (dateIdx < 0 || dateIdx >= cells.length) {
+        skipped++;
+        continue;
+      }
+      var dateY = parseFlexibleDate(cells[dateIdx]);
+      if (!dateY) {
+        skipped++;
+        continue;
+      }
+      var desc = '';
+      if (descIdx >= 0 && descIdx < cells.length) desc = String(cells[descIdx] || '').trim();
+      var ext = '';
+      if (extIdx >= 0 && extIdx < cells.length) ext = String(cells[extIdx] || '').trim();
+      var signed = null;
+      if (split) {
+        var dv = debIdx >= 0 && debIdx < cells.length ? parseFlexibleMoney(cells[debIdx]) : null;
+        var cv = credIdx >= 0 && credIdx < cells.length ? parseFlexibleMoney(cells[credIdx]) : null;
+        var debitAmt = dv == null || isNaN(dv) ? 0 : Math.abs(dv);
+        var creditAmt = cv == null || isNaN(cv) ? 0 : Math.abs(cv);
+        if (debitAmt > 0 && creditAmt > 0) {
+          skipped++;
+          continue;
+        }
+        if (debitAmt > 0) signed = -debitAmt;
+        else if (creditAmt > 0) signed = creditAmt;
+      } else {
+        if (amtIdx < 0 || amtIdx >= cells.length) {
+          skipped++;
+          continue;
+        }
+        signed = parseFlexibleMoney(cells[amtIdx]);
+      }
+      if (signed == null || isNaN(signed) || signed === 0) {
+        skipped++;
+        continue;
+      }
+      var flowOut = signed < 0;
+      var amountPos = Math.abs(signed);
+      var cat;
+      if (flowOut) {
+        if (defCat === 'infer') cat = mapExpenseCategory(desc);
+        else cat = defCat;
+      } else {
+        if (!importRev) {
+          skipped++;
+          continue;
+        }
+        cat = mapIncomeCategory(desc);
+      }
+      var fp = txFingerprintForImport(dateY, amountPos, desc, ext);
+      if (skipDup) {
+        if (ext && existing.extIds[ext]) {
+          skipped++;
+          continue;
+        }
+        if (existing.fps[fp]) {
+          skipped++;
+          continue;
+        }
+        existing.fps[fp] = true;
+        if (ext) existing.extIds[ext] = true;
+      }
+      out.push({
+        date: dateY,
+        description: desc || 'Imported',
+        amount: amountPos,
+        category: cat,
+        externalId: ext || undefined,
+        rawMemo: desc,
+        flowLabel: flowOut ? 'Outflow' : 'Inflow',
+      });
+    }
+    impWizardState.lastSkipCount = skipped;
+    return out;
+  }
+
+  function renderImpPreviewTable(preview) {
+    var tb = $('imp-preview-body');
+    var sum = $('imp-preview-summary');
+    if (sum) {
+      var sk = impWizardState.lastSkipCount || 0;
+      sum.textContent =
+        'Ready to import ' +
+        preview.length +
+        ' row(s). ' +
+        (sk ? sk + ' row(s) skipped (invalid or filtered).' : '');
+    }
+    if (!tb) return;
+    var show = preview.slice(0, 50);
+    var catLab = { lab: 'Labor', sw: 'Software & tools', ads: 'Advertising', oth: 'Other', svc: 'Services', ret: 'Retainers', own: 'Owner investment' };
+    tb.innerHTML = show
+      .map(function (p) {
+        var cLab = catLab[p.category] || p.category || '—';
+        return (
+          '<tr><td>' +
+          esc(p.date) +
+          '</td><td>' +
+          esc(p.flowLabel) +
+          '</td><td>' +
+          esc(cLab) +
+          '</td><td class="tdp">' +
+          esc(fmtCurrency(p.amount)) +
+          '</td><td style="max-width:220px;" class="td-truncate" title="' +
+          escAttr(p.description) +
+          '">' +
+          esc(p.description) +
+          '</td></tr>'
+        );
+      })
+      .join('');
+    if (preview.length > 50 && sum) {
+      sum.textContent += ' Showing first 50 rows in preview.';
+    }
+    var commit = $('imp-commit');
+    if (commit) commit.textContent = 'Import ' + preview.length + ' row(s)';
+  }
+
+  async function persistImportedTransactionsThrottled(list) {
+    if (isDemoDashboardUser()) return;
+    for (var i = 0; i < list.length; i++) {
+      await persistTransactionToSupabase(list[i]);
+      if (i % 20 === 19) {
+        await new Promise(function (res) {
+          setTimeout(res, 40);
+        });
+      }
+    }
+  }
+
+  function wireCsvImportAndJournalExport() {
+    var modalImp = $('csvImportModal');
+    var modalJ = $('journalExportModal');
+
+    function openJournalExportModal() {
+      if (!modalJ) return;
+      var b = defaultJournalExportRange();
+      var a = $('journal-exp-start');
+      var e = $('journal-exp-end');
+      if (a) a.value = b.start;
+      if (e) e.value = b.end;
+      var fmt = $('journal-exp-format');
+      if (fmt) fmt.value = 'simple';
+      modalJ.classList.add('on');
+    }
+
+    function closeJournalExportModal() {
+      if (modalJ) modalJ.classList.remove('on');
+    }
+
+    function openCsvImportModal() {
+      if (!modalImp) return;
+      impWizardState = { step: 1, matrix: null, previewTxs: [], batchId: null, lastSkipCount: 0 };
+      var f = $('imp-file');
+      if (f) f.value = '';
+      var st = $('imp-file-status');
+      if (st) st.textContent = '';
+      if ($('imp-import-revenue')) $('imp-import-revenue').checked = false;
+      if ($('imp-skip-dupes')) $('imp-skip-dupes').checked = true;
+      if ($('imp-amount-mode-single')) $('imp-amount-mode-single').checked = true;
+      syncImpAmountModeUi();
+      setImpStep(1);
+      modalImp.classList.add('on');
+    }
+
+    function closeCsvImportModal() {
+      if (modalImp) modalImp.classList.remove('on');
+    }
+
+    ['btn-csv-import-open', 'btn-csv-import-open-settings'].forEach(function (id) {
+      var b = $(id);
+      if (b) b.addEventListener('click', openCsvImportModal);
+    });
+    ['btn-journal-export-open', 'btn-journal-export-open-settings'].forEach(function (id) {
+      var b = $(id);
+      if (b) b.addEventListener('click', openJournalExportModal);
+    });
+
+    function runUndoLastImport() {
+      var last = loadLastImportBatch();
+      if (!last || !last.ids || !last.ids.length) return;
+      if (!confirm('Remove the last CSV import (' + last.ids.length + ' transaction(s)) from this workspace?')) return;
+      deleteTransactionsByIds(last.ids.slice());
+      clearLastImportBatch();
+      refreshUndoImportButtons();
+    }
+    ['btn-undo-last-import', 'btn-undo-last-import-settings'].forEach(function (id) {
+      var b = $(id);
+      if (b) b.addEventListener('click', runUndoLastImport);
+    });
+
+    var amtModeSingle = $('imp-amount-mode-single');
+    var amtModeSplit = $('imp-amount-mode-split');
+    if (amtModeSingle) amtModeSingle.addEventListener('change', syncImpAmountModeUi);
+    if (amtModeSplit) amtModeSplit.addEventListener('change', syncImpAmountModeUi);
+
+    var impFile = $('imp-file');
+    if (impFile) {
+      impFile.addEventListener('change', function () {
+        var st = $('imp-file-status');
+        var file = impFile.files && impFile.files[0];
+        if (!file) {
+          if (st) st.textContent = '';
+          impWizardState.matrix = null;
+          return;
+        }
+        var reader = new FileReader();
+        reader.onload = function () {
+          var text = String(reader.result || '');
+          var matrix = parseCsvToMatrix(text);
+          impWizardState.matrix = matrix;
+          var msg =
+            'Found ' +
+            matrix.rows.length +
+            ' data row(s), ' +
+            matrix.headers.length +
+            ' column(s). Delimiter: ' +
+            (matrix.delim === ';' ? 'semicolon' : 'comma') +
+            '.';
+          if (matrix.warnings && matrix.warnings.length) msg += ' ' + matrix.warnings.join(' ');
+          if (st) st.textContent = msg;
+        };
+        reader.onerror = function () {
+          if (st) st.textContent = 'Could not read file.';
+          impWizardState.matrix = null;
+        };
+        reader.readAsText(file);
+      });
+    }
+
+    var impNext = $('imp-next');
+    if (impNext) {
+      impNext.addEventListener('click', function () {
+        if (impWizardState.step === 1) {
+          if (!impWizardState.matrix || !impWizardState.matrix.headers.length) {
+            alert('Choose a CSV file with a header row first.');
+            return;
+          }
+          var guess = guessCsvColumnIndices(impWizardState.matrix.headers);
+          fillImpColumnSelects(impWizardState.matrix.headers, guess);
+          syncImpAmountModeUi();
+          setImpStep(2);
+          return;
+        }
+        if (impWizardState.step === 2) {
+          var dateIdx = impSelectedIndex($('imp-col-date'));
+          if (dateIdx < 0) {
+            alert('Pick a date column.');
+            return;
+          }
+          var split = $('imp-amount-mode-split') && $('imp-amount-mode-split').checked;
+          if (split) {
+            if (impSelectedIndex($('imp-col-debit')) < 0 && impSelectedIndex($('imp-col-credit')) < 0) {
+              alert('Pick a Debit and/or Credit column.');
+              return;
+            }
+          } else if (impSelectedIndex($('imp-col-amount')) < 0) {
+            alert('Pick an amount column (or switch to Debit/Credit).');
+            return;
+          }
+          impWizardState.previewTxs = buildImportPreviewTransactions();
+          if (!impWizardState.previewTxs.length) {
+            alert('No importable rows. Check column mapping and that outflows are negative in single-amount mode (or use Debit/Credit).');
+            return;
+          }
+          renderImpPreviewTable(impWizardState.previewTxs);
+          setImpStep(3);
+        }
+      });
+    }
+
+    var impBack = $('imp-back');
+    if (impBack) {
+      impBack.addEventListener('click', function () {
+        if (impWizardState.step === 3) setImpStep(2);
+        else if (impWizardState.step === 2) setImpStep(1);
+      });
+    }
+
+    var impCancel = $('imp-cancel');
+    if (impCancel) impCancel.addEventListener('click', closeCsvImportModal);
+
+    var impCommit = $('imp-commit');
+    if (impCommit) {
+      impCommit.addEventListener('click', async function () {
+        var preview = impWizardState.previewTxs || [];
+        if (!preview.length) return;
+        var batchId = uuid();
+        var created = [];
+        preview.forEach(function (p) {
+          var tx = {
+            id: uuid(),
+            date: p.date,
+            description: p.description,
+            amount: p.amount,
+            category: p.category,
+            importBatchId: batchId,
+            importSource: 'csv',
+            createdAt: new Date().toISOString(),
+          };
+          if (p.externalId) tx.externalId = p.externalId;
+          if (p.rawMemo) tx.rawMemo = p.rawMemo;
+          state.transactions.push(tx);
+          created.push(tx);
+        });
+        saveTransactions(state.transactions);
+        recomputeAndRender();
+        await persistImportedTransactionsThrottled(created);
+        saveLastImportBatch(
+          batchId,
+          created.map(function (t) {
+            return t.id;
+          })
+        );
+        refreshUndoImportButtons();
+        closeCsvImportModal();
+      });
+    }
+
+    if (modalImp) {
+      modalImp.addEventListener('click', function (ev) {
+        if (ev.target === modalImp) closeCsvImportModal();
+      });
+    }
+
+    var jCancel = $('journal-exp-cancel');
+    if (jCancel) jCancel.addEventListener('click', closeJournalExportModal);
+    var jDown = $('journal-exp-download');
+    if (jDown) {
+      jDown.addEventListener('click', function () {
+        var a = $('journal-exp-start');
+        var e = $('journal-exp-end');
+        var startY = a && a.value ? a.value : defaultJournalExportRange().start;
+        var endY = e && e.value ? e.value : defaultJournalExportRange().end;
+        if (!startY || !endY || startY > endY) {
+          alert('Pick a valid start and end date.');
+          return;
+        }
+        var fmtEl = $('journal-exp-format');
+        var fmt = fmtEl && fmtEl.value === 'split' ? 'split' : 'simple';
+        var lines = buildJournalCsvLines(startY, endY, fmt);
+        downloadTextFile('journal-export.csv', lines.join('\n'));
+        closeJournalExportModal();
+      });
+    }
+    if (modalJ) {
+      modalJ.addEventListener('click', function (ev) {
+        if (ev.target === modalJ) closeJournalExportModal();
+      });
+    }
+
+    refreshUndoImportButtons();
+  }
+
   function wireIncomeExpenseForms() {
     // Expenses tab
     var btnAddExpense = $('btn-add-expense');
@@ -8163,29 +9807,65 @@ var incomePowerState = {
           if (!client) return;
           var m = $('clientModal');
           if (!m) return;
-          populateClientIndustryDatalist();
-          var hiddenId = $('client-edit-id');
-          if (hiddenId) hiddenId.value = client.id;
-          $('client-company').value = client.companyName || '';
-          $('client-contact').value = client.contactName || '';
-          $('client-status').value = client.status || '';
-          $('client-industry').value = client.industry || '';
-          $('client-email').value = client.email || '';
-          $('client-phone').value = client.phone || '';
-          $('client-notes').value = client.notes || '';
-          if ($('client-birthday')) $('client-birthday').value = client.birthday || '';
-          if ($('client-preferred-channel')) $('client-preferred-channel').value = client.preferredChannel || '';
-          if ($('client-communication-style')) $('client-communication-style').value = client.communicationStyle || '';
-          if ($('client-last-touch')) $('client-last-touch').value = client.lastTouchAt || '';
-          if ($('client-next-follow-up')) $('client-next-follow-up').value = client.nextFollowUpAt || '';
-          if ($('client-relationship-notes')) $('client-relationship-notes').value = client.relationshipNotes || '';
-          var cr = $('client-cust-revenue');
-          var cc = $('client-cust-cost');
-          if (cr) cr.value = client.custTabRevenue != null ? String(client.custTabRevenue) : '';
-          if (cc) cc.value = client.custTabAllocatedCost != null ? String(client.custTabAllocatedCost) : '';
-          var retCb = $('client-retainer');
-          if (retCb) retCb.checked = client.retainer === true;
-          m.classList.add('on');
+          (async function () {
+            await wfRefreshFromSupabase();
+            populateClientIndustryDatalist();
+            var hiddenId = $('client-edit-id');
+            if (hiddenId) hiddenId.value = client.id;
+            $('client-company').value = client.companyName || '';
+            $('client-contact').value = client.contactName || '';
+            $('client-status').value = client.status || '';
+            $('client-industry').value = client.industry || '';
+            $('client-email').value = client.email || '';
+            $('client-phone').value = client.phone || '';
+            $('client-notes').value = client.notes || '';
+            if ($('client-salutation')) $('client-salutation').value = client.salutation || '';
+            if ($('client-first-name')) $('client-first-name').value = client.firstName || '';
+            if ($('client-last-name')) $('client-last-name').value = client.lastName || '';
+            if ($('client-title')) $('client-title').value = client.title || '';
+            if ($('client-reports-to')) $('client-reports-to').value = client.reportsTo || '';
+            if ($('client-description')) $('client-description').value = client.description || '';
+            if ($('client-owner')) $('client-owner').value = client.owner || '';
+            if ($('client-mailing-country')) $('client-mailing-country').value = client.mailingCountry || '';
+            if ($('client-mailing-street')) $('client-mailing-street').value = client.mailingStreet || '';
+            if ($('client-mailing-city')) $('client-mailing-city').value = client.mailingCity || '';
+            if ($('client-mailing-state')) $('client-mailing-state').value = client.mailingState || '';
+            if ($('client-mailing-zip')) $('client-mailing-zip').value = client.mailingZip || '';
+            if ($('client-email-opt-out')) $('client-email-opt-out').checked = client.emailOptOut === true;
+            if ($('client-birthday')) $('client-birthday').value = client.birthday || '';
+            if ($('client-preferred-channel')) $('client-preferred-channel').value = client.preferredChannel || '';
+            if ($('client-communication-style')) $('client-communication-style').value = client.communicationStyle || '';
+            if ($('client-last-touch')) $('client-last-touch').value = client.lastTouchAt || '';
+            if ($('client-next-follow-up')) $('client-next-follow-up').value = client.nextFollowUpAt || '';
+            if ($('client-relationship-notes')) $('client-relationship-notes').value = client.relationshipNotes || '';
+            var cr = $('client-cust-revenue');
+            var cc = $('client-cust-cost');
+            if (cr) cr.value = client.custTabRevenue != null ? String(client.custTabRevenue) : '';
+            if (cc) cc.value = client.custTabAllocatedCost != null ? String(client.custTabAllocatedCost) : '';
+            var retCb = $('client-retainer');
+            if (retCb) retCb.checked = client.retainer === true;
+            wfFillClientPipelineSelect($('client-pipeline-stage'), client);
+            m.classList.add('on');
+          })();
+          return;
+        }
+
+        var meetBtn = ev.target.closest('[data-log-meeting]');
+        if (meetBtn) {
+          var mid = meetBtn.getAttribute('data-log-meeting');
+          var cl = clients.find(function (c) { return c.id === mid; });
+          if (!cl) return;
+          var notes = window.prompt('Meeting notes (optional):', '') || '';
+          (async function () {
+            var act = await wfInsertActivity(cl.id, 'meeting', notes, new Date().toISOString());
+            if (act) {
+              await addCrmEvent('meeting', 'Meeting logged for ' + (cl.companyName || 'client'), { notes: notes, activityId: act.id }, cl.id, 'meeting:' + act.id);
+              await runWorkflowDispatch({ kind: 'activity_created', activity: { id: act.id, activity_type: act.activity_type }, client: wfCloneClientForWorkflow(cl) });
+              renderPersonableCards();
+            } else {
+              alert('Could not save meeting (sign in and ensure crm_activities table exists — run workflow_automation.sql).');
+            }
+          })();
           return;
         }
 
@@ -8595,6 +10275,19 @@ var incomePowerState = {
       $('client-email').value = '';
       $('client-phone').value = '';
       $('client-notes').value = '';
+      if ($('client-salutation')) $('client-salutation').value = '';
+      if ($('client-first-name')) $('client-first-name').value = '';
+      if ($('client-last-name')) $('client-last-name').value = '';
+      if ($('client-title')) $('client-title').value = '';
+      if ($('client-reports-to')) $('client-reports-to').value = '';
+      if ($('client-description')) $('client-description').value = '';
+      if ($('client-owner')) $('client-owner').value = '';
+      if ($('client-mailing-country')) $('client-mailing-country').value = '';
+      if ($('client-mailing-street')) $('client-mailing-street').value = '';
+      if ($('client-mailing-city')) $('client-mailing-city').value = '';
+      if ($('client-mailing-state')) $('client-mailing-state').value = '';
+      if ($('client-mailing-zip')) $('client-mailing-zip').value = '';
+      if ($('client-email-opt-out')) $('client-email-opt-out').checked = false;
       if ($('client-birthday')) $('client-birthday').value = '';
       if ($('client-preferred-channel')) $('client-preferred-channel').value = '';
       if ($('client-communication-style')) $('client-communication-style').value = '';
@@ -8607,6 +10300,8 @@ var incomePowerState = {
       if (cc) cc.value = '';
       var retCb = $('client-retainer');
       if (retCb) retCb.checked = false;
+      var ps = $('client-pipeline-stage');
+      if (ps) ps.innerHTML = '<option value="">— None —</option>';
       populateClientIndustryDatalist();
       m.classList.add('on');
     }
@@ -8616,7 +10311,13 @@ var incomePowerState = {
       if (m) m.classList.remove('on');
     }
 
-    if (btnAddClient) btnAddClient.addEventListener('click', openClientModal);
+    if (btnAddClient) {
+      btnAddClient.addEventListener('click', async function () {
+        await wfRefreshFromSupabase();
+        openClientModal();
+        wfFillClientPipelineSelect($('client-pipeline-stage'), null);
+      });
+    }
     if (btnClientCancel) btnClientCancel.addEventListener('click', closeClientModal);
     if (btnClientSave) {
       btnClientSave.addEventListener('click', async function () {
@@ -8625,8 +10326,16 @@ var incomePowerState = {
           alert('Company name is required.');
           return;
         }
+        function val(id) {
+          var el = $(id);
+          return el ? String(el.value || '').trim() : '';
+        }
+        var firstName = val('client-first-name');
+        var lastName = val('client-last-name');
+        var contactName = val('client-contact') || [firstName, lastName].filter(Boolean).join(' ');
         var existingId = $('client-edit-id') ? $('client-edit-id').value : '';
         var retainerChecked = $('client-retainer') && $('client-retainer').checked;
+        var emailOptOut = $('client-email-opt-out') && $('client-email-opt-out').checked;
         var client;
         supabase = window.supabaseClient || supabase;
         currentUser = window.currentUser || currentUser;
@@ -8641,6 +10350,29 @@ var incomePowerState = {
         var custRev = parseCustTabMoney($('client-cust-revenue'));
         var custCost = parseCustTabMoney($('client-cust-cost'));
 
+        var stageSel = $('client-pipeline-stage');
+        var stageIdPick = stageSel && stageSel.value ? stageSel.value : '';
+        function applyPipelineFieldsFromUi(cl) {
+          if (!cl) return;
+          if (stageIdPick) {
+            var st = wfStages.find(function (s) { return s.id === stageIdPick; });
+            if (st) {
+              cl.pipelineId = st.pipelineId;
+              cl.pipelineStageId = st.id;
+              if (!val('client-status')) cl.status = st.label;
+            }
+          } else {
+            cl.pipelineStageId = null;
+            cl.pipelineId = null;
+          }
+        }
+
+        var prevForWf = null;
+        if (existingId) {
+          var prevRow = clients.find(function (x) { return x.id === existingId; });
+          prevForWf = wfCloneClientForWorkflow(prevRow);
+        }
+
         if (existingId) {
           var clientsSnapshot = JSON.stringify(clients);
           clients = clients.map(function (c) {
@@ -8648,24 +10380,39 @@ var incomePowerState = {
             client = {
               id: c.id,
               companyName: company,
-              contactName: $('client-contact').value.trim(),
-              status: $('client-status').value.trim(),
-              industry: $('client-industry').value.trim(),
-              email: $('client-email').value.trim(),
-              phone: $('client-phone').value.trim(),
-              notes: $('client-notes').value.trim(),
+              contactName: contactName,
+              status: val('client-status'),
+              industry: val('client-industry'),
+              email: val('client-email'),
+              phone: val('client-phone'),
+              notes: val('client-notes'),
               birthday: $('client-birthday') ? $('client-birthday').value : '',
-              preferredChannel: $('client-preferred-channel') ? $('client-preferred-channel').value.trim() : '',
-              communicationStyle: $('client-communication-style') ? $('client-communication-style').value.trim() : '',
+              preferredChannel: val('client-preferred-channel'),
+              communicationStyle: val('client-communication-style'),
               lastTouchAt: $('client-last-touch') ? $('client-last-touch').value : '',
               nextFollowUpAt: $('client-next-follow-up') ? $('client-next-follow-up').value : '',
-              relationshipNotes: $('client-relationship-notes') ? $('client-relationship-notes').value.trim() : '',
+              relationshipNotes: val('client-relationship-notes'),
+              salutation: val('client-salutation'),
+              firstName: firstName,
+              lastName: lastName,
+              title: val('client-title'),
+              reportsTo: val('client-reports-to'),
+              description: val('client-description'),
+              owner: val('client-owner'),
+              accountName: company,
+              mailingCountry: val('client-mailing-country'),
+              mailingStreet: val('client-mailing-street'),
+              mailingCity: val('client-mailing-city'),
+              mailingState: val('client-mailing-state'),
+              mailingZip: val('client-mailing-zip'),
+              emailOptOut: !!emailOptOut,
               totalRevenue: c.totalRevenue || 0,
               createdAt: c.createdAt || Date.now(),
               retainer: !!retainerChecked,
             };
             if (custRev != null) client.custTabRevenue = custRev;
             if (custCost != null) client.custTabAllocatedCost = custCost;
+            applyPipelineFieldsFromUi(client);
             return client;
           });
           saveClients(clients);
@@ -8683,6 +10430,7 @@ var incomePowerState = {
               alert('Could not update this client in the cloud. Your changes were reverted.\n\n' + (persistClientLastError || 'Check the browser console and Supabase RLS rules.'));
               return;
             }
+            await runWorkflowDispatch({ kind: 'client_updated', before: prevForWf, after: wfCloneClientForWorkflow(client) });
           }
         } else {
           if (!supabase || !currentUser) {
@@ -8692,24 +10440,39 @@ var incomePowerState = {
           client = {
             id: uuid(),
             companyName: company,
-            contactName: $('client-contact').value.trim(),
-            status: $('client-status').value.trim(),
-            industry: $('client-industry').value.trim(),
-            email: $('client-email').value.trim(),
-            phone: $('client-phone').value.trim(),
-            notes: $('client-notes').value.trim(),
+            contactName: contactName,
+            status: val('client-status'),
+            industry: val('client-industry'),
+            email: val('client-email'),
+            phone: val('client-phone'),
+            notes: val('client-notes'),
             birthday: $('client-birthday') ? $('client-birthday').value : '',
-            preferredChannel: $('client-preferred-channel') ? $('client-preferred-channel').value.trim() : '',
-            communicationStyle: $('client-communication-style') ? $('client-communication-style').value.trim() : '',
+            preferredChannel: val('client-preferred-channel'),
+            communicationStyle: val('client-communication-style'),
             lastTouchAt: $('client-last-touch') ? $('client-last-touch').value : '',
             nextFollowUpAt: $('client-next-follow-up') ? $('client-next-follow-up').value : '',
-            relationshipNotes: $('client-relationship-notes') ? $('client-relationship-notes').value.trim() : '',
+            relationshipNotes: val('client-relationship-notes'),
+            salutation: val('client-salutation'),
+            firstName: firstName,
+            lastName: lastName,
+            title: val('client-title'),
+            reportsTo: val('client-reports-to'),
+            description: val('client-description'),
+            owner: val('client-owner'),
+            accountName: company,
+            mailingCountry: val('client-mailing-country'),
+            mailingStreet: val('client-mailing-street'),
+            mailingCity: val('client-mailing-city'),
+            mailingState: val('client-mailing-state'),
+            mailingZip: val('client-mailing-zip'),
+            emailOptOut: !!emailOptOut,
             totalRevenue: 0,
             createdAt: Date.now(),
             retainer: !!retainerChecked,
           };
           if (custRev != null) client.custTabRevenue = custRev;
           if (custCost != null) client.custTabAllocatedCost = custCost;
+          applyPipelineFieldsFromUi(client);
           var addSync = await persistClientToSupabase(client, 'insert');
           if (addSync === 'skipped') {
             alert('Could not save this client: you are not signed in or your session expired.\n\n' + (persistClientLastError || 'Sign in again and retry.'));
@@ -8723,6 +10486,7 @@ var incomePowerState = {
           saveClients(clients);
           renderClients();
           if (state.computed) renderInsights();
+          await runWorkflowDispatch({ kind: 'client_updated', before: null, after: wfCloneClientForWorkflow(client) });
         }
         if (client) {
           if (client.lastTouchAt) {
@@ -8738,6 +10502,62 @@ var incomePowerState = {
         closeClientModal();
       });
     }
+
+    window.bizDashOpenClientModalWithDraft = async function (draft) {
+      await wfRefreshFromSupabase();
+      var d = draft && typeof draft === 'object' ? draft : {};
+      var m = $('clientModal');
+      if (!m) return;
+      var editId = $('client-edit-id');
+      if (editId) editId.value = '';
+      function setv(id, val) {
+        var el = $(id);
+        if (el) el.value = val == null ? '' : String(val);
+      }
+      setv('client-company', d.companyName);
+      setv('client-contact', d.contactName);
+      setv('client-status', d.status || 'Lead');
+      setv('client-industry', d.industry);
+      setv('client-email', d.email);
+      setv('client-phone', d.phone);
+      setv('client-notes', d.notes);
+      setv('client-salutation', d.salutation);
+      setv('client-first-name', d.firstName);
+      setv('client-last-name', d.lastName);
+      setv('client-title', d.title);
+      setv('client-reports-to', d.reportsTo);
+      setv('client-description', d.description);
+      setv('client-owner', d.owner);
+      setv('client-mailing-country', d.mailingCountry);
+      setv('client-mailing-street', d.mailingStreet);
+      setv('client-mailing-city', d.mailingCity);
+      setv('client-mailing-state', d.mailingState);
+      setv('client-mailing-zip', d.mailingZip);
+      var optOut = $('client-email-opt-out');
+      if (optOut) optOut.checked = !!d.emailOptOut;
+      setv('client-birthday', d.birthday);
+      setv('client-preferred-channel', d.preferredChannel);
+      setv('client-communication-style', d.communicationStyle);
+      setv('client-last-touch', d.lastTouchAt);
+      setv('client-next-follow-up', d.nextFollowUpAt);
+      setv('client-relationship-notes', d.relationshipNotes);
+      var cr = $('client-cust-revenue');
+      var cc = $('client-cust-cost');
+      if (cr) cr.value = '';
+      if (cc) cc.value = '';
+      var retCb = $('client-retainer');
+      if (retCb) retCb.checked = !!d.retainer;
+      var stageSel = $('client-pipeline-stage');
+      if (stageSel) {
+        if (d.pipelineId && d.pipelineStageId) {
+          wfFillClientPipelineSelect(stageSel, { pipelineId: d.pipelineId, pipelineStageId: d.pipelineStageId });
+        } else {
+          wfFillClientPipelineSelect(stageSel, null);
+        }
+      }
+      populateClientIndustryDatalist();
+      m.classList.add('on');
+    };
   }
 
   // ---------- Projects & statuses wiring ----------
@@ -9041,6 +10861,8 @@ var incomePowerState = {
     try {
       supabase = window.supabaseClient || supabase;
       currentUser = window.currentUser || currentUser;
+      // Re-scope budgets to the active account (in-memory `budgets` can still hold demo values after View Demo).
+      budgets = loadBudgets();
 
       // Start from local cache so we can migrate/backfill if remote is empty.
       state.transactions = omitLocallyDeletedTransactions(loadTransactions());
@@ -9144,6 +10966,8 @@ var incomePowerState = {
         saveCampaigns(campaigns);
         saveTimesheetEntries(timesheetEntries);
       }
+
+      await wfRefreshFromSupabase();
 
       expandRecurringExpenseInstances();
 
@@ -9375,6 +11199,62 @@ var incomePowerState = {
     }
   }
 
+  /** Clear settings inputs that demo mode writes so a real account never inherits sample business text. */
+  function resetSettingsFormForAccountHandoff() {
+    function setEl(id, v) {
+      var el = document.getElementById(id);
+      if (el) el.value = v != null ? String(v) : '';
+    }
+    ['setting-name', 'setting-owner', 'setting-email', 'setting-phone', 'setting-address', 'setting-period'].forEach(function (id) {
+      setEl(id, '');
+    });
+    setEl('setting-terms', '30');
+    setEl('setting-tax', '0');
+    var cur = document.getElementById('setting-currency');
+    if (cur) cur.value = 'USD';
+    var fis = document.getElementById('setting-fiscal');
+    if (fis) fis.value = 'January';
+    var acc = document.getElementById('setting-accent');
+    var accHex = document.getElementById('setting-accent-hex');
+    if (acc) acc.value = '#e8501a';
+    if (accHex) accHex.value = '#e8501a';
+    applyAccentBranding('#e8501a');
+    ['setting-logo-light', 'setting-logo-dark'].forEach(function (id) {
+      var el = document.getElementById(id);
+      if (el && el.type === 'file') el.value = '';
+    });
+  }
+
+  function destroyAllWorkspaceCharts() {
+    function kill(ch) {
+      if (ch && window.Chart && typeof ch.destroy === 'function') {
+        try {
+          ch.destroy();
+        } catch (_) {}
+      }
+    }
+    kill(expenseChart);
+    expenseChart = null;
+    kill(revExpChart);
+    revExpChart = null;
+    kill(projTypeChart);
+    projTypeChart = null;
+    kill(projMonthlyChart);
+    projMonthlyChart = null;
+    kill(revTrendChart);
+    revTrendChart = null;
+    kill(verticalChart);
+    verticalChart = null;
+    kill(leadSourceChart);
+    leadSourceChart = null;
+    kill(spendTrendChart);
+    spendTrendChart = null;
+    kill(insTrendChart);
+    insTrendChart = null;
+    kill(retTrendChart);
+    retTrendChart = null;
+  }
+
   function clearRuntimeDataForAuthChange(nextUser) {
     currentUser = nextUser || null;
     window.currentUser = currentUser;
@@ -9383,6 +11263,17 @@ var incomePowerState = {
     }
     customersColumnPrefs = loadCustomersColumnPrefs();
     renderCustomersColumnsPanel();
+    if (!isDemoDashboardUser()) {
+      resetSettingsFormForAccountHandoff();
+    }
+    destroyAllWorkspaceCharts();
+    budgets = loadBudgets();
+    refreshSettingsBudgetInputsFromState();
+    wfPipelines = [];
+    wfStages = [];
+    wfRules = [];
+    wfTasks = [];
+    advisorContactContext = null;
     state.transactions = [];
     clients = [];
     projects = [];
@@ -9396,6 +11287,61 @@ var incomePowerState = {
     renderProjects();
     refreshCloudSyncStatus();
   }
+
+  window.bizDashSetAdvisorContactContext = function (obj) {
+    advisorContactContext = normalizeAdvisorContactContext(obj);
+  };
+  window.bizDashGetAdvisorContactContext = function () {
+    return advisorContactContext ? Object.assign({}, advisorContactContext) : null;
+  };
+  window.bizDashGetClientsDigestForAdvisor = function () {
+    var out = [];
+    (clients || []).forEach(function (c) {
+      if (!c || out.length >= 30) return;
+      out.push({
+        companyName: String(c.companyName || '').slice(0, 120),
+        email: String(c.email || '').slice(0, 160),
+      });
+    });
+    return out;
+  };
+  /**
+   * One-click insert from Advisor CRM proposal (user must confirm in Advisor UI before calling).
+   * @returns {Promise<{ok:boolean, client?:object, error?:string}>}
+   */
+  window.bizDashCreateClientFromDraft = async function (draft) {
+    var client = buildNewClientObjectFromDraft(draft);
+    if (!client) {
+      return { ok: false, error: 'Company name is required.' };
+    }
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser) {
+      return { ok: false, error: 'You must be signed in to add a client.' };
+    }
+    var addSync = await persistClientToSupabase(client, 'insert');
+    if (addSync === 'skipped') {
+      return { ok: false, error: persistClientLastError || 'Could not save (session or demo mode).' };
+    }
+    if (addSync !== 'ok') {
+      return { ok: false, error: persistClientLastError || 'Could not save to the cloud.' };
+    }
+    clients.push(client);
+    saveClients(clients);
+    renderClients();
+    if (state.computed) renderInsights();
+    await runWorkflowDispatch({ kind: 'client_updated', before: null, after: wfCloneClientForWorkflow(client) });
+    if (client.lastTouchAt) {
+      addCrmEvent('touch', 'Last touch updated for ' + (client.companyName || 'client'), { lastTouchAt: client.lastTouchAt }, client.id, 'touch:' + client.id + ':' + client.lastTouchAt);
+    }
+    if (client.nextFollowUpAt) {
+      addCrmEvent('follow_up', 'Follow-up scheduled for ' + (client.companyName || 'client'), { nextFollowUpAt: client.nextFollowUpAt }, client.id, 'followup:' + client.id + ':' + client.nextFollowUpAt);
+    }
+    refreshCloudSyncStatus();
+    populateProjectClientOptions();
+    populateIncomeClientOptions();
+    return { ok: true, client: client };
+  };
 
   // Expose so supabase-auth.js can reset state on auth transitions and trigger reload.
   window.clearRuntimeDataForAuthChange = clearRuntimeDataForAuthChange;
@@ -9458,6 +11404,7 @@ var incomePowerState = {
   function init() {
     state.filter = { mode: 'all', start: null, end: null };
     wireTransactionForm();
+    wireCsvImportAndJournalExport();
     wireIncomeExpenseForms();
     wireTimesheet();
     wireDeleteHandlers();
@@ -9473,6 +11420,7 @@ var incomePowerState = {
     wirePersonableActions();
     wireCloudSyncPanel();
     wireMarketingCampaign();
+    wireWorkflowAutomation();
     if (typeof window.wireDashboardAssistant === 'function') {
       window.wireDashboardAssistant();
     }
@@ -9513,6 +11461,7 @@ var incomePowerState = {
         var titles = {
           dashboard: 'Business Performance',
           customers: 'Customers',
+          tasks: 'Tasks',
           revenue: 'Income',
           expenses: 'Expenses',
           timesheet: 'Timesheet',
@@ -9524,6 +11473,16 @@ var incomePowerState = {
           settings: 'Settings',
         };
         mobileTitle.textContent = titles[pageId] || 'Dashboard';
+      }
+      if (pageId === 'tasks') {
+        wfRefreshFromSupabase().then(function () {
+          renderTasksPage();
+        });
+      }
+      if (pageId === 'settings') {
+        wfRefreshFromSupabase().then(function () {
+          renderAutomationSettings();
+        });
       }
     };
 

@@ -1461,7 +1461,12 @@
           <div class="st">Transaction log</div>
           <div class="ss">Add entries one at a time; amounts roll into the totals and charts above</div>
         </div>
-        <button type="button" class="btn btn-p" id="btn-open-transaction-2">+ Add transaction</button>
+        <div class="hr" style="flex-wrap:wrap;gap:8px;">
+          <button type="button" class="btn btn-p" id="btn-open-transaction-2">+ Add transaction</button>
+          <button type="button" class="btn" id="btn-csv-import-open">Import CSV</button>
+          <button type="button" class="btn" id="btn-journal-export-open">Export journal CSV</button>
+          <button type="button" class="btn" id="btn-undo-last-import" disabled title="Remove the last CSV import from this workspace">Undo last import</button>
+        </div>
       </div>
       <div id="transaction-log-empty" style="font-size:13px;color:var(--text3);padding:4px 0 8px;">No transactions yet. Use “Add transaction” to record income or expenses.</div>
       <table class="dt" id="transaction-log-table" style="display:none;">
@@ -1995,7 +2000,7 @@
           <div class="fgp"><label class="fl">Phone</label><input class="fi" id="setting-phone" /></div>
           <div class="fgp" style="grid-column:1/-1;"><label class="fl">Address</label><input class="fi" id="setting-address" /></div>
           <div class="fgp"><label class="fl">Dashboard period label</label><input class="fi" id="setting-period" placeholder="e.g. March 2026" /></div>
-          <div class="fgp"><label class="fl">Accent color</label><input class="fi" id="setting-accent" type="color" value="#e8501a" style="min-height:40px;padding:4px 8px;" /></div>
+          <div class="fgp"><label class="fl">Accent color</label><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;"><input class="fi" id="setting-accent" type="color" value="#e8501a" title="Color picker" style="min-height:40px;min-width:52px;padding:4px 8px;flex-shrink:0;" /><input class="fi" id="setting-accent-hex" type="text" value="#e8501a" inputmode="text" autocomplete="off" spellcheck="false" maxlength="7" placeholder="#3366cc" title="Hex value (#rgb or #rrggbb)" style="max-width:9rem;font-variant-numeric:tabular-nums;" /></div></div>
           <div class="fgp"><label class="fl">Logo (light mode)</label><input class="fi" id="setting-logo-light" type="file" accept="image/*" /></div>
           <div class="fgp"><label class="fl">Logo (dark mode)</label><input class="fi" id="setting-logo-dark" type="file" accept="image/*" /></div>
         </div>
@@ -2030,6 +2035,15 @@
           <div style="font-size:12px;color:var(--text2);line-height:1.55;margin-top:10px;">
             Clients and transactions sync per signed-in account. Use the <strong>same email</strong> on each browser, then tap <strong>Sync</strong> to pull uploads from your other device.
           </div>
+        </div>
+      </div>
+      <div class="card">
+        <div class="fst">Data import &amp; export</div>
+        <p style="font-size:12px;color:var(--text3);line-height:1.5;margin-bottom:12px;">Import a bank CSV into the transaction log, or export a journal CSV for spreadsheets or your accountant. Use <strong>Undo last import</strong> if something looks wrong.</p>
+        <div style="display:flex;flex-wrap:wrap;gap:8px;">
+          <button type="button" class="btn" id="btn-csv-import-open-settings">Import CSV</button>
+          <button type="button" class="btn" id="btn-journal-export-open-settings">Export journal CSV</button>
+          <button type="button" class="btn" id="btn-undo-last-import-settings" disabled>Undo last import</button>
         </div>
       </div>
     </div>
@@ -2070,6 +2084,89 @@
     <div class="mf" style="border-top:none;padding-top:0;margin-top:0;">
       <button type="button" class="btn" id="btn-tx-cancel">Cancel</button>
       <button type="button" class="btn btn-p" id="btn-tx-save">Add transaction</button>
+    </div>
+  </div>
+</div>
+
+<!-- Bank CSV import wizard -->
+<div class="mo" id="csvImportModal">
+  <div class="md" style="max-width:720px;max-height:92vh;display:flex;flex-direction:column;">
+    <div class="mt">Import bank CSV</div>
+    <p style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:14px;">Choose a CSV export from your bank, map columns once, preview rows, then import. Amounts follow the same rules as manual transactions (positive amounts; category sets revenue vs expense).</p>
+    <div id="imp-step-1" class="imp-step" style="flex:1;min-height:0;display:flex;flex-direction:column;">
+      <label class="fl">CSV file</label>
+      <input type="file" class="fi" id="imp-file" accept=".csv,text/csv" />
+      <div id="imp-file-status" style="font-size:12px;margin-top:10px;color:var(--text3);"></div>
+    </div>
+    <div id="imp-step-2" class="imp-step" style="display:none;flex:1;min-height:0;overflow:auto;">
+      <div class="fg" style="margin-bottom:12px;">
+        <div class="fgp" style="grid-column:1/-1;">
+          <label class="fl">Amount columns</label>
+          <div style="display:flex;flex-wrap:wrap;gap:12px;margin-top:6px;">
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text);"><input type="radio" name="imp-amount-mode" id="imp-amount-mode-single" value="single" checked /> Single signed amount (negative = outflow)</label>
+            <label style="display:flex;align-items:center;gap:6px;font-size:13px;color:var(--text);"><input type="radio" name="imp-amount-mode" id="imp-amount-mode-split" value="split" /> Separate Debit / Credit</label>
+          </div>
+        </div>
+        <div class="fgp" id="imp-wrap-col-date"><label class="fl">Date column</label><select class="fi" id="imp-col-date"></select></div>
+        <div class="fgp" id="imp-wrap-col-amount"><label class="fl">Amount column</label><select class="fi" id="imp-col-amount"></select></div>
+        <div class="fgp" id="imp-wrap-col-debit" style="display:none;"><label class="fl">Debit column</label><select class="fi" id="imp-col-debit"></select></div>
+        <div class="fgp" id="imp-wrap-col-credit" style="display:none;"><label class="fl">Credit column</label><select class="fi" id="imp-col-credit"></select></div>
+        <div class="fgp" style="grid-column:1/-1;"><label class="fl">Description / memo</label><select class="fi" id="imp-col-description"></select></div>
+        <div class="fgp"><label class="fl">External ID (optional)</label><select class="fi" id="imp-col-external"></select></div>
+        <div class="fgp"><label class="fl">Default expense category</label>
+          <select class="fi" id="imp-default-exp-cat">
+            <option value="infer">Auto from description</option>
+            <option value="lab">Labor</option>
+            <option value="sw">Software &amp; tools</option>
+            <option value="ads">Advertising</option>
+            <option value="oth">Other</option>
+          </select>
+        </div>
+        <div class="fgp" style="grid-column:1/-1;display:flex;align-items:center;gap:8px;">
+          <input type="checkbox" id="imp-import-revenue" /><label class="fl" for="imp-import-revenue" style="margin:0;">Also import inflows (credits) as revenue</label>
+        </div>
+        <div class="fgp" style="grid-column:1/-1;display:flex;align-items:center;gap:8px;">
+          <input type="checkbox" id="imp-skip-dupes" checked /><label class="fl" for="imp-skip-dupes" style="margin:0;">Skip rows that look like duplicates (same date, amount, and description)</label>
+        </div>
+      </div>
+    </div>
+    <div id="imp-step-3" class="imp-step" style="display:none;flex:1;min-height:0;flex-direction:column;">
+      <div id="imp-preview-summary" style="font-size:13px;margin-bottom:10px;color:var(--text2);"></div>
+      <div style="overflow:auto;max-height:340px;border:1px solid var(--border);border-radius:var(--rl);">
+        <table class="dt" style="margin:0;">
+          <thead><tr><th>Date</th><th>Flow</th><th>Category</th><th>Amount</th><th>Description</th></tr></thead>
+          <tbody id="imp-preview-body"></tbody>
+        </table>
+      </div>
+    </div>
+    <div class="mf" style="border-top:1px solid var(--border);padding-top:12px;margin-top:8px;flex-shrink:0;">
+      <button type="button" class="btn" id="imp-cancel">Cancel</button>
+      <button type="button" class="btn" id="imp-back" style="display:none;">Back</button>
+      <button type="button" class="btn btn-p" id="imp-next">Next</button>
+      <button type="button" class="btn btn-p" id="imp-commit" style="display:none;">Import</button>
+    </div>
+  </div>
+</div>
+
+<!-- Journal CSV export -->
+<div class="mo" id="journalExportModal">
+  <div class="md" style="max-width:520px;">
+    <div class="mt">Export journal CSV</div>
+    <p style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:14px;">Download ledger lines for a date range. Uses the same categories as your dashboard.</p>
+    <div class="fg" style="margin-bottom:16px;">
+      <div class="fgp"><label class="fl">Start date</label><input class="fi" id="journal-exp-start" type="date" /></div>
+      <div class="fgp"><label class="fl">End date</label><input class="fi" id="journal-exp-end" type="date" /></div>
+      <div class="fgp" style="grid-column:1/-1;">
+        <label class="fl">Format</label>
+        <select class="fi" id="journal-exp-format">
+          <option value="simple">Simple journal (one amount column)</option>
+          <option value="split">Debit / Credit columns</option>
+        </select>
+      </div>
+    </div>
+    <div class="mf" style="border-top:none;padding-top:0;margin-top:0;">
+      <button type="button" class="btn" id="journal-exp-cancel">Cancel</button>
+      <button type="button" class="btn btn-p" id="journal-exp-download">Download CSV</button>
     </div>
   </div>
 </div>
@@ -2224,20 +2321,35 @@
     <div class="mt" id="client-modal-title">Add client</div>
     <input type="hidden" id="client-edit-id" value="" />
     <div class="fg" style="margin-bottom:16px;">
-      <div class="fgp" style="grid-column:1/-1;"><label class="fl">Company name *</label><input class="fi" id="client-company" /></div>
-      <div class="fgp"><label class="fl">Contact name</label><input class="fi" id="client-contact" /></div>
+      <div class="fgp"><label class="fl">Account / Company name *</label><input class="fi" id="client-company" /></div>
       <div class="fgp"><label class="fl">Status</label><input class="fi" id="client-status" placeholder="e.g. Active, Lead" /></div>
+      <div class="fgp"><label class="fl">Salutation</label><input class="fi" id="client-salutation" placeholder="e.g. Mr., Ms., Dr." /></div>
+      <div class="fgp"><label class="fl">First name</label><input class="fi" id="client-first-name" /></div>
+      <div class="fgp"><label class="fl">Last name</label><input class="fi" id="client-last-name" /></div>
+      <div class="fgp"><label class="fl">Contact name (display)</label><input class="fi" id="client-contact" placeholder="Auto from first + last if blank" /></div>
+      <div class="fgp"><label class="fl">Title</label><input class="fi" id="client-title" /></div>
+      <div class="fgp"><label class="fl">Reports to</label><input class="fi" id="client-reports-to" placeholder="Manager / primary contact" /></div>
       <div class="fgp"><label class="fl">Industry / Vertical</label><input class="fi" id="client-industry" list="client-industry-list" autocomplete="off" placeholder="Type or pick a suggestion" /><datalist id="client-industry-list"></datalist></div>
       <div class="fgp" style="grid-column:1/-1;display:flex;align-items:center;gap:8px;">
         <input type="checkbox" id="client-retainer" /><label class="fl" for="client-retainer" style="margin:0;">Retainer client (counts toward Active Retainers)</label>
       </div>
       <div class="fgp"><label class="fl">Email</label><input class="fi" id="client-email" type="email" /></div>
       <div class="fgp"><label class="fl">Phone</label><input class="fi" id="client-phone" /></div>
+      <div class="fgp" style="display:flex;align-items:center;gap:8px;margin-top:6px;">
+        <input type="checkbox" id="client-email-opt-out" /><label class="fl" for="client-email-opt-out" style="margin:0;">Email opt out</label>
+      </div>
+      <div class="fgp"><label class="fl">Contact owner</label><input class="fi" id="client-owner" placeholder="Internal owner" /></div>
       <div class="fgp"><label class="fl">Birthday</label><input class="fi" id="client-birthday" type="date" /></div>
       <div class="fgp"><label class="fl">Preferred channel</label><input class="fi" id="client-preferred-channel" placeholder="e.g. Email, Phone, Slack" /></div>
       <div class="fgp"><label class="fl">Communication style</label><input class="fi" id="client-communication-style" placeholder="e.g. Concise, Detailed" /></div>
       <div class="fgp"><label class="fl">Last touch date</label><input class="fi" id="client-last-touch" type="date" /></div>
       <div class="fgp"><label class="fl">Next follow-up date</label><input class="fi" id="client-next-follow-up" type="date" /></div>
+      <div class="fgp"><label class="fl">Mailing country</label><input class="fi" id="client-mailing-country" placeholder="e.g. United States" /></div>
+      <div class="fgp"><label class="fl">Mailing state/province</label><input class="fi" id="client-mailing-state" /></div>
+      <div class="fgp"><label class="fl">Mailing city</label><input class="fi" id="client-mailing-city" /></div>
+      <div class="fgp"><label class="fl">Mailing zip/postal code</label><input class="fi" id="client-mailing-zip" /></div>
+      <div class="fgp" style="grid-column:1/-1;"><label class="fl">Mailing street</label><textarea class="fi" id="client-mailing-street" rows="2" style="min-height:56px;resize:vertical;"></textarea></div>
+      <div class="fgp" style="grid-column:1/-1;"><label class="fl">Description</label><textarea class="fi" id="client-description" rows="2" style="min-height:56px;resize:vertical;"></textarea></div>
       <div class="fgp" style="grid-column:1/-1;"><label class="fl">Notes</label><textarea class="fi" id="client-notes" rows="2" style="min-height:56px;resize:vertical;"></textarea></div>
       <div class="fgp" style="grid-column:1/-1;"><label class="fl">Relationship notes</label><textarea class="fi" id="client-relationship-notes" rows="2" style="min-height:56px;resize:vertical;"></textarea></div>
       <div class="fgp" style="grid-column:1/-1;padding-top:12px;border-top:1px solid var(--border);">
