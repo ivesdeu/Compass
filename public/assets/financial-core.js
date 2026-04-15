@@ -1824,8 +1824,9 @@
     CHART_ORANGE_FILL_BAR = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.32)';
     CHART_ORANGE_BORDER_BAR = 'rgba(' + rgb.r + ',' + rgb.g + ',' + rgb.b + ',0.45)';
     CHART_EXPENSE_LABOR = accent;
-    CHART_EXPENSE_SOFTWARE = darkenHex(accent, 0.14);
-    CHART_EXPENSE_ADVERTISING = darkenHex(accent, 0.26);
+    CHART_EXPENSE_SOFTWARE = darkenHex(accent, 0.08);
+    // Keep one non-accent category color for stronger visual separation in 2-slice doughnuts.
+    CHART_EXPENSE_ADVERTISING = '#475569';
     CHART_VENDOR_PAL = [CHART_ORANGE, '#71717a', '#64748b', '#a1a1aa', '#94a3b8', '#78716c', '#d4d4d8', '#cbd5e1'];
   }
 
@@ -3157,8 +3158,8 @@ var incomePowerState = {
   var CHART_EXPENSE_GRAY = '#d4d4d8';
   /** Expense doughnut / budget bars: accent + stepped shades (updated in applyAccentBranding). */
   var CHART_EXPENSE_LABOR = CHART_ORANGE;
-  var CHART_EXPENSE_SOFTWARE = darkenHex(CHART_ORANGE, 0.14);
-  var CHART_EXPENSE_ADVERTISING = darkenHex(CHART_ORANGE, 0.26);
+  var CHART_EXPENSE_SOFTWARE = darkenHex(CHART_ORANGE, 0.08);
+  var CHART_EXPENSE_ADVERTISING = '#475569';
   var CHART_PALETTE_REST = ['#71717a', '#a1a1aa', '#d4d4d8', '#e4e4e7', '#52525b', '#94a3b8'];
   var CHART_VENDOR_PAL = [CHART_ORANGE, '#71717a', '#64748b', '#a1a1aa', '#94a3b8', '#78716c', '#d4d4d8', '#cbd5e1'];
 
