@@ -59,8 +59,38 @@
     ]);
   }
 
+  function sleep(ms) {
+    return new Promise(function (resolve) {
+      setTimeout(resolve, ms);
+    });
+  }
+
+  function isLockStolenError(err) {
+    var msg = '';
+    if (err && err.message) msg = String(err.message);
+    if (!msg && err) msg = String(err);
+    msg = msg.toLowerCase();
+    return msg.indexOf('lock was stolen by another request') !== -1 || msg.indexOf('aborterror') !== -1;
+  }
+
+  async function retryOnAuthLock(task) {
+    var maxAttempts = 3;
+    for (var attempt = 1; attempt <= maxAttempts; attempt++) {
+      try {
+        return await task();
+      } catch (err) {
+        if (!isLockStolenError(err) || attempt === maxAttempts) throw err;
+        // Tiny jitter gives the competing request time to release the lock.
+        await sleep(120 * attempt);
+      }
+    }
+    return await task();
+  }
+
   async function getSessionNow() {
-    return supabase.auth.getSession();
+    return retryOnAuthLock(function () {
+      return supabase.auth.getSession();
+    });
   }
 
   function clearOrgContext() {
@@ -176,7 +206,9 @@
    * Uses organization_public_by_slug (SECURITY DEFINER); aligns with DB unique on organizations.slug.
    */
   async function workspaceSlugTakenByAnotherOrg(sl, currentOrgId) {
-    var r = await supabase.rpc('organization_public_by_slug', { sl: sl });
+    var r = await retryOnAuthLock(function () {
+      return supabase.rpc('organization_public_by_slug', { sl: sl });
+    });
     if (r.error) return { taken: false, rpcError: r.error };
     if (!r.data || !r.data.length) return { taken: false };
     var row = r.data[0];
@@ -281,7 +313,9 @@
 
     var slug = parseTenantSlug();
     if (slug) {
-      var pubRes = await supabase.rpc('organization_public_by_slug', { sl: slug });
+      var pubRes = await retryOnAuthLock(function () {
+        return supabase.rpc('organization_public_by_slug', { sl: slug });
+      });
       if (pubRes.error) {
         console.error('organization_public_by_slug failed', pubRes.error);
         gateErr('Could not load workspace URL. ' + String(pubRes.error.message || pubRes.error));
@@ -314,7 +348,9 @@
       return { ok: true, needsOnboarding: needsOnSlug };
     }
 
-    var listRes = await supabase.rpc('my_organizations');
+    var listRes = await retryOnAuthLock(function () {
+      return supabase.rpc('my_organizations');
+    });
     if (listRes.error) {
       console.error('my_organizations failed', listRes.error);
       gateErr('Could not load your workspaces. ' + String(listRes.error.message || listRes.error));
@@ -530,7 +566,9 @@
     }
     var u = sessRes && sessRes.data && sessRes.data.session && sessRes.data.session.user;
     if (!u) return;
-    var listRes = await supabase.rpc('my_organizations');
+    var listRes = await retryOnAuthLock(function () {
+      return supabase.rpc('my_organizations');
+    });
     if (listRes.error || !listRes.data) {
       renderWorkspaceList([]);
       return;
