@@ -11697,18 +11697,28 @@ var incomePowerState = {
       }
       return msg;
     }
-    /** Access token for Edge invokes; refreshes when near expiry to avoid gateway 401. */
-    async function accessTokenForEdgeFunctions(supabase) {
-      var sessRes = await supabase.auth.getSession();
-      var sess = sessRes && sessRes.data ? sessRes.data.session : null;
-      if (!sess || !sess.access_token) return null;
-      var exp = sess.expires_at;
-      var skewMs = 120000;
-      if (typeof exp === 'number' && exp * 1000 < Date.now() + skewMs) {
-        var ref = await supabase.auth.refreshSession();
-        sess = ref && ref.data ? ref.data.session : sess;
+    /**
+     * Edge JWT verification rejects stale access tokens. getSession() can still return
+     * an old JWT from storage; getUser() hits GoTrue and updates session so invoke() sends
+     * a token the gateway accepts.
+     */
+    async function ensureAuthForEdgeInvoke(supabase) {
+      try {
+        var u = await supabase.auth.getUser();
+        if (u.error || !u.data || !u.data.user) return false;
+        var sessRes = await supabase.auth.getSession();
+        var sess = sessRes && sessRes.data ? sessRes.data.session : null;
+        if (!sess || !sess.access_token) return false;
+        var exp = sess.expires_at;
+        var skewMs = 300000;
+        if (typeof exp !== 'number' || exp * 1000 < Date.now() + skewMs) {
+          var ref = await supabase.auth.refreshSession();
+          sess = ref && ref.data ? ref.data.session : sess;
+        }
+        return !!(sess && sess.access_token);
+      } catch (_) {
+        return false;
       }
-      return sess && sess.access_token ? sess.access_token : null;
     }
     async function invokeTeam(body) {
       var supabase = window.supabaseClient;
@@ -11716,11 +11726,11 @@ var incomePowerState = {
       var orgId = typeof getCurrentOrgId === 'function' ? getCurrentOrgId() : null;
       if (!orgId) return { error: 'No workspace selected.' };
       try {
-        var token = await accessTokenForEdgeFunctions(supabase);
-        if (!token) return { error: 'Session expired. Sign in again.' };
+        if (!(await ensureAuthForEdgeInvoke(supabase))) {
+          return { error: 'Session expired. Sign in again.' };
+        }
         var res = await supabase.functions.invoke('organization-team', {
           body: Object.assign({ organizationId: orgId }, body),
-          headers: { Authorization: 'Bearer ' + token },
         });
         if (
           res.error &&
@@ -11728,14 +11738,11 @@ var incomePowerState = {
           res.error.context &&
           res.error.context.status === 401
         ) {
-          var ref2 = await supabase.auth.refreshSession();
-          var s2 = ref2 && ref2.data ? ref2.data.session : null;
-          if (s2 && s2.access_token) {
-            res = await supabase.functions.invoke('organization-team', {
-              body: Object.assign({ organizationId: orgId }, body),
-              headers: { Authorization: 'Bearer ' + s2.access_token },
-            });
-          }
+          await supabase.auth.refreshSession();
+          await supabase.auth.getUser();
+          res = await supabase.functions.invoke('organization-team', {
+            body: Object.assign({ organizationId: orgId }, body),
+          });
         }
         if (res.error) return { error: formatTeamInvokeError(res.error) };
         return res.data && typeof res.data === 'object' ? res.data : {};
