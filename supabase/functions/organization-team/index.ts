@@ -73,8 +73,12 @@ serve(async (req) => {
     return json(req, 500, { error: "Missing Supabase env vars" });
   }
 
-  const authHeader = req.headers.get("Authorization");
-  if (!authHeader?.startsWith("Bearer ")) {
+  const authHeader = req.headers.get("Authorization")?.trim() || "";
+  if (!authHeader.toLowerCase().startsWith("bearer ")) {
+    return json(req, 401, { error: "Missing Authorization" });
+  }
+  const accessToken = authHeader.slice(7).trim();
+  if (!accessToken) {
     return json(req, 401, { error: "Missing Authorization" });
   }
 
@@ -92,14 +96,14 @@ serve(async (req) => {
   }
 
   const userClient = createClient(supabaseUrl, anonKey, {
-    global: { headers: { Authorization: authHeader } },
+    global: { headers: { Authorization: `Bearer ${accessToken}` } },
   });
   const admin = createClient(supabaseUrl, serviceKey);
 
-  // Use the request's Bearer token via client global headers (same as PostgREST RLS pattern).
-  const { data: userData, error: userErr } = await userClient.auth.getUser();
+  // Edge has no persisted auth session; getUser() without args can fail. Pass the access JWT explicitly.
+  const { data: userData, error: userErr } = await userClient.auth.getUser(accessToken);
   if (userErr || !userData?.user) {
-    return json(req, 401, { error: "Invalid session" });
+    return json(req, 401, { error: userErr?.message || "Invalid session" });
   }
   const user = userData.user;
 
