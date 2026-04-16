@@ -542,9 +542,23 @@
 
   window.__dashboardShowLogin = showLogin;
 
+  /** In-flight session resolution so bootstrap + INITIAL_SESSION do not run two flows in parallel. */
+  var sessionFlowPromise = null;
+
+  function withTimeout(promise, ms, errMsg) {
+    return Promise.race([
+      promise,
+      new Promise(function (_, rej) {
+        setTimeout(function () {
+          rej(new Error(errMsg));
+        }, ms);
+      }),
+    ]);
+  }
+
   /**
    * Resolve org context, optional onboarding modal, then show the app (or login on failure).
-   * Used from bootstrap and from auth events (not INITIAL_SESSION — that is covered by bootstrap).
+   * Used from bootstrap and from auth events (including INITIAL_SESSION; deduped with bootstrap).
    */
   async function runAuthSessionFlow(user) {
     if (!user || !user.id) {
@@ -553,23 +567,38 @@
       showLogin();
       return;
     }
-    showLoading();
-    try {
-      setCurrentUser(user);
-      var ok = await ensureOrganizationContext(user);
-      if (!ok) {
-        setCurrentUser(null);
-        showLogin();
-        return;
-      }
-      wireOnboardSubmit(user);
-      await maybeWorkspaceOnboardingThenShowApp(user);
-    } catch (err) {
-      console.error('runAuthSessionFlow', err);
-      setCurrentUser(null);
-      clearOrgContext();
-      showLogin();
+    if (sessionFlowPromise) {
+      return sessionFlowPromise;
     }
+    var flowMs = 45000;
+    sessionFlowPromise = (async function () {
+      showLoading();
+      try {
+        setCurrentUser(user);
+        var ok = await withTimeout(ensureOrganizationContext(user), flowMs, 'Loading workspace timed out. Check your connection and try again.');
+        if (!ok) {
+          setCurrentUser(null);
+          showLogin();
+          return;
+        }
+        wireOnboardSubmit(user);
+        await withTimeout(
+          maybeWorkspaceOnboardingThenShowApp(user),
+          flowMs,
+          'Could not finish workspace setup. Try signing in again.'
+        );
+      } catch (err) {
+        console.error('runAuthSessionFlow', err);
+        setCurrentUser(null);
+        clearOrgContext();
+        var ge = $('gate-auth-error');
+        if (ge && err && err.message) ge.textContent = String(err.message);
+        showLogin();
+      } finally {
+        sessionFlowPromise = null;
+      }
+    })();
+    return sessionFlowPromise;
   }
 
   function showDemoDashboard() {
@@ -647,6 +676,7 @@
     } catch (_) {}
 
     if (event === 'INITIAL_SESSION') {
+      await runAuthSessionFlow(session.user);
       return;
     }
 
