@@ -38,12 +38,14 @@ serve(async (req) => {
   }
   if (!token) return json(req, 400, { error: "token is required" });
 
+  const jwt = authHeader.slice("Bearer ".length);
   const userClient = createClient(supabaseUrl, anonKey, {
     global: { headers: { Authorization: authHeader } },
   });
   const admin = createClient(supabaseUrl, serviceKey);
 
-  const { data: userData, error: userErr } = await userClient.auth.getUser();
+  // Pass JWT explicitly — server-side clients have no session state.
+  const { data: userData, error: userErr } = await userClient.auth.getUser(jwt);
   if (userErr || !userData?.user?.email) {
     return json(req, 401, { error: "Invalid session" });
   }

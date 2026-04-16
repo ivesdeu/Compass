@@ -77,6 +77,7 @@ serve(async (req) => {
   if (!authHeader?.startsWith("Bearer ")) {
     return json(req, 401, { error: "Missing Authorization" });
   }
+  const jwt = authHeader.slice("Bearer ".length);
 
   let payload: Record<string, unknown> = {};
   try {
@@ -96,7 +97,8 @@ serve(async (req) => {
   });
   const admin = createClient(supabaseUrl, serviceKey);
 
-  const { data: userData, error: userErr } = await userClient.auth.getUser();
+  // Pass JWT explicitly — server-side clients have no session state.
+  const { data: userData, error: userErr } = await userClient.auth.getUser(jwt);
   if (userErr || !userData?.user) {
     return json(req, 401, { error: "Invalid session" });
   }

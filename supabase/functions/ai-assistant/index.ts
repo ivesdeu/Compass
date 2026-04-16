@@ -347,10 +347,12 @@ serve(async (req) => {
   }
   body = { ...body, context: sanitized.context, constraints: sanitized.constraints };
 
+  const jwt = authHeader.slice("Bearer ".length);
   const userClient = createClient(supabaseUrl, supabaseAnonKey, {
     global: { headers: { Authorization: authHeader } },
   });
-  const { data: userData, error: userErr } = await userClient.auth.getUser();
+  // Pass JWT explicitly — server-side clients have no session state.
+  const { data: userData, error: userErr } = await userClient.auth.getUser(jwt);
   if (userErr || !userData?.user) return jsonResponse(req, 401, { error: "Invalid or expired auth token." });
   const user = userData.user;
 

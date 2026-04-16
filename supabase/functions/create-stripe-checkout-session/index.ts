@@ -68,6 +68,7 @@ serve(async (req) => {
   const successUrl = body.successUrl || `${appBaseUrl}?payment=success`;
   const cancelUrl = body.cancelUrl || `${appBaseUrl}?payment=cancel`;
 
+  const jwt = authHeader.startsWith("Bearer ") ? authHeader.slice("Bearer ".length) : authHeader;
   const userClient = createClient(supabaseUrl, supabaseAnonKey, {
     global: { headers: { Authorization: authHeader } },
   });
@@ -79,7 +80,8 @@ serve(async (req) => {
     },
   });
 
-  const { data: userData, error: userErr } = await userClient.auth.getUser();
+  // Pass JWT explicitly — server-side clients have no session state.
+  const { data: userData, error: userErr } = await userClient.auth.getUser(jwt);
   if (userErr || !userData?.user) {
     return jsonResponse(req, 401, { error: "Invalid or expired auth token." });
   }
