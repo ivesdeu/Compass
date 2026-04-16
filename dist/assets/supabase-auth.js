@@ -42,10 +42,9 @@
   }
 
   /**
-   * Session / org resolution can exceed a few seconds on slow networks, cold tabs, or Safari.
-   * These are ceilings for UX feedback, not security timeouts.
+   * Ceilings for org / onboarding resolution (not session read — that is driven by INITIAL_SESSION).
+   * These are UX timeouts only; the auth session itself has no artificial cap.
    */
-  var SESSION_READ_MS = 25000;
   var ORG_RESOLVE_MS = 45000;
   var ONBOARDING_GATE_MS = 25000;
 
@@ -58,14 +57,6 @@
         }, ms);
       }),
     ]);
-  }
-
-  async function getSessionWithTimeout() {
-    return withTimeout(
-      supabase.auth.getSession(),
-      SESSION_READ_MS,
-      'Reading your session timed out. Check your connection and try again.'
-    );
   }
 
   function clearOrgContext() {
@@ -716,6 +707,13 @@
     }
   }
 
+  /**
+   * Supabase v2 fires INITIAL_SESSION on the next tick when a session exists in storage.
+   * That is the canonical startup hook — no separate bootstrapSession() needed.
+   * We show the loading screen now so there is no flash of the login form.
+   */
+  showLoading();
+
   supabase.auth.onAuthStateChange(async function (event, session) {
     if (event === 'SIGNED_OUT') {
       clearOrgContext();
@@ -723,6 +721,21 @@
       showLogin();
       return;
     }
+
+    if (event === 'INITIAL_SESSION') {
+      if (!session || !session.user) {
+        showLogin();
+        return;
+      }
+      try {
+        if (typeof window.setBizdashScreenshotNoCloud === 'function') {
+          window.setBizdashScreenshotNoCloud(false);
+        }
+      } catch (_) {}
+      await runAuthSessionFlow(session.user, session);
+      return;
+    }
+
     if (!session || !session.user) {
       clearOrgContext();
       setCurrentUser(null);
@@ -736,11 +749,6 @@
       }
     } catch (_) {}
 
-    if (event === 'INITIAL_SESSION') {
-      await runAuthSessionFlow(session.user, session);
-      return;
-    }
-
     if (event === 'TOKEN_REFRESHED') {
       setCurrentUser(session.user);
       showApp(session.user);
@@ -749,40 +757,6 @@
 
     await runAuthSessionFlow(session.user, session);
   });
-
-  async function bootstrapSession() {
-    showLoading();
-    try {
-      var result = await getSessionWithTimeout();
-      var session = result && result.data ? result.data.session : null;
-      if (result && result.error) {
-        console.error('getSession error', result.error);
-        setCurrentUser(null);
-        clearOrgContext();
-        var geErr = $('gate-auth-error');
-        if (geErr) geErr.textContent = String(result.error.message || result.error || 'Could not read session.');
-        showLogin();
-        return;
-      }
-      if (!session || !session.user) {
-        showLogin();
-        return;
-      }
-      try {
-        if (typeof window.setBizdashScreenshotNoCloud === 'function') {
-          window.setBizdashScreenshotNoCloud(false);
-        }
-      } catch (_) {}
-      await runAuthSessionFlow(session.user, session);
-    } catch (err) {
-      console.error('Error checking session', err);
-      setCurrentUser(null);
-      clearOrgContext();
-      var ge = $('gate-auth-error');
-      if (ge && err && err.message) ge.textContent = String(err.message);
-      showLogin();
-    }
-  }
 
   function wireAuthForm() {
     captureInviteFromUrlToStorage();
@@ -922,12 +896,10 @@
       captureInviteFromUrlToStorage();
       updateGateInviteHint();
       wireAuthForm();
-      bootstrapSession();
     });
   } else {
     captureInviteFromUrlToStorage();
     updateGateInviteHint();
     wireAuthForm();
-    bootstrapSession();
   }
 })();
