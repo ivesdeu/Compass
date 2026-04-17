@@ -190,6 +190,9 @@
     window.currentOrganizationId = orgId || null;
     window.currentOrganizationSlug = slug || null;
     window.currentOrganizationRole = role || null;
+    if (typeof window.refreshSidebarWorkspaceChrome === 'function') {
+      window.refreshSidebarWorkspaceChrome();
+    }
   }
 
   function escHtml(s) {
@@ -426,21 +429,121 @@
     if (m) m.classList.remove('on');
   }
 
-  function prefillOnboardFormFromOrg() {
-    var nameEl = $('ob-name');
-    var slugEl = $('ob-slug');
+  var onboardSlugManual = false;
+  var onboardProfileAvatarObjectUrl = null;
+
+  function slugifyCompanyToSlug(name) {
+    var s = String(name || '')
+      .toLowerCase()
+      .trim()
+      .replace(/[^a-z0-9]+/g, '-')
+      .replace(/^-+|-+$/g, '');
+    if (!s.length) s = 'workspace';
+    if (!/^[a-z0-9]/.test(s)) s = 'co-' + s;
+    if (s.length > 63) s = s.slice(0, 63).replace(/-+$/g, '');
+    return s;
+  }
+
+  function showOnboardStep(step) {
+    var s1 = $('onboard-step-1');
+    var s2 = $('onboard-step-2');
+    if (!s1 || !s2) return;
+    if (step === 2) {
+      s1.classList.remove('on');
+      s2.classList.add('on');
+    } else {
+      s2.classList.remove('on');
+      s1.classList.add('on');
+    }
+    var e1 = $('onboard-error');
+    var e2 = $('onboard-error-2');
+    if (e1) e1.textContent = '';
+    if (e2) e2.textContent = '';
+  }
+
+  function setOnboardAvatarPreviewLetter(letter) {
+    var el = $('ob-avatar-preview');
+    if (!el) return;
+    el.innerHTML = '';
+    el.appendChild(document.createTextNode(letter || '?'));
+  }
+
+  function setOnboardAvatarPreviewImage(url) {
+    var el = $('ob-avatar-preview');
+    if (!el) return;
+    el.textContent = '';
+    var img = document.createElement('img');
+    img.src = url;
+    img.alt = '';
+    el.appendChild(img);
+  }
+
+  async function prefillOnboardingWizard(user) {
+    showOnboardStep(1);
+    onboardSlugManual = false;
+    var meta = (user && user.user_metadata) || {};
+    var fnEl = $('ob-first-name');
+    var lnEl = $('ob-last-name');
+    var emEl = $('ob-email');
+    var upEl = $('ob-product-updates');
+    var avIn = $('ob-profile-avatar-input');
+    var rmBtn = $('ob-profile-avatar-remove');
+    if (fnEl) {
+      var fn = String(meta.first_name || '').trim();
+      var ln = String(meta.last_name || '').trim();
+      if (!fn && !ln && meta.full_name) {
+        var parts = String(meta.full_name).trim().split(/\s+/);
+        fn = parts.shift() || '';
+        ln = parts.join(' ') || '';
+      }
+      fnEl.value = fn;
+      lnEl.value = ln;
+    }
+    if (emEl) emEl.value = (user && user.email) || '';
+    if (upEl) upEl.checked = meta.product_updates_opt_in !== false;
+    if (avIn) avIn.value = '';
+    if (rmBtn) rmBtn.disabled = true;
+    if (onboardProfileAvatarObjectUrl) {
+      try {
+        URL.revokeObjectURL(onboardProfileAvatarObjectUrl);
+      } catch (_) {}
+      onboardProfileAvatarObjectUrl = null;
+    }
+    var path = String(meta.profile_avatar_path || '').trim();
+    if (path && supabase) {
+      try {
+        var signed = await supabase.storage.from('brand-assets').createSignedUrl(path, 60 * 30);
+        if (!signed.error && signed.data && signed.data.signedUrl) {
+          setOnboardAvatarPreviewImage(signed.data.signedUrl);
+          if (rmBtn) rmBtn.disabled = false;
+        } else {
+          setOnboardAvatarPreviewLetter((user.email || '?').charAt(0).toUpperCase());
+        }
+      } catch (_) {
+        setOnboardAvatarPreviewLetter((user.email || '?').charAt(0).toUpperCase());
+      }
+    } else {
+      setOnboardAvatarPreviewLetter((user && user.email ? user.email.charAt(0) : '?').toUpperCase());
+    }
+
+    var cn = $('ob-company-name');
+    var sl = $('ob-slug');
+    var logoIn = $('ob-company-logo-input');
+    var logoWrap = $('ob-company-logo-preview-wrap');
+    var logoImg = $('ob-company-logo-preview');
+    if (logoIn) logoIn.value = '';
+    if (logoWrap) logoWrap.style.display = 'none';
+    if (logoImg) logoImg.removeAttribute('src');
     var orgId = window.currentOrganizationId;
-    if (!orgId) return;
-    supabase
-      .from('organizations')
-      .select('name,slug')
-      .eq('id', orgId)
-      .maybeSingle()
-      .then(function (r) {
-        if (!r.data) return;
-        if (nameEl) nameEl.value = r.data.name || '';
-        if (slugEl) slugEl.value = r.data.slug || '';
-      });
+    if (!orgId || !cn || !sl) return;
+    var r = await retryOnAuthLock(function () {
+      return supabase.from('organizations').select('name,slug').eq('id', orgId).maybeSingle();
+    });
+    if (r.data) {
+      cn.value = r.data.name || '';
+      var suggest = slugifyCompanyToSlug(cn.value);
+      sl.value = suggest || String(r.data.slug || '').trim() || '';
+    }
   }
 
   async function maybeWorkspaceOnboardingThenShowApp(user, needsOnboardingKnown) {
@@ -458,91 +561,238 @@
     if (loading) loading.style.display = 'none';
     var shell = $('auth-login-shell');
     if (shell) shell.style.display = 'none';
-    prefillOnboardFormFromOrg();
-    var err = $('onboard-error');
-    if (err) err.textContent = '';
+    await prefillOnboardingWizard(user);
     showOnboardModal();
   }
 
-  function wireOnboardSubmit(user) {
-    var btn = $('onboard-submit-btn');
-    if (!btn || btn.getAttribute('data-wired') === '1') return;
-    btn.setAttribute('data-wired', '1');
-    btn.addEventListener('click', async function () {
-      var err = $('onboard-error');
-      if (err) err.textContent = '';
-      var name = ($('ob-name') && $('ob-name').value.trim()) || '';
-      var slug = ($('ob-slug') && $('ob-slug').value.trim().toLowerCase()) || '';
-      var owner = ($('ob-owner') && $('ob-owner').value.trim()) || '';
-      var role = ($('ob-role') && $('ob-role').value.trim()) || '';
-      var tagline = ($('ob-tagline') && $('ob-tagline').value.trim()) || '';
-      var accentEl = $('ob-accent');
-      var accent = accentEl && accentEl.value ? accentEl.value : '#e8501a';
-      if (!name) {
-        if (err) err.textContent = 'Company name is required.';
-        return;
-      }
-      if (!slugClientValid(slug)) {
-        if (err)
-          err.textContent =
-            'URL slug: 2–63 characters, lowercase letters, numbers, or hyphens; must start with a letter or number.';
-        return;
-      }
-      var orgId = window.currentOrganizationId;
-      if (!orgId) {
-        if (err) err.textContent = 'No workspace context.';
-        return;
-      }
-      var takenOb = await workspaceSlugTakenByAnotherOrg(slug, orgId);
-      if (takenOb.rpcError) {
-        if (err) err.textContent = 'Could not verify that URL. Try again.';
-        return;
-      }
-      if (takenOb.taken) {
-        if (err) err.textContent = 'That workspace URL is already taken. Choose a different slug.';
-        return;
-      }
-      var prevSlug = window.currentOrganizationSlug;
-      try {
-        var rpcRes = await supabase.rpc('update_workspace_profile', {
-          p_org_id: orgId,
-          p_name: name,
-          p_slug: slug,
-        });
-        var payload = rpcRes.data;
-        if (typeof payload === 'string') {
+  function wireOnboardingWizard(user) {
+    var modalRoot = $('onboardModal');
+    if (!user || !modalRoot || modalRoot.getAttribute('data-wizard-wired') === '1') return;
+    modalRoot.setAttribute('data-wizard-wired', '1');
+
+    var avInput = $('ob-profile-avatar-input');
+    var avBtn = $('ob-profile-avatar-upload-btn');
+    var avRm = $('ob-profile-avatar-remove');
+    if (avBtn && avInput) {
+      avBtn.addEventListener('click', function () {
+        avInput.click();
+      });
+    }
+    if (avInput) {
+      avInput.addEventListener('change', function () {
+        var f = avInput.files && avInput.files[0];
+        var err = $('onboard-error');
+        if (err) err.textContent = '';
+        if (!f) return;
+        if (!/^image\/(png|jpeg|jpg|webp)$/i.test(f.type)) {
+          if (err) err.textContent = 'Please choose a PNG, JPEG, or WebP image.';
+          avInput.value = '';
+          return;
+        }
+        if (f.size > 10 * 1024 * 1024) {
+          if (err) err.textContent = 'Image must be 10MB or smaller.';
+          avInput.value = '';
+          return;
+        }
+        if (onboardProfileAvatarObjectUrl) {
           try {
-            payload = JSON.parse(payload);
+            URL.revokeObjectURL(onboardProfileAvatarObjectUrl);
           } catch (_) {}
         }
-        if (rpcRes.error || !payload || typeof payload !== 'object') {
-          if (err) err.textContent = rpcRes.error ? String(rpcRes.error.message || rpcRes.error) : 'Could not save workspace.';
+        onboardProfileAvatarObjectUrl = URL.createObjectURL(f);
+        setOnboardAvatarPreviewImage(onboardProfileAvatarObjectUrl);
+        if (avRm) avRm.disabled = false;
+      });
+    }
+    if (avRm && avInput) {
+      avRm.addEventListener('click', function () {
+        avInput.value = '';
+        if (onboardProfileAvatarObjectUrl) {
+          try {
+            URL.revokeObjectURL(onboardProfileAvatarObjectUrl);
+          } catch (_) {}
+          onboardProfileAvatarObjectUrl = null;
+        }
+        setOnboardAvatarPreviewLetter((user.email || '?').charAt(0).toUpperCase());
+        avRm.disabled = true;
+      });
+    }
+
+    var cnEl = $('ob-company-name');
+    var slugEl = $('ob-slug');
+    if (cnEl && slugEl) {
+      cnEl.addEventListener('input', function () {
+        if (onboardSlugManual) return;
+        slugEl.value = slugifyCompanyToSlug(cnEl.value);
+      });
+      slugEl.addEventListener('keydown', function () {
+        onboardSlugManual = true;
+      });
+      slugEl.addEventListener('input', function () {
+        onboardSlugManual = true;
+      });
+    }
+
+    var logoIn = $('ob-company-logo-input');
+    var logoBtn = $('ob-company-logo-btn');
+    var logoWrap = $('ob-company-logo-preview-wrap');
+    var logoImg = $('ob-company-logo-preview');
+    if (logoBtn && logoIn) {
+      logoBtn.addEventListener('click', function () {
+        logoIn.click();
+      });
+    }
+    if (logoIn && logoWrap && logoImg) {
+      logoIn.addEventListener('change', function () {
+        var f = logoIn.files && logoIn.files[0];
+        if (!f) return;
+        if (!/^image\/(png|jpeg|jpg|webp)$/i.test(f.type)) {
+          logoIn.value = '';
           return;
         }
-        if (!payload.ok) {
-          if (err) err.textContent = payload.error ? String(payload.error) : 'Could not save workspace.';
+        try {
+          logoImg.src = URL.createObjectURL(f);
+          logoWrap.style.display = 'flex';
+        } catch (_) {}
+      });
+    }
+
+    var btn1 = $('onboard-step1-continue');
+    if (btn1) {
+      btn1.addEventListener('click', async function () {
+        var err = $('onboard-error');
+        if (err) err.textContent = '';
+        var fn = ($('ob-first-name') && $('ob-first-name').value.trim()) || '';
+        var ln = ($('ob-last-name') && $('ob-last-name').value.trim()) || '';
+        if (!fn || !ln) {
+          if (err) err.textContent = 'First and last name are required.';
           return;
         }
-        var newSlug = payload.slug ? String(payload.slug) : slug;
-        setOrgContext(orgId, newSlug, window.currentOrganizationRole);
-        if (prevSlug && newSlug && String(prevSlug).toLowerCase() !== String(newSlug).toLowerCase()) {
-          replaceBrowserPathForSlug(newSlug);
+        try {
+          var metaIn = Object.assign({}, (user.user_metadata && typeof user.user_metadata === 'object' ? user.user_metadata : {}) || {});
+          metaIn.first_name = fn;
+          metaIn.last_name = ln;
+          metaIn.product_updates_opt_in = !!($('ob-product-updates') && $('ob-product-updates').checked);
+          var file = avInput && avInput.files && avInput.files[0];
+          if (file && typeof window.bizdashUploadBrandAssetFile === 'function') {
+            try {
+              var up = await window.bizdashUploadBrandAssetFile(file, user.id, 'profile');
+              if (up && up.path) metaIn.profile_avatar_path = up.path;
+            } catch (avErr) {
+              console.warn('onboard profile avatar upload', avErr);
+            }
+          }
+          var upd = await supabase.auth.updateUser({ data: metaIn });
+          if (upd.error) {
+            if (err) err.textContent = upd.error.message || 'Could not save your profile.';
+            return;
+          }
+          if (upd.data && upd.data.user) {
+            setCurrentUser(upd.data.user);
+          }
+          showOnboardStep(2);
+        } catch (e1) {
+          console.error('onboard step1', e1);
+          if (err) err.textContent = 'Something went wrong. Try again.';
         }
-        if (typeof window.bizdashApplyWorkspaceBrandingFromOnboarding === 'function') {
-          await window.bizdashApplyWorkspaceBrandingFromOnboarding({
-            businessName: name,
-            owner: owner,
-            ownerRole: role,
-            tagline: tagline,
-            accent: accent,
+      });
+    }
+
+    var back2 = $('onboard-step2-back');
+    if (back2) {
+      back2.addEventListener('click', function () {
+        showOnboardStep(1);
+      });
+    }
+
+    var btn2 = $('onboard-step2-finish');
+    if (btn2) {
+      btn2.addEventListener('click', async function () {
+        var err = $('onboard-error-2');
+        if (err) err.textContent = '';
+        var name = ($('ob-company-name') && $('ob-company-name').value.trim()) || '';
+        var slug = ($('ob-slug') && $('ob-slug').value.trim().toLowerCase()) || '';
+        if (!name) {
+          if (err) err.textContent = 'Company name is required.';
+          return;
+        }
+        if (!slugClientValid(slug)) {
+          if (err)
+            err.textContent =
+              'URL slug: 2–63 characters, lowercase letters, numbers, or hyphens; must start with a letter or number.';
+          return;
+        }
+        var orgId = window.currentOrganizationId;
+        if (!orgId) {
+          if (err) err.textContent = 'No workspace context.';
+          return;
+        }
+        var takenOb = await workspaceSlugTakenByAnotherOrg(slug, orgId);
+        if (takenOb.rpcError) {
+          if (err) err.textContent = 'Could not verify that URL. Try again.';
+          return;
+        }
+        if (takenOb.taken) {
+          if (err) err.textContent = 'That workspace URL is already taken. Choose a different slug.';
+          return;
+        }
+        var prevSlug = window.currentOrganizationSlug;
+        try {
+          var rpcRes = await supabase.rpc('update_workspace_profile', {
+            p_org_id: orgId,
+            p_name: name,
+            p_slug: slug,
           });
+          var payload = rpcRes.data;
+          if (typeof payload === 'string') {
+            try {
+              payload = JSON.parse(payload);
+            } catch (_) {}
+          }
+          if (rpcRes.error || !payload || typeof payload !== 'object') {
+            if (err) err.textContent = rpcRes.error ? String(rpcRes.error.message || rpcRes.error) : 'Could not save workspace.';
+            return;
+          }
+          if (!payload.ok) {
+            if (err) err.textContent = payload.error ? String(payload.error) : 'Could not save workspace.';
+            return;
+          }
+          var newSlug = payload.slug ? String(payload.slug) : slug;
+          setOrgContext(orgId, newSlug, window.currentOrganizationRole);
+          if (prevSlug && newSlug && String(prevSlug).toLowerCase() !== String(newSlug).toLowerCase()) {
+            replaceBrowserPathForSlug(newSlug);
+          }
+          var fn = ($('ob-first-name') && $('ob-first-name').value.trim()) || '';
+          var ln = ($('ob-last-name') && $('ob-last-name').value.trim()) || '';
+          var ownerFull = (fn + ' ' + ln).trim();
+          var logoFile = logoIn && logoIn.files && logoIn.files[0];
+          if (logoFile && typeof window.bizdashUploadBrandAssetFile === 'function' && typeof window.bizdashApplyBrandLogoToShell === 'function') {
+            try {
+              var upL = await window.bizdashUploadBrandAssetFile(logoFile, orgId, 'light');
+              if (upL && upL.signedUrl) {
+                window.bizdashApplyBrandLogoToShell(upL.signedUrl, '');
+              }
+            } catch (logoErr) {
+              console.warn('onboard logo upload', logoErr);
+            }
+          }
+          if (typeof window.bizdashApplyWorkspaceBrandingFromOnboarding === 'function') {
+            await window.bizdashApplyWorkspaceBrandingFromOnboarding({
+              businessName: name,
+              owner: ownerFull,
+              ownerRole: '',
+              tagline: '',
+              accent: '#e8501a',
+            });
+          }
+          hideOnboardModal();
+          showApp(user);
+        } catch (e2) {
+          console.error('onboard step2', e2);
+          if (err) err.textContent = 'Could not save workspace. If this persists, confirm the database migration ran.';
         }
-        hideOnboardModal();
-        showApp(user);
-      } catch (e) {
-        if (err) err.textContent = 'Could not save workspace. If this persists, confirm the database migration ran.';
-      }
-    });
+      });
+    }
   }
 
   function renderWorkspaceList(rows) {
@@ -707,6 +957,11 @@
 
   function showLogin() {
     clearStableAppUserMarker();
+    var obM = $('onboardModal');
+    if (obM) {
+      obM.removeAttribute('data-wizard-wired');
+      obM.classList.remove('on');
+    }
     var loading = $('auth-loading');
     var shell = $('auth-login-shell');
     var app = $('app-shell');
@@ -764,14 +1019,31 @@
     }
   }
 
+  function isDemoDashboardUserId(userId) {
+    var demoId = window.DEMO_DASHBOARD_USER_ID || '00000000-0000-4000-8000-000000000001';
+    return userId != null && String(userId) === String(demoId);
+  }
+
+  function hasResolvedWorkspaceContext(session) {
+    if (!session || !session.user) return false;
+    if (isDemoDashboardUserId(session.user.id)) return true;
+    var oid = window.currentOrganizationId;
+    return !!(oid && String(oid).trim());
+  }
+
   function shouldSkipSessionReflow(session) {
     if (!session || !session.user || session.user.id == null) return false;
     var sid = String(session.user.id);
     var app = $('app-shell');
     if (!app || !app.classList.contains('on')) return false;
-    if (lastStableAppUserId && lastStableAppUserId === sid) return true;
-    var cu = window.currentUser && window.currentUser.id != null ? String(window.currentUser.id) : '';
-    return !!cu && cu === sid;
+    var sameStable = (lastStableAppUserId && lastStableAppUserId === sid) || (function () {
+      var cu = window.currentUser && window.currentUser.id != null ? String(window.currentUser.id) : '';
+      return !!cu && cu === sid;
+    })();
+    if (!sameStable) return false;
+    // Never treat the shell as "fully resumed" for real accounts without org id — otherwise we skip
+    // runAuthSessionFlow and never reattach workspace context or reload cloud data.
+    return hasResolvedWorkspaceContext(session);
   }
 
   function shouldSkipSessionReflowForUser(user) {
@@ -819,7 +1091,7 @@
           showLogin();
           return;
         }
-        wireOnboardSubmit(user);
+        wireOnboardingWizard(user);
         await withTimeout(
           maybeWorkspaceOnboardingThenShowApp(user, ctx.needsOnboarding),
           ONBOARDING_GATE_MS,
@@ -882,13 +1154,43 @@
       var nameEl = document.getElementById('user-name');
       var roleEl = document.getElementById('user-role');
       var avatarEl = document.getElementById('user-avatar');
-      if (nameEl) nameEl.textContent = user.email || 'Signed in';
+      var metaU = (user.user_metadata && typeof user.user_metadata === 'object' ? user.user_metadata : {}) || {};
+      if (nameEl) {
+        var dispN = [String(metaU.first_name || '').trim(), String(metaU.last_name || '').trim()].filter(Boolean).join(' ').trim();
+        nameEl.textContent = dispN || user.email || 'Signed in';
+      }
       if (roleEl) {
         var rr = window.currentOrganizationRole;
         roleEl.textContent = rr ? String(rr).charAt(0).toUpperCase() + String(rr).slice(1) : 'Member';
       }
-      if (avatarEl && user.email) {
-        avatarEl.textContent = user.email.charAt(0).toUpperCase();
+      if (avatarEl) {
+        avatarEl.innerHTML = '';
+        var avPath = String(metaU.profile_avatar_path || '').trim();
+        if (avPath && supabase) {
+          supabase.storage
+            .from('brand-assets')
+            .createSignedUrl(avPath, 60 * 60 * 24)
+            .then(function (res) {
+              if (!res.data || !res.data.signedUrl || !avatarEl) return;
+              avatarEl.innerHTML = '';
+              var im = document.createElement('img');
+              im.src = res.data.signedUrl;
+              im.alt = '';
+              im.width = 28;
+              im.height = 28;
+              im.style.borderRadius = '50%';
+              im.style.objectFit = 'cover';
+              im.style.display = 'block';
+              avatarEl.appendChild(im);
+            })
+            .catch(function () {
+              if (avatarEl && user.email) {
+                avatarEl.textContent = user.email.charAt(0).toUpperCase();
+              }
+            });
+        } else if (user.email) {
+          avatarEl.textContent = user.email.charAt(0).toUpperCase();
+        }
       }
     }
 
@@ -956,7 +1258,10 @@
 
     if (event === 'TOKEN_REFRESHED') {
       setCurrentUser(session.user);
-      showApp(session.user);
+      // Avoid showApp + initData before org resolution finishes (setCurrentUser runs early in runAuthSessionFlow).
+      if (hasResolvedWorkspaceContext(session)) {
+        showApp(session.user);
+      }
       return;
     }
 

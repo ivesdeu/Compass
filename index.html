@@ -100,6 +100,62 @@
 
   /* SIDEBAR (light surface — accent via active state only) */
   .sb { width:230px; background:var(--bg2); border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; }
+  /* Top chrome: workspace + command palette entry + account */
+  .sb-chrome { flex-shrink: 0; padding: 12px 10px 10px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+  .sb-ws-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    margin: 0;
+    padding: 6px 8px;
+    border: none;
+    border-radius: var(--rs);
+    background: var(--bg3);
+    color: inherit;
+    font: inherit;
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.15s;
+    box-sizing: border-box;
+  }
+  .sb-ws-row:hover { background: var(--bg4); }
+  .sb-ws-mono {
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
+    background: var(--coral);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+  .sb-ws-meta { flex: 1; min-width: 0; }
+  .sb-ws-label { display: block; font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sb-ws-chev { flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--text3); }
+  .sb-ws-chev svg { width: 16px; height: 16px; }
+  .sb-pills { display: flex; flex-wrap: wrap; gap: 6px; }
+  .sb-pill {
+    flex: 1 1 auto;
+    min-width: 0;
+    font-size: 11px;
+    font-weight: 600;
+    padding: 7px 10px;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+    color: var(--text2);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s, border-color 0.15s;
+  }
+  .sb-pill:hover { background: var(--bg3); color: var(--text); border-color: var(--text3); }
+  .sb-pill:focus-visible { outline: 2px solid var(--coral); outline-offset: 1px; }
+  .sb-chrome .sb-user { margin: 0 -2px 0; padding: 10px 8px 10px; border-top: 1px solid var(--border); border-radius: 0 0 var(--rs) var(--rs); }
+  .sb-foot { flex-shrink: 0; padding: 8px 10px 14px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px; }
   .sb-logo { padding:16px 14px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:center; }
   /* Legacy text-brand classes kept for possible reuse; sidebar uses .sb-brand-img. */
   .sb-idm { font-size:28px; font-weight:600; color:var(--text); letter-spacing:-0.03em; line-height:1; }
@@ -117,7 +173,8 @@
   .sb-user:hover { background:var(--bg3); color:var(--text); }
   .sb-user-name { font-size:13px; color:var(--text); font-weight:600; line-height:1.25; }
   .sb-user-role { font-size:11px; color:var(--text3); margin-top:2px; line-height:1.25; }
-  .avatar { width:28px; height:28px; border-radius:50%; background:var(--coral); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; color:#fff; flex-shrink:0; }
+  .avatar { width:28px; height:28px; border-radius:50%; background:var(--coral); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; color:#fff; flex-shrink:0; overflow:hidden; }
+  .avatar img { width:100%; height:100%; object-fit:cover; display:block; }
 
   /* Mobile chrome hidden on desktop; enabled inside @media (max-width: 960px) below */
   .mobile-topbar,
@@ -141,6 +198,207 @@
   .pg .pt { font-size:clamp(2.25rem, 4.2vw, 2.75rem); font-weight:700; letter-spacing:-0.035em; line-height:1.08; }
   .ps { font-size:0.875rem; font-weight:400; color:var(--text3); margin-top:6px; line-height:1.35; }
   .hr { display:flex; gap:12px; align-items:center; flex-wrap:wrap; }
+
+  /* Settings — accent presets (swatches) */
+  .accent-preset-row {
+    grid-column: 1 / -1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 20px;
+    flex-wrap: wrap;
+  }
+  .accent-preset-copy { flex: 1; min-width: 200px; }
+  .accent-preset-copy .fl { display: block; margin-bottom: 4px; }
+  .accent-preset-hint {
+    font-size: 12px;
+    color: var(--text3);
+    line-height: 1.45;
+    margin: 0;
+    max-width: 28rem;
+  }
+  .accent-preset-swatches {
+    display: flex;
+    gap: 10px;
+    align-items: center;
+    flex-shrink: 0;
+  }
+  .accent-swatch {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    border: none;
+    padding: 0;
+    background: var(--sw);
+    cursor: pointer;
+    box-sizing: border-box;
+    box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.1);
+    transition: box-shadow 0.15s ease;
+  }
+  .accent-swatch:hover { box-shadow: inset 0 0 0 1px rgba(15, 23, 42, 0.18), 0 1px 3px rgba(15, 23, 42, 0.12); }
+  .accent-swatch.on {
+    box-shadow: 0 0 0 2px #fff, 0 0 0 4px var(--sw);
+  }
+  .accent-swatch:focus-visible {
+    outline: 2px solid var(--coral, #e8501a);
+    outline-offset: 3px;
+  }
+
+  /* Settings — master / detail (sidebar + panels) */
+  #page-settings.pg {
+    padding: 0;
+    max-width: none;
+    margin: 0;
+  }
+  .settings-shell {
+    display: flex;
+    align-items: stretch;
+    min-height: calc(100dvh - 96px);
+    box-sizing: border-box;
+  }
+  .settings-nav {
+    flex: 0 0 248px;
+    width: 248px;
+    max-width: 100%;
+    box-sizing: border-box;
+    padding: 20px 14px 24px 16px;
+    border-right: 1px solid var(--border);
+    background: var(--bg2);
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .settings-nav-search-wrap {
+    position: relative;
+  }
+  .settings-nav-search-wrap .settings-nav-search-icon {
+    position: absolute;
+    left: 11px;
+    top: 50%;
+    transform: translateY(-50%);
+    width: 15px;
+    height: 15px;
+    color: var(--text3);
+    pointer-events: none;
+  }
+  .settings-nav-search {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 8px 10px 8px 34px;
+    font-size: 13px;
+    border-radius: 10px;
+    border: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .settings-nav-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding-right: 2px;
+    display: flex;
+    flex-direction: column;
+    gap: 22px;
+  }
+  .settings-nav-scroll::-webkit-scrollbar { width: 4px; }
+  .settings-nav-scroll::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
+  .settings-nav-group-title {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin: 0 0 8px 8px;
+  }
+  .settings-nav-item {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    text-align: left;
+    border: none;
+    border-radius: 10px;
+    padding: 9px 10px 9px 8px;
+    margin-bottom: 2px;
+    background: transparent;
+    color: var(--text2);
+    font-size: 13px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .settings-nav-item:hover {
+    background: rgba(15, 23, 42, 0.05);
+    color: var(--text);
+  }
+  .settings-nav-item.on {
+    background: var(--bg);
+    color: var(--text);
+    box-shadow: inset 0 0 0 1px var(--border);
+  }
+  .settings-nav-ic {
+    flex-shrink: 0;
+    width: 18px;
+    height: 18px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: inherit;
+  }
+  .settings-nav-ic svg {
+    width: 18px;
+    height: 18px;
+  }
+  .settings-main {
+    flex: 1;
+    min-width: 0;
+    padding: 28px 36px 40px;
+    box-sizing: border-box;
+    overflow-x: hidden;
+  }
+  .settings-main-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 28px;
+    flex-wrap: wrap;
+  }
+  .settings-main-kicker {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.05em;
+    text-transform: uppercase;
+    color: var(--text3);
+    margin-bottom: 6px;
+  }
+  .settings-main-title {
+    font-size: clamp(1.5rem, 2.8vw, 1.85rem);
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    line-height: 1.15;
+    color: var(--text);
+    margin: 0;
+  }
+  .settings-main-desc {
+    font-size: 0.875rem;
+    color: var(--text3);
+    margin: 8px 0 0;
+    max-width: 40rem;
+    line-height: 1.45;
+  }
+  .settings-panels .settings-panel {
+    display: none;
+  }
+  .settings-panels .settings-panel.on {
+    display: block;
+  }
+  .settings-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 20px;
+    max-width: 720px;
+  }
 
   /* Chat — flat workspace with docked composer */
   #page-chat.pg.on {
@@ -712,6 +970,341 @@
   #customers-table td:nth-child(4).td-truncate { max-width: 130px; }
   /* Keep columns menu above customer cards but below modal overlays. */
   #page-customers .ph { position: relative; z-index: 90; }
+  /* Tasks tab (Attio-style) */
+  #page-tasks.tasks-attio {
+    max-width: 1100px;
+    margin: 0 auto;
+    padding: 0 4px 32px;
+  }
+  #page-tasks .tasks-attio-hdr {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-bottom: 8px;
+  }
+  #page-tasks .tasks-attio-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 1.25rem;
+    font-weight: 600;
+    color: var(--text);
+  }
+  #page-tasks .tasks-attio-title svg {
+    width: 22px;
+    height: 22px;
+    color: var(--text3);
+    flex-shrink: 0;
+  }
+  #page-tasks .tasks-attio-hdr-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+  }
+  #page-tasks .tasks-attio-hdr-actions a {
+    color: var(--text2);
+    text-decoration: none;
+    padding: 6px 10px;
+    border-radius: 6px;
+  }
+  #page-tasks .tasks-attio-hdr-actions a:hover {
+    background: var(--bg3);
+    color: var(--text);
+  }
+  #page-tasks .tasks-attio-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: space-between;
+    gap: 10px;
+    padding: 10px 0 16px;
+    border-bottom: 1px solid var(--border);
+    margin-bottom: 0;
+  }
+  #page-tasks .tasks-attio-toolbar-left,
+  #page-tasks .tasks-attio-toolbar-right {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+  #page-tasks .tasks-sort-pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text2);
+    padding: 6px 10px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg2);
+  }
+  #page-tasks .tasks-sort-pill strong {
+    color: var(--text);
+    font-weight: 600;
+  }
+  #page-tasks .tasks-btn-ghost {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text2);
+    padding: 6px 12px;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    background: var(--bg2);
+    cursor: pointer;
+  }
+  #page-tasks .tasks-btn-ghost:hover:not(:disabled) {
+    background: var(--bg3);
+    color: var(--text);
+  }
+  #page-tasks .tasks-btn-ghost:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  #page-tasks .tasks-filter-select {
+    min-width: 120px;
+    font-size: 13px;
+  }
+  #page-tasks .tasks-demo-hint {
+    font-size: 12px;
+    color: var(--text3);
+    margin: 10px 0 0;
+  }
+  #page-tasks .tasks-empty {
+    display: none;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-align: center;
+    padding: 48px 24px 56px;
+    min-height: 320px;
+  }
+  #page-tasks .tasks-empty.on {
+    display: flex;
+  }
+  #page-tasks .tasks-empty-illus {
+    width: 120px;
+    height: 120px;
+    margin-bottom: 20px;
+    color: var(--text3);
+    opacity: 0.85;
+  }
+  #page-tasks .tasks-empty h2 {
+    font-size: 1.35rem;
+    font-weight: 600;
+    color: var(--text);
+    margin-bottom: 8px;
+  }
+  #page-tasks .tasks-empty p {
+    font-size: 14px;
+    color: var(--text2);
+    max-width: 360px;
+    line-height: 1.5;
+    margin-bottom: 20px;
+  }
+  #page-tasks .tasks-main {
+    display: none;
+    padding-top: 8px;
+  }
+  #page-tasks .tasks-main.on {
+    display: block;
+  }
+  #page-tasks .tasks-group-hdr {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text2);
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    padding: 18px 0 8px;
+    border-bottom: 1px solid var(--border);
+  }
+  #page-tasks .tasks-group-count {
+    font-weight: 500;
+    color: var(--text3);
+  }
+  #page-tasks .tasks-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 14px;
+  }
+  #page-tasks .tasks-table th {
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    color: var(--text3);
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    white-space: nowrap;
+  }
+  #page-tasks .tasks-table td {
+    padding: 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+    color: var(--text);
+  }
+  #page-tasks .tasks-table tr:hover td {
+    background: var(--bg3);
+  }
+  #page-tasks .tasks-col-task {
+    min-width: 200px;
+  }
+  #page-tasks .tasks-row-title {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+  }
+  #page-tasks .tasks-row-title input[type='checkbox'] {
+    width: 16px;
+    height: 16px;
+    accent-color: var(--coral);
+    flex-shrink: 0;
+  }
+  #page-tasks .tasks-due-today {
+    color: var(--warning);
+    font-weight: 500;
+    font-size: 13px;
+  }
+  #page-tasks .tasks-due-overdue {
+    color: var(--red);
+    font-weight: 500;
+    font-size: 13px;
+  }
+  #page-tasks .tasks-due-muted {
+    color: var(--text2);
+    font-size: 13px;
+  }
+  #page-tasks .tasks-assignee {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    max-width: 220px;
+  }
+  #page-tasks .tasks-assignee-av {
+    width: 28px;
+    height: 28px;
+    border-radius: 50%;
+    background: var(--green);
+    color: #fff;
+    font-size: 11px;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  #page-tasks .tasks-assignee-em {
+    font-size: 13px;
+    color: var(--text2);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  #page-tasks .tasks-row-menu {
+    border: none;
+    background: transparent;
+    color: var(--text3);
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 4px;
+    font-size: 18px;
+    line-height: 1;
+  }
+  #page-tasks .tasks-row-menu:hover {
+    background: var(--bg4);
+    color: var(--text);
+  }
+  #page-tasks .tasks-learn {
+    margin-top: 40px;
+    padding-top: 8px;
+  }
+  #page-tasks .tasks-learn-lbl {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text3);
+    margin-bottom: 10px;
+  }
+  #page-tasks .tasks-learn-cards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  @media (max-width: 720px) {
+    #page-tasks .tasks-learn-cards {
+      grid-template-columns: 1fr;
+    }
+  }
+  #page-tasks .tasks-learn-card {
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    padding: 14px 16px;
+    background: var(--bg2);
+    font-size: 13px;
+    color: var(--text2);
+    display: flex;
+    align-items: flex-start;
+    gap: 10px;
+  }
+  #page-tasks .tasks-learn-card svg {
+    width: 18px;
+    height: 18px;
+    color: var(--text3);
+    flex-shrink: 0;
+    margin-top: 2px;
+  }
+  #page-tasks .tasks-modal-overlay {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 200;
+    background: rgba(0, 0, 0, 0.35);
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  #page-tasks .tasks-modal-overlay.on {
+    display: flex;
+  }
+  #page-tasks .tasks-modal {
+    background: var(--bg2);
+    border-radius: 12px;
+    border: 1px solid var(--border);
+    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
+    width: 100%;
+    max-width: 440px;
+    padding: 22px 24px 20px;
+  }
+  #page-tasks .tasks-modal h3 {
+    font-size: 1.05rem;
+    font-weight: 600;
+    margin-bottom: 16px;
+  }
+  #page-tasks .tasks-modal .fgp {
+    margin-bottom: 14px;
+  }
+  #page-tasks .tasks-modal .fl {
+    display: block;
+    font-size: 12px;
+    font-weight: 500;
+    color: var(--text2);
+    margin-bottom: 6px;
+  }
+  #page-tasks .tasks-modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 8px;
+    margin-top: 20px;
+  }
   .customers-columns-wrap { position: relative; z-index: 91; }
   #customers-columns-panel {
     position: absolute;
@@ -846,6 +1439,763 @@
   .md { background:var(--bg2); border:1px solid var(--border); border-radius:var(--rl); padding:28px; width:520px; max-width:95vw; max-height:88vh; overflow-y:auto; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
   .mt { font-size:1.125rem; font-weight:600; margin-bottom:20px; letter-spacing:-0.02em; line-height:1.25; }
   .mf { display:flex; gap:8px; justify-content:flex-end; margin-top:22px; padding-top:18px; border-top:1px solid var(--border); }
+
+  /* First-run onboarding (split card, blue accent — scoped to #onboardModal) */
+  #onboardModal {
+    z-index: 110;
+    --onb-primary: #2b73e3;
+    --onb-primary-hover: #1f5ecc;
+    --onb-primary-soft: rgba(43, 115, 227, 0.12);
+    --onb-border: rgba(0, 0, 0, 0.08);
+    --onb-muted: #64748b;
+  }
+  #onboardModal .md.onboard-md {
+    width: min(920px, 96vw);
+    max-width: 96vw;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 14px;
+    box-shadow: 0 20px 50px rgba(15, 23, 42, 0.12);
+  }
+  #onboardModal .onboard-split {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    min-height: 420px;
+  }
+  @media (max-width: 820px) {
+    #onboardModal .onboard-split { grid-template-columns: 1fr; }
+    #onboardModal .onboard-preview { display: none; }
+  }
+  #onboardModal .onboard-form-col {
+    padding: 32px 36px 28px;
+    background: #fff;
+    border-right: 1px solid var(--onb-border);
+  }
+  @media (max-width: 820px) {
+    #onboardModal .onboard-form-col { border-right: none; }
+  }
+  #onboardModal .onboard-preview {
+    background: linear-gradient(160deg, #f8fafc 0%, #f1f5f9 100%);
+    padding: 28px 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #onboardModal .onboard-preview-inner {
+    width: 100%;
+    max-width: 340px;
+    border-radius: 12px;
+    background: #fff;
+    border: 1px solid var(--onb-border);
+    box-shadow: 0 12px 40px rgba(15, 23, 42, 0.08);
+    overflow: hidden;
+    opacity: 0.92;
+    transform: scale(0.98);
+  }
+  #onboardModal .onboard-preview-h {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--onb-border);
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--onb-muted);
+  }
+  #onboardModal .onboard-preview-body { padding: 10px 12px 14px; }
+  #onboardModal .onboard-preview-row {
+    height: 8px;
+    border-radius: 4px;
+    background: #e2e8f0;
+    margin-bottom: 8px;
+  }
+  #onboardModal .onboard-preview-row.short { width: 72%; }
+  #onboardModal .onboard-preview-row.tiny { width: 40%; height: 6px; }
+  #onboardModal .onboard-h1 {
+    font-size: 1.375rem;
+    font-weight: 700;
+    letter-spacing: -0.03em;
+    color: #0f172a;
+    margin: 0 0 22px;
+    line-height: 1.2;
+  }
+  #onboardModal .onboard-h2 {
+    font-size: 1.25rem;
+    font-weight: 700;
+    letter-spacing: -0.02em;
+    color: #0f172a;
+    margin: 0 0 18px;
+  }
+  #onboardModal .fi:focus {
+    border-color: var(--onb-primary);
+    box-shadow: 0 0 0 3px var(--onb-primary-soft);
+  }
+  #onboardModal .btn-p {
+    background: var(--onb-primary);
+    border-color: var(--onb-primary);
+    color: #fff;
+  }
+  #onboardModal .btn-p:hover {
+    background: var(--onb-primary-hover);
+    border-color: var(--onb-primary-hover);
+  }
+  #onboardModal .onboard-avatar-row {
+    display: flex;
+    align-items: flex-start;
+    gap: 16px;
+    margin-bottom: 22px;
+  }
+  #onboardModal .onboard-avatar {
+    width: 88px;
+    height: 88px;
+    border-radius: 50%;
+    background: var(--onb-primary);
+    color: #fff;
+    font-size: 2rem;
+    font-weight: 600;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    overflow: hidden;
+  }
+  #onboardModal .onboard-avatar img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+  }
+  #onboardModal .onboard-avatar-meta { flex: 1; min-width: 0; }
+  #onboardModal .onboard-avatar-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 8px;
+  }
+  #onboardModal .onboard-hint {
+    font-size: 11px;
+    color: var(--onb-muted);
+    line-height: 1.45;
+    margin-top: 6px;
+  }
+  #onboardModal .onboard-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 14px 0;
+    border-top: 1px solid var(--onb-border);
+    margin-top: 8px;
+  }
+  #onboardModal .onboard-toggle-copy { flex: 1; min-width: 0; }
+  #onboardModal .onboard-toggle-title { font-size: 0.875rem; font-weight: 600; color: #0f172a; }
+  #onboardModal .onboard-toggle-sub { font-size: 12px; color: var(--onb-muted); margin-top: 4px; line-height: 1.45; }
+  #onboardModal .onboard-switch {
+    position: relative;
+    width: 44px;
+    height: 26px;
+    flex-shrink: 0;
+  }
+  #onboardModal .onboard-switch input {
+    opacity: 0;
+    width: 0;
+    height: 0;
+    position: absolute;
+  }
+  #onboardModal .onboard-switch-ui {
+    position: absolute;
+    inset: 0;
+    background: #cbd5e1;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: background 0.2s;
+  }
+  #onboardModal .onboard-switch-ui::after {
+    content: '';
+    position: absolute;
+    width: 20px;
+    height: 20px;
+    left: 3px;
+    top: 3px;
+    background: #fff;
+    border-radius: 50%;
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.15);
+    transition: transform 0.2s;
+  }
+  #onboardModal .onboard-switch input:checked + .onboard-switch-ui {
+    background: var(--onb-primary);
+  }
+  #onboardModal .onboard-switch input:checked + .onboard-switch-ui::after {
+    transform: translateX(18px);
+  }
+  #onboardModal .onboard-footer {
+    margin-top: 24px;
+  }
+  #onboardModal .onboard-footer .btn-p {
+    width: 100%;
+    justify-content: center;
+    padding: 12px 16px;
+    font-weight: 600;
+    border-radius: 10px;
+  }
+  #onboardModal .fi[readonly] {
+    background: #f8fafc;
+    color: var(--onb-muted);
+  }
+  #onboardModal .onboard-step { display: none; }
+  #onboardModal .onboard-step.on { display: block; }
+  #onboardModal .onboard-logo-preview {
+    width: 100%;
+    max-width: 220px;
+    min-height: 56px;
+    border: 1px dashed var(--onb-border);
+    border-radius: 10px;
+    padding: 10px;
+    margin-top: 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: #f8fafc;
+  }
+  #onboardModal .onboard-logo-preview img {
+    max-width: 100%;
+    max-height: 72px;
+    object-fit: contain;
+  }
+
+  /* Sidebar Lists (collapsible + dashed New list) */
+  .lists-sb-wrap {
+    padding: 4px 10px 10px;
+    margin-bottom: 2px;
+  }
+  .lists-sb-toggle {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 10px;
+    border: none;
+    border-radius: var(--rs);
+    background: transparent;
+    cursor: pointer;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: var(--text2);
+    text-align: left;
+    transition: background 0.15s, color 0.15s;
+  }
+  .lists-sb-toggle:hover {
+    background: var(--bg3);
+    color: var(--text);
+  }
+  .lists-sb-chevron {
+    width: 14px;
+    height: 14px;
+    flex-shrink: 0;
+    transition: transform 0.2s var(--ease-premium);
+    color: var(--text3);
+  }
+  .lists-sb-wrap.collapsed .lists-sb-chevron {
+    transform: rotate(-90deg);
+  }
+  .lists-sb-panel {
+    padding: 4px 0 2px 4px;
+  }
+  .lists-sb-wrap.collapsed .lists-sb-panel {
+    display: none;
+  }
+  .lists-sb-new {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    padding: 10px 12px;
+    margin-bottom: 6px;
+    border: 1px dashed var(--border2);
+    border-radius: 999px;
+    background: transparent;
+    font-size: 0.8125rem;
+    font-weight: 500;
+    color: var(--text2);
+    cursor: pointer;
+    transition: border-color 0.15s, color 0.15s, background 0.15s;
+  }
+  .lists-sb-new:hover {
+    border-color: var(--coral-border-mid);
+    color: var(--coral);
+    background: var(--coral-bg);
+  }
+  .lists-sb-items {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    max-height: 160px;
+    overflow-y: auto;
+    margin-bottom: 6px;
+  }
+  .lists-sb-item {
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 7px 10px;
+    border: none;
+    border-radius: var(--rs);
+    background: transparent;
+    font-size: 0.8125rem;
+    color: var(--text2);
+    cursor: pointer;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .lists-sb-item:hover {
+    background: var(--bg3);
+    color: var(--text);
+  }
+  .lists-sb-browse {
+    width: 100%;
+    padding: 6px 10px;
+    border: none;
+    background: none;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text3);
+    cursor: pointer;
+    text-align: left;
+  }
+  .lists-sb-browse:hover {
+    color: var(--coral);
+  }
+
+  /* Lists page + template modals (blue accent, scoped) */
+  .list-tmpl-mo {
+    z-index: 115;
+    --lt-blue: #3b82f6;
+    --lt-blue-soft: rgba(59, 130, 246, 0.12);
+    --lt-surface: #f8fafc;
+    --lt-border: #e2e8f0;
+  }
+  .list-tmpl-mo .list-tmpl-md {
+    width: min(920px, 96vw);
+    max-height: 90vh;
+    padding: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border-radius: 14px;
+    background: #fff;
+    border: 1px solid var(--lt-border);
+    box-shadow: 0 24px 48px rgba(15, 23, 42, 0.12);
+  }
+  .list-tmpl-mo .list-tmpl-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--lt-border);
+  }
+  .list-tmpl-mo .list-tmpl-head h2 {
+    margin: 0;
+    font-size: 1.125rem;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.02em;
+  }
+  .list-tmpl-mo .list-tmpl-close {
+    border: none;
+    background: none;
+    font-size: 22px;
+    line-height: 1;
+    color: #94a3b8;
+    cursor: pointer;
+    padding: 4px 8px;
+    border-radius: 8px;
+  }
+  .list-tmpl-mo .list-tmpl-close:hover {
+    background: var(--lt-surface);
+    color: #64748b;
+  }
+  .list-tmpl-mo .list-tmpl-body {
+    display: grid;
+    grid-template-columns: 200px 1fr;
+    min-height: 380px;
+    max-height: calc(90vh - 130px);
+  }
+  @media (max-width: 720px) {
+    .list-tmpl-mo .list-tmpl-body {
+      grid-template-columns: 1fr;
+    }
+    .list-tmpl-mo .list-tmpl-aside {
+      border-right: none !important;
+      border-bottom: 1px solid var(--lt-border);
+      max-height: 160px;
+    }
+  }
+  .list-tmpl-mo .list-tmpl-aside {
+    border-right: 1px solid var(--lt-border);
+    background: #fafbfc;
+    padding: 14px 12px;
+    overflow-y: auto;
+  }
+  .list-tmpl-mo .list-tmpl-aside-lbl {
+    font-size: 10px;
+    font-weight: 600;
+    letter-spacing: 0.08em;
+    color: #94a3b8;
+    margin: 0 8px 10px;
+  }
+  .list-tmpl-mo .list-tmpl-cat {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    padding: 9px 10px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    font-size: 13px;
+    color: #475569;
+    cursor: pointer;
+    text-align: left;
+  }
+  .list-tmpl-mo .list-tmpl-cat:hover {
+    background: #fff;
+  }
+  .list-tmpl-mo .list-tmpl-cat.on {
+    background: #fff;
+    color: var(--lt-blue);
+    font-weight: 600;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  }
+  .list-tmpl-mo .list-tmpl-cat .dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    border: 1.5px solid #cbd5e1;
+    flex-shrink: 0;
+  }
+  .list-tmpl-mo .list-tmpl-cat.on .dot {
+    border-color: var(--lt-blue);
+    background: var(--lt-blue-soft);
+  }
+  .list-tmpl-mo .list-tmpl-main {
+    padding: 16px 20px;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .list-tmpl-mo .list-tmpl-search {
+    width: 100%;
+    padding: 11px 14px;
+    border: 1px solid var(--lt-border);
+    border-radius: 10px;
+    font-size: 14px;
+    margin-bottom: 14px;
+    background: #fafbfc;
+    outline: none;
+  }
+  .list-tmpl-mo .list-tmpl-search:focus {
+    border-color: var(--lt-blue);
+    box-shadow: 0 0 0 3px var(--lt-blue-soft);
+  }
+  .list-tmpl-mo .list-tmpl-scroll {
+    flex: 1;
+    overflow-y: auto;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+    padding-right: 4px;
+  }
+  .list-tmpl-mo .list-tmpl-card {
+    display: grid;
+    grid-template-columns: 72px 1fr;
+    gap: 14px;
+    padding: 14px;
+    border: 1px solid var(--lt-border);
+    border-radius: 12px;
+    cursor: pointer;
+    text-align: left;
+    background: #fff;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .list-tmpl-mo .list-tmpl-card:hover {
+    border-color: #cbd5e1;
+  }
+  .list-tmpl-mo .list-tmpl-card.on {
+    border-color: var(--lt-blue);
+    box-shadow: 0 0 0 1px var(--lt-blue);
+  }
+  .list-tmpl-mo .list-tmpl-thumb {
+    border-radius: 8px;
+    background: linear-gradient(135deg, #e0e7ff 0%, #fae8ff 100%);
+    min-height: 72px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 22px;
+  }
+  .list-tmpl-mo .list-tmpl-card-title {
+    font-size: 15px;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0 0 6px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    flex-wrap: wrap;
+  }
+  .list-tmpl-mo .list-tmpl-badge {
+    margin-left: auto;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--lt-blue);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    white-space: nowrap;
+  }
+  .list-tmpl-mo .list-tmpl-desc {
+    font-size: 13px;
+    color: #64748b;
+    line-height: 1.45;
+    margin: 0 0 10px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .list-tmpl-mo .list-tmpl-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .list-tmpl-mo .list-tmpl-tag {
+    font-size: 11px;
+    font-weight: 600;
+    padding: 3px 8px;
+    border-radius: 999px;
+  }
+  .list-tmpl-mo .list-tmpl-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 14px 22px;
+    border-top: 1px solid var(--lt-border);
+    background: #fafbfc;
+  }
+  .list-tmpl-mo .list-tmpl-hint {
+    font-size: 12px;
+    color: #94a3b8;
+  }
+  .list-tmpl-mo .list-tmpl-actions {
+    display: flex;
+    gap: 10px;
+    flex-wrap: wrap;
+    justify-content: flex-end;
+  }
+  .list-tmpl-mo .list-tmpl-btn-ghost {
+    padding: 9px 14px;
+    border: none;
+    background: none;
+    font-size: 13px;
+    font-weight: 600;
+    color: #64748b;
+    cursor: pointer;
+    border-radius: 8px;
+  }
+  .list-tmpl-mo .list-tmpl-btn-ghost:hover {
+    background: #e2e8f0;
+    color: #334155;
+  }
+  .list-tmpl-mo .list-tmpl-btn-primary {
+    padding: 9px 18px;
+    border: none;
+    border-radius: 10px;
+    background: var(--lt-blue);
+    color: #fff;
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+  }
+  .list-tmpl-mo .list-tmpl-btn-primary:disabled {
+    opacity: 0.45;
+    cursor: not-allowed;
+  }
+  .list-tmpl-mo .list-tmpl-btn-primary:not(:disabled):hover {
+    background: #2563eb;
+  }
+
+  .list-prev-mo {
+    z-index: 116;
+  }
+  .list-prev-mo .list-prev-md {
+    width: min(880px, 96vw);
+    max-height: 90vh;
+    overflow: auto;
+    border-radius: 14px;
+    padding: 0;
+  }
+  .list-prev-mo .list-prev-head {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 18px 22px;
+    border-bottom: 1px solid var(--border);
+  }
+  .list-prev-mo .list-prev-title-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+  }
+  .list-prev-mo .list-prev-title {
+    font-size: 1.125rem;
+    font-weight: 700;
+    margin: 0;
+    letter-spacing: -0.02em;
+  }
+  .list-prev-mo .list-prev-entity {
+    font-size: 11px;
+    font-weight: 600;
+    color: #3b82f6;
+    border: 1px solid rgba(59, 130, 246, 0.35);
+    padding: 3px 8px;
+    border-radius: 999px;
+  }
+  .list-prev-mo .list-prev-body {
+    padding: 16px 22px 22px;
+  }
+  .list-prev-mo .list-prev-table-wrap {
+    overflow: auto;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+  }
+  .list-prev-mo .list-prev-meta {
+    font-size: 13px;
+    color: var(--text2);
+    line-height: 1.5;
+    margin-bottom: 14px;
+  }
+  .list-prev-mo .list-prev-attrs {
+    font-size: 12px;
+    color: var(--text3);
+    margin-top: 16px;
+    padding-top: 14px;
+    border-top: 1px solid var(--border);
+  }
+
+  /* Quick actions command palette */
+  .qa-mo {
+    z-index: 118;
+  }
+  .qa-mo .qa-md {
+    width: min(480px, 94vw);
+    max-height: min(72vh, 560px);
+    padding: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+    border-radius: 12px;
+  }
+  .qa-md-head {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .qa-search {
+    width: 100%;
+    box-sizing: border-box;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    font-size: 14px;
+    background: var(--bg3);
+    outline: none;
+  }
+  .qa-search:focus {
+    border-color: var(--coral-border-mid);
+    box-shadow: 0 0 0 3px var(--coral-bg);
+  }
+  .qa-section-lbl {
+    margin: 10px 16px 6px;
+    font-size: 10px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    color: var(--text3);
+  }
+  .qa-scroll {
+    flex: 1;
+    min-height: 0;
+    overflow-y: auto;
+    padding: 0 8px 8px;
+  }
+  .qa-row {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+    padding: 10px 10px;
+    margin-bottom: 2px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    cursor: pointer;
+    text-align: left;
+    font-size: 14px;
+    color: var(--text);
+    transition: background 0.12s;
+  }
+  .qa-row:hover,
+  .qa-row.on {
+    background: var(--bg3);
+  }
+  .qa-row-ico {
+    width: 20px;
+    height: 20px;
+    flex-shrink: 0;
+    color: var(--text2);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .qa-row-ico svg {
+    width: 18px;
+    height: 18px;
+  }
+  .qa-row-lbl {
+    flex: 1;
+    min-width: 0;
+    font-weight: 500;
+  }
+  .qa-kbd {
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text3);
+    padding: 2px 7px;
+    border-radius: 6px;
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    flex-shrink: 0;
+  }
+  .qa-foot {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 16px;
+    border-top: 1px solid var(--border);
+    background: var(--bg3);
+    flex-shrink: 0;
+  }
+  .qa-foot-hint {
+    font-size: 12px;
+    color: var(--text3);
+  }
 
   /* Stub / coming-soon popup */
   .mo.stub-pop { z-index: 120; }
@@ -1086,6 +2436,26 @@
     }
     .kg { grid-template-columns: 1fr !important; }
     .g2, .g3, .gm { grid-template-columns: 1fr; }
+    .settings-shell {
+      flex-direction: column;
+      min-height: 0;
+    }
+    .settings-nav {
+      flex: none;
+      width: 100%;
+      border-right: none;
+      border-bottom: 1px solid var(--border);
+      padding: 16px 14px 14px;
+    }
+    .settings-nav-scroll {
+      max-height: 220px;
+    }
+    .settings-main {
+      padding: 22px 16px 28px;
+    }
+    .settings-main-head {
+      margin-bottom: 20px;
+    }
     .cw { height: 200px; }
     .card { padding: 18px 16px; }
     .fg { grid-template-columns: 1fr; }
@@ -1360,6 +2730,25 @@
 </div>
 <div class="mobile-nav-overlay" id="mobile-nav-overlay" onclick="document.body.classList.remove('mobile-nav-open')"></div>
 <div class="sb">
+  <div class="sb-chrome">
+    <button type="button" class="sb-ws-row" id="btn-sb-workspace-switch" aria-label="Switch workspace">
+      <span class="sb-ws-mono" id="sb-ws-mono">?</span>
+      <span class="sb-ws-meta"><span class="sb-ws-label" id="sb-ws-label">Workspace</span></span>
+      <span class="sb-ws-chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
+    </button>
+    <div class="sb-pills">
+      <button type="button" class="sb-pill" id="btn-sb-quick-actions" title="Keyboard: ⌘K or Ctrl+K">Quick actions</button>
+      <button type="button" class="sb-pill" id="btn-sb-search-palette" title="Search and jump">Search</button>
+    </div>
+    <div class="sb-user" id="sb-user-menu" title="Account" data-public-title="Account">
+      <div class="avatar" id="user-avatar">?</div>
+      <div style="min-width:0;flex:1;">
+        <div id="user-name" class="sb-user-name">—</div>
+        <div id="user-role" class="sb-user-role">—</div>
+        <button type="button" class="btn" id="btn-open-workspaces" style="margin-top:8px;width:100%;font-size:11px;padding:6px 8px;">Workspaces</button>
+      </div>
+    </div>
+  </div>
     <div class="sb-logo">
     <img class="sb-brand-img" id="sb-brand-img" src="/idm-logo.png?v=transparent-1" width="400" height="123" alt="ives deutschmann management" loading="eager" decoding="async" />
   </div>
@@ -1371,6 +2760,9 @@
     <div class="ni" data-nav="customers" onclick="nav('customers',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>Customers
     </div>
+    <div class="ni" data-nav="tasks" onclick="nav('tasks',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Tasks
+    </div>
     <div class="ni" data-nav="revenue" onclick="nav('revenue',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Income
     </div>
@@ -1379,6 +2771,21 @@
     </div>
     <div class="ni" data-nav="timesheet" onclick="nav('timesheet',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>Timesheet
+    </div>
+    <div class="nav-lbl">Lists</div>
+    <div class="lists-sb-wrap" id="lists-sb-wrap">
+      <button type="button" class="lists-sb-toggle" id="lists-sb-toggle" aria-expanded="true" aria-controls="lists-sb-panel">
+        <svg class="lists-sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        Lists
+      </button>
+      <div class="lists-sb-panel" id="lists-sb-panel">
+        <button type="button" class="lists-sb-new" id="lists-btn-sidebar-new">+ New list</button>
+        <div class="lists-sb-items" id="lists-sb-items"></div>
+        <button type="button" class="lists-sb-browse" id="lists-sb-browse">Browse all</button>
+      </div>
+    </div>
+    <div class="ni" data-nav="lists" onclick="nav('lists',this)">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>All lists
     </div>
     <div class="nav-lbl">Analytics</div>
     <div class="ni" data-nav="performance" onclick="nav('performance',this)">
@@ -1397,21 +2804,13 @@
     <div class="ni" data-nav="chat" onclick="nav('chat',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/></svg>Advisor
     </div>
-    <div class="sb-spacer"></div>
-    <div class="sb-div"></div>
+  </nav>
+  <div class="sb-foot">
     <div class="ni" data-nav="team" onclick="nav('team',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>Your team
     </div>
     <div class="ni" data-nav="settings" onclick="nav('settings',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>Settings
-    </div>
-  </nav>
-  <div class="sb-user" id="sb-user-menu" title="Account" data-public-title="Account">
-    <div class="avatar" id="user-avatar">?</div>
-    <div style="min-width:0;flex:1;">
-      <div id="user-name" class="sb-user-name">—</div>
-      <div id="user-role" class="sb-user-role">—</div>
-      <button type="button" class="btn" id="btn-open-workspaces" style="margin-top:8px;width:100%;font-size:11px;padding:6px 8px;">Workspaces</button>
     </div>
   </div>
 </div>
@@ -1555,6 +2954,86 @@
       <div class="sh"><div class="st">Relationship timeline</div><div class="ss">Recent outreach and reminders</div></div>
       <div id="crm-reminders-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
       <div id="crm-events-timeline" style="display:flex;flex-direction:column;gap:8px;"></div>
+    </div>
+  </div>
+
+  <!-- TASKS -->
+  <div class="pg tasks-attio" id="page-tasks">
+    <div class="tasks-attio-hdr">
+      <div class="tasks-attio-title">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        Tasks
+      </div>
+      <div class="tasks-attio-hdr-actions">
+        <a href="#" id="tasks-link-help" role="button">Help</a>
+        <a href="#" id="tasks-link-ask" role="button">Ask Advisor</a>
+      </div>
+    </div>
+    <div class="tasks-attio-toolbar">
+      <div class="tasks-attio-toolbar-left">
+        <span class="tasks-sort-pill" title="Sort order"><span>Sorted by</span> <strong>Due date</strong></span>
+        <select class="fi tasks-filter-select" id="tasks-filter" title="Show tasks">
+          <option value="open" selected>Open</option>
+          <option value="all">All</option>
+          <option value="done">Done</option>
+        </select>
+        <button type="button" class="tasks-btn-ghost" id="tasks-btn-filter" disabled title="Coming soon">Filter</button>
+      </div>
+      <div class="tasks-attio-toolbar-right">
+        <button type="button" class="tasks-btn-ghost" id="tasks-btn-view-settings" disabled title="Coming soon">View settings</button>
+        <button type="button" class="btn btn-p" id="btn-tasks-new">+ New task</button>
+      </div>
+    </div>
+    <p id="tasks-tab-demo" class="tasks-demo-hint" style="display:none;"></p>
+    <div id="tasks-tab-empty" class="tasks-empty">
+      <svg class="tasks-empty-illus" viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
+        <path d="M28 24h64a4 4 0 0 1 4 4v68a4 4 0 0 1-4 4H28a4 4 0 0 1-4-4V28a4 4 0 0 1 4-4z"/>
+        <path d="M36 40h48M36 52h36M36 64h40M36 76h28"/>
+        <circle cx="44" cy="40" r="3" fill="currentColor" stroke="none"/><circle cx="44" cy="52" r="3" fill="currentColor" stroke="none"/><circle cx="44" cy="64" r="3" fill="currentColor" stroke="none"/><circle cx="44" cy="76" r="3" fill="currentColor" stroke="none"/>
+      </svg>
+      <h2>Tasks</h2>
+      <p>No tasks yet! Create your first task to get started.</p>
+      <button type="button" class="btn btn-p" id="btn-tasks-new-empty">+ New task</button>
+    </div>
+    <div id="tasks-tab-main" class="tasks-main"></div>
+    <div class="tasks-learn">
+      <div class="tasks-learn-lbl">Learn more</div>
+      <div class="tasks-learn-cards">
+        <div class="tasks-learn-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+          <span>Workspace tasks help you track follow-ups. Assign work to teammates from the new-task dialog.</span>
+        </div>
+        <div class="tasks-learn-card">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
+          <span>Use <strong>Record</strong> to link a task to a customer. Open tasks are grouped by due date.</span>
+        </div>
+      </div>
+    </div>
+    <div class="tasks-modal-overlay" id="tasks-modal-overlay" aria-hidden="true">
+      <div class="tasks-modal" role="dialog" aria-labelledby="tasks-modal-title-label" onclick="event.stopPropagation();">
+        <h3 id="tasks-modal-title-label">New task</h3>
+        <div class="fgp">
+          <label class="fl" for="tasks-modal-title">Title</label>
+          <input class="fi" id="tasks-modal-title" type="text" placeholder="What needs to be done?" maxlength="500" autocomplete="off" />
+        </div>
+        <div class="fgp">
+          <label class="fl" for="tasks-modal-due">Due date</label>
+          <input class="fi" id="tasks-modal-due" type="date" />
+        </div>
+        <div class="fgp">
+          <label class="fl" for="tasks-modal-assignee">Assigned to</label>
+          <select class="fi" id="tasks-modal-assignee"></select>
+        </div>
+        <div class="fgp">
+          <label class="fl" for="tasks-modal-client">Record (optional)</label>
+          <select class="fi" id="tasks-modal-client"><option value="">— None —</option></select>
+        </div>
+        <p id="tasks-modal-error" style="display:none;font-size:12px;color:var(--red);margin-top:4px;"></p>
+        <div class="tasks-modal-actions">
+          <button type="button" class="btn" id="tasks-modal-cancel">Cancel</button>
+          <button type="button" class="btn btn-p" id="tasks-modal-save">Create task</button>
+        </div>
+      </div>
     </div>
   </div>
 
@@ -1938,6 +3417,36 @@
     </div>
   </div>
 
+  <!-- LISTS (workspace lists + templates — local test) -->
+  <div class="pg" id="page-lists">
+    <div class="ph">
+      <div>
+        <div class="pt" id="lists-page-title">Lists</div>
+        <div class="ps" id="lists-page-sub">Create lists from templates or start blank. Data is stored in this browser for this workspace (test run).</div>
+      </div>
+      <div class="hr">
+        <button type="button" class="btn btn-p" id="lists-btn-page-new">+ New list</button>
+      </div>
+    </div>
+    <div id="lists-view-main">
+      <div id="lists-empty-hint" class="card" style="padding:24px;font-size:14px;color:var(--text2);line-height:1.55;">
+        No lists yet. Use <strong>+ New list</strong> in the sidebar or here to pick a template or start from scratch.
+      </div>
+      <div id="lists-grid" class="g3" style="display:none;margin-top:12px;"></div>
+    </div>
+    <div id="lists-view-detail" style="display:none;">
+      <div class="ph" style="margin-bottom:12px;">
+        <button type="button" class="btn" id="lists-btn-back">← Back to lists</button>
+      </div>
+      <div class="card">
+        <div class="sh">
+          <div><div class="st" id="lists-detail-title">—</div><div class="ss" id="lists-detail-sub"></div></div>
+        </div>
+        <div id="lists-detail-table-wrap" style="overflow:auto;margin-top:8px;"></div>
+      </div>
+    </div>
+  </div>
+
   <!-- MARKETING (nav hidden in internal mode; route kept). -->
   <div class="pg" id="page-marketing">
     <div class="ui-public-facing">
@@ -1946,23 +3455,6 @@
       <div class="kc hi"><div class="kl">Leads This Month</div><div class="kv" id="mkt-kpi-1">0</div><div class="kb bn" id="mkt-kpi-1b">—</div></div>
       <div class="kc"><div class="kl">Close Rate</div><div class="kv" id="mkt-kpi-2">—</div><div class="kb bn" id="mkt-kpi-2b">—</div></div>
       <div class="kc"><div class="kl">Pipeline Value</div><div class="kv" id="mkt-kpi-3">$0</div><div class="kb bn" id="mkt-kpi-3b">—</div></div>
-    </div>
-    <div class="card" id="marketing-ga4-card" style="margin-bottom:16px;">
-      <div class="sh">
-        <div>
-          <div class="st">Website Analytics (GA4)</div>
-          <div class="ss">Last 7 days</div>
-        </div>
-      </div>
-      <div id="marketing-ga4-status" style="font-size:12px;color:var(--text3);margin-bottom:10px;">Loading analytics…</div>
-      <div class="kg" style="grid-template-columns:repeat(5,1fr);gap:10px;" id="marketing-ga4-kpis">
-        <div class="kc"><div class="kl">Users</div><div class="kv" id="ga4-users">—</div></div>
-        <div class="kc"><div class="kl">Sessions</div><div class="kv" id="ga4-sessions">—</div></div>
-        <div class="kc"><div class="kl">New Users</div><div class="kv" id="ga4-new-users">—</div></div>
-        <div class="kc"><div class="kl">Page Views</div><div class="kv" id="ga4-page-views">—</div></div>
-        <div class="kc"><div class="kl">Conversions</div><div class="kv" id="ga4-conversions">—</div></div>
-      </div>
-      <div id="marketing-ga4-channels" style="margin-top:10px;font-size:12px;color:var(--text2);"></div>
     </div>
     <div class="g2 mb">
       <div class="card"><div class="sh"><div class="st">Lead Sources</div></div><div class="cw" style="height:200px;"><canvas id="cLead"></canvas></div></div>
@@ -2112,65 +3604,150 @@
 
   <!-- SETTINGS -->
   <div class="pg" id="page-settings">
-    <div class="ph"><div><div class="pt">Settings</div><div class="ps">Business profile and preferences</div></div><button type="button" class="btn btn-p" id="btn-save-settings">Save Changes</button></div>
-    <div class="g2">
-      <div class="card">
-        <div class="fst">Business Info</div>
-        <div class="fg">
-          <div class="fgp"><label class="fl">Business Name</label><input class="fi" id="setting-name" /></div>
-          <div class="fgp"><label class="fl">Owner Name</label><input class="fi" id="setting-owner" /></div>
-          <div class="fgp"><label class="fl">Your role (optional)</label><input class="fi" id="setting-owner-role" placeholder="e.g. Founder" /></div>
-          <div class="fgp" style="grid-column:1/-1;"><label class="fl">Tagline (optional)</label><textarea class="fi" id="setting-tagline" rows="2" placeholder="Short line under your business name on the dashboard" style="min-height:56px;resize:vertical;"></textarea></div>
-          <div class="fgp"><label class="fl">Email</label><input class="fi" id="setting-email" type="email" /></div>
-          <div class="fgp"><label class="fl">Phone</label><input class="fi" id="setting-phone" /></div>
-          <div class="fgp" style="grid-column:1/-1;"><label class="fl">Address</label><input class="fi" id="setting-address" /></div>
-          <div class="fgp"><label class="fl">Dashboard period label</label><input class="fi" id="setting-period" placeholder="e.g. March 2026" /></div>
-          <div class="fgp"><label class="fl">Accent color</label><div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap;"><input class="fi" id="setting-accent" type="color" value="#e8501a" title="Color picker" style="min-height:40px;min-width:52px;padding:4px 8px;flex-shrink:0;" /><input class="fi" id="setting-accent-hex" type="text" value="#e8501a" inputmode="text" autocomplete="off" spellcheck="false" maxlength="7" placeholder="#3366cc" title="Hex value (#rgb or #rrggbb)" style="max-width:9rem;font-variant-numeric:tabular-nums;" /></div></div>
-          <div class="fgp"><label class="fl">Logo (light mode)</label><input class="fi" id="setting-logo-light" type="file" accept="image/*" /></div>
-          <div class="fgp"><label class="fl">Logo (dark mode)</label><input class="fi" id="setting-logo-dark" type="file" accept="image/*" /></div>
+    <div class="settings-shell">
+      <aside class="settings-nav" aria-label="Settings sections">
+        <div class="settings-nav-search-wrap">
+          <svg class="settings-nav-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <input type="search" class="fi settings-nav-search" id="settings-nav-filter" placeholder="Search settings…" autocomplete="off" aria-label="Search settings" />
         </div>
-      </div>
-      <div class="card">
-        <div class="fst">Financial Defaults</div>
-        <div class="fg">
-          <div class="fgp"><label class="fl">Invoice Terms (days)</label><input class="fi" id="setting-terms" type="number" value="30" /></div>
-          <div class="fgp"><label class="fl">Default Tax Rate (%)</label><input class="fi" id="setting-tax" type="number" value="0" /></div>
-          <div class="fgp"><label class="fl">Currency</label><select class="fi" id="setting-currency"><option value="USD">USD ($)</option><option value="EUR">EUR (€)</option></select></div>
-          <div class="fgp"><label class="fl">Fiscal Year Start</label><select class="fi" id="setting-fiscal"><option>January</option><option>October</option></select></div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="fst">Monthly Budgets</div>
-        <p style="font-size:12px;color:var(--text3);line-height:1.5;margin-bottom:14px;">Set a monthly spending target per expense category. Progress is shown on the Expenses page.</p>
-        <div class="fg">
-          <div class="fgp"><label class="fl">Labor ($)</label><input class="fi" id="budget-input-lab" type="number" min="0" step="1" placeholder="e.g. 5000" /></div>
-          <div class="fgp"><label class="fl">Software &amp; Tools ($)</label><input class="fi" id="budget-input-sw" type="number" min="0" step="1" placeholder="e.g. 500" /></div>
-          <div class="fgp"><label class="fl">Advertising ($)</label><input class="fi" id="budget-input-ads" type="number" min="0" step="1" placeholder="e.g. 2000" /></div>
-          <div class="fgp"><label class="fl">Other ($)</label><input class="fi" id="budget-input-oth" type="number" min="0" step="1" placeholder="e.g. 300" /></div>
-        </div>
-      </div>
-      <div class="card">
-        <div class="fst">Cloud Sync</div>
-        <div class="fg">
-          <div id="settings-cloud-status" style="font-size:11px;color:var(--text3);margin-bottom:10px;">Cloud: not configured</div>
-          <div style="display:flex;gap:8px;align-items:center;">
-            <button type="button" class="btn btn-p" id="settings-btn-cloud-auth" style="flex:1;font-size:11px;padding:7px 10px;">Sign in</button>
-            <button type="button" class="btn" id="settings-btn-cloud-sync" style="flex:1;font-size:11px;padding:7px 10px;" disabled>Sync</button>
-          </div>
-          <div style="font-size:12px;color:var(--text2);line-height:1.55;margin-top:10px;">
-            Data syncs to your workspace in the cloud (per organization). Open your workspace URL on each device and sign in with the <strong>same email</strong>. Use <strong>Sync</strong> on the dashboard to refresh from the server.
+        <div class="settings-nav-scroll">
+          <div class="settings-nav-group" data-settings-nav-group="workspace">
+            <div class="settings-nav-group-title">Workspace</div>
+            <div class="settings-nav-tablist" role="tablist" aria-label="Workspace settings">
+            <button type="button" class="settings-nav-item on" id="settings-nav-general" data-settings-panel="general" data-settings-kicker="Workspace" data-settings-title="General" data-settings-desc="Business profile, contact details, and how dates appear on the dashboard.">
+              <span class="settings-nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg></span>
+              <span class="settings-nav-txt">General</span>
+            </button>
+            <button type="button" class="settings-nav-item" id="settings-nav-branding" data-settings-panel="branding" data-settings-kicker="Workspace" data-settings-title="Branding" data-settings-desc="Accent color and logo files for light and dark mode.">
+              <span class="settings-nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 12a5.5 5.5 0 1 1-11 0c0-3 2.5-6.5 5.5-10 3 3.5 5.5 7 5.5 10Z"/><circle cx="12" cy="9" r="1.25" fill="currentColor" stroke="none"/></svg></span>
+              <span class="settings-nav-txt">Branding</span>
+            </button>
+            <button type="button" class="settings-nav-item" id="settings-nav-financial" data-settings-panel="financial" data-settings-kicker="Workspace" data-settings-title="Financial" data-settings-desc="Invoice defaults, currency, fiscal year, and monthly category budgets.">
+              <span class="settings-nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" x2="12" y1="2" y2="22"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></span>
+              <span class="settings-nav-txt">Financial</span>
+            </button>
+            <button type="button" class="settings-nav-item" id="settings-nav-sync" data-settings-panel="sync" data-settings-kicker="Workspace" data-settings-title="Cloud sync" data-settings-desc="Sign in and refresh data across devices in this organization.">
+              <span class="settings-nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 14.899A7 7 0 1 1 15.71 8h1.79a4.5 4.5 0 0 1 2.5 8.242"/><path d="M12 12v9"/><path d="m16 16-4-4-4 4"/></svg></span>
+              <span class="settings-nav-txt">Cloud sync</span>
+            </button>
+            <button type="button" class="settings-nav-item" id="settings-nav-data" data-settings-panel="data" data-settings-kicker="Workspace" data-settings-title="Data" data-settings-desc="CSV import, journal export, and undo for the transaction log.">
+              <span class="settings-nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg></span>
+              <span class="settings-nav-txt">Data</span>
+            </button>
+            </div>
           </div>
         </div>
-      </div>
-      <div class="card">
-        <div class="fst">Data import &amp; export</div>
-        <p style="font-size:12px;color:var(--text3);line-height:1.5;margin-bottom:12px;">Import a bank CSV into the transaction log, or export a journal CSV for spreadsheets or your accountant. Use <strong>Undo last import</strong> if something looks wrong.</p>
-        <div style="display:flex;flex-wrap:wrap;gap:8px;">
-          <button type="button" class="btn" id="btn-csv-import-open-settings">Import CSV</button>
-          <button type="button" class="btn" id="btn-journal-export-open-settings">Export journal CSV</button>
-          <button type="button" class="btn" id="btn-undo-last-import-settings" disabled>Undo last import</button>
+      </aside>
+      <section class="settings-main" aria-label="Settings detail">
+        <header class="settings-main-head">
+          <div class="settings-main-head-text">
+            <div class="settings-main-kicker" id="settings-active-kicker">Workspace</div>
+            <h1 class="settings-main-title" id="settings-active-title">General</h1>
+            <p class="settings-main-desc" id="settings-active-desc">Business profile, contact details, and how dates appear on the dashboard.</p>
+          </div>
+          <button type="button" class="btn btn-p" id="btn-save-settings">Save changes</button>
+        </header>
+        <div class="settings-panels">
+          <div id="settings-panel-general" class="settings-panel on" role="tabpanel" aria-labelledby="settings-nav-general" data-settings-panel-id="general">
+            <div class="settings-stack">
+              <div class="card">
+                <div class="fst">Business profile</div>
+                <div class="fg">
+                  <div class="fgp"><label class="fl">Business Name</label><input class="fi" id="setting-name" /></div>
+                  <div class="fgp"><label class="fl">Owner Name</label><input class="fi" id="setting-owner" /></div>
+                  <div class="fgp"><label class="fl">Your role (optional)</label><input class="fi" id="setting-owner-role" placeholder="e.g. Founder" /></div>
+                  <div class="fgp" style="grid-column:1/-1;"><label class="fl">Tagline (optional)</label><textarea class="fi" id="setting-tagline" rows="2" placeholder="Short line under your business name on the dashboard" style="min-height:56px;resize:vertical;"></textarea></div>
+                  <div class="fgp"><label class="fl">Email</label><input class="fi" id="setting-email" type="email" /></div>
+                  <div class="fgp"><label class="fl">Phone</label><input class="fi" id="setting-phone" /></div>
+                  <div class="fgp" style="grid-column:1/-1;"><label class="fl">Address</label><input class="fi" id="setting-address" /></div>
+                  <div class="fgp"><label class="fl">Dashboard period label</label><input class="fi" id="setting-period" placeholder="e.g. March 2026" /></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="settings-panel-branding" class="settings-panel" role="tabpanel" aria-labelledby="settings-nav-branding" data-settings-panel-id="branding">
+            <div class="settings-stack">
+              <div class="card">
+                <div class="fst">Look and feel</div>
+                <div class="fg">
+                  <div class="fgp accent-preset-row">
+                    <div class="accent-preset-copy">
+                      <span class="fl">Choose an accent color</span>
+                      <p class="accent-preset-hint">Choose the main color that defines the overall tone.</p>
+                    </div>
+                    <div class="accent-preset-swatches" id="setting-accent-presets" role="group" aria-label="Accent color presets">
+                      <button type="button" class="accent-swatch" data-accent-preset="#2563eb" style="--sw:#2563eb" title="Royal blue" aria-pressed="false"></button>
+                      <button type="button" class="accent-swatch" data-accent-preset="#06b6d4" style="--sw:#06b6d4" title="Cyan" aria-pressed="false"></button>
+                      <button type="button" class="accent-swatch" data-accent-preset="#eab308" style="--sw:#eab308" title="Gold" aria-pressed="false"></button>
+                      <button type="button" class="accent-swatch" data-accent-preset="#e8501a" style="--sw:#e8501a" title="Orange" aria-pressed="false"></button>
+                      <button type="button" class="accent-swatch" data-accent-preset="#ec4899" style="--sw:#ec4899" title="Pink" aria-pressed="false"></button>
+                      <button type="button" class="accent-swatch" data-accent-preset="#a855f7" style="--sw:#a855f7" title="Purple" aria-pressed="false"></button>
+                      <button type="button" class="accent-swatch" data-accent-preset="#34d399" style="--sw:#34d399" title="Mint" aria-pressed="false"></button>
+                    </div>
+                    <input type="hidden" id="setting-accent" value="#e8501a" />
+                    <input type="hidden" id="setting-accent-hex" value="#e8501a" />
+                  </div>
+                  <div class="fgp"><label class="fl">Logo (light mode)</label><input class="fi" id="setting-logo-light" type="file" accept="image/*" /></div>
+                  <div class="fgp"><label class="fl">Logo (dark mode)</label><input class="fi" id="setting-logo-dark" type="file" accept="image/*" /></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="settings-panel-financial" class="settings-panel" role="tabpanel" aria-labelledby="settings-nav-financial" data-settings-panel-id="financial">
+            <div class="settings-stack">
+              <div class="card">
+                <div class="fst">Financial defaults</div>
+                <div class="fg">
+                  <div class="fgp"><label class="fl">Invoice Terms (days)</label><input class="fi" id="setting-terms" type="number" value="30" /></div>
+                  <div class="fgp"><label class="fl">Default Tax Rate (%)</label><input class="fi" id="setting-tax" type="number" value="0" /></div>
+                  <div class="fgp"><label class="fl">Currency</label><select class="fi" id="setting-currency"><option value="USD">USD ($)</option><option value="EUR">EUR (€)</option></select></div>
+                  <div class="fgp"><label class="fl">Fiscal Year Start</label><select class="fi" id="setting-fiscal"><option>January</option><option>October</option></select></div>
+                </div>
+              </div>
+              <div class="card">
+                <div class="fst">Monthly budgets</div>
+                <p style="font-size:12px;color:var(--text3);line-height:1.5;margin-bottom:14px;">Set a monthly spending target per expense category. Progress is shown on the Expenses page.</p>
+                <div class="fg">
+                  <div class="fgp"><label class="fl">Labor ($)</label><input class="fi" id="budget-input-lab" type="number" min="0" step="1" placeholder="e.g. 5000" /></div>
+                  <div class="fgp"><label class="fl">Software &amp; Tools ($)</label><input class="fi" id="budget-input-sw" type="number" min="0" step="1" placeholder="e.g. 500" /></div>
+                  <div class="fgp"><label class="fl">Advertising ($)</label><input class="fi" id="budget-input-ads" type="number" min="0" step="1" placeholder="e.g. 2000" /></div>
+                  <div class="fgp"><label class="fl">Other ($)</label><input class="fi" id="budget-input-oth" type="number" min="0" step="1" placeholder="e.g. 300" /></div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="settings-panel-sync" class="settings-panel" role="tabpanel" aria-labelledby="settings-nav-sync" data-settings-panel-id="sync">
+            <div class="settings-stack">
+              <div class="card">
+                <div class="fst">Cloud sync</div>
+                <div class="fg">
+                  <div id="settings-cloud-status" style="font-size:11px;color:var(--text3);margin-bottom:10px;">Cloud: not configured</div>
+                  <div style="display:flex;gap:8px;align-items:center;">
+                    <button type="button" class="btn btn-p" id="settings-btn-cloud-auth" style="flex:1;font-size:11px;padding:7px 10px;">Sign in</button>
+                    <button type="button" class="btn" id="settings-btn-cloud-sync" style="flex:1;font-size:11px;padding:7px 10px;" disabled>Sync</button>
+                  </div>
+                  <div style="font-size:12px;color:var(--text2);line-height:1.55;margin-top:10px;">
+                    Data syncs to your workspace in the cloud (per organization). Open your workspace URL on each device and sign in with the <strong>same email</strong>. Use <strong>Sync</strong> on the dashboard to refresh from the server.
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="settings-panel-data" class="settings-panel" role="tabpanel" aria-labelledby="settings-nav-data" data-settings-panel-id="data">
+            <div class="settings-stack">
+              <div class="card">
+                <div class="fst">Data import &amp; export</div>
+                <p style="font-size:12px;color:var(--text3);line-height:1.5;margin-bottom:12px;">Import a bank CSV into the transaction log, or export a journal CSV for spreadsheets or your accountant. Use <strong>Undo last import</strong> if something looks wrong.</p>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;">
+                  <button type="button" class="btn" id="btn-csv-import-open-settings">Import CSV</button>
+                  <button type="button" class="btn" id="btn-journal-export-open-settings">Export journal CSV</button>
+                  <button type="button" class="btn" id="btn-undo-last-import-settings" disabled>Undo last import</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-      </div>
+      </section>
     </div>
   </div>
 
@@ -2670,6 +4247,77 @@
 
 </div><!-- #app-shell -->
 
+<!-- List templates picker -->
+<div class="mo list-tmpl-mo" id="listTemplatesModal" aria-hidden="true">
+  <div class="md list-tmpl-md">
+    <div class="list-tmpl-head">
+      <h2>Templates</h2>
+      <button type="button" class="list-tmpl-close" id="list-tmpl-close" aria-label="Close">×</button>
+    </div>
+    <div class="list-tmpl-body">
+      <aside class="list-tmpl-aside">
+        <p class="list-tmpl-aside-lbl">USE CASES</p>
+        <div id="list-tmpl-cats"></div>
+      </aside>
+      <div class="list-tmpl-main">
+        <input type="search" class="list-tmpl-search" id="list-tmpl-search" placeholder="Search for templates, topics, goals…" autocomplete="off" />
+        <div class="list-tmpl-scroll" id="list-tmpl-cards"></div>
+      </div>
+    </div>
+    <div class="list-tmpl-foot">
+      <span class="list-tmpl-hint">↑ ↓ Navigate</span>
+      <div class="list-tmpl-actions">
+        <button type="button" class="list-tmpl-btn-ghost" id="list-tmpl-scratch">Start from scratch</button>
+        <button type="button" class="list-tmpl-btn-primary" id="list-tmpl-preview" disabled>Preview template</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Template preview -->
+<div class="mo list-prev-mo" id="listPreviewModal" aria-hidden="true">
+  <div class="md list-prev-md">
+    <div class="list-prev-head">
+      <div>
+        <div class="list-prev-title-row">
+          <h2 class="list-prev-title" id="list-prev-title">—</h2>
+          <span class="list-prev-entity" id="list-prev-entity">People</span>
+        </div>
+      </div>
+      <button type="button" class="list-tmpl-close" id="list-prev-close" aria-label="Close">×</button>
+    </div>
+    <div class="list-prev-body">
+      <p class="list-prev-meta" id="list-prev-desc"></p>
+      <div class="list-prev-table-wrap">
+        <table class="dt" id="list-prev-table">
+          <thead id="list-prev-thead"></thead>
+          <tbody id="list-prev-tbody"></tbody>
+        </table>
+      </div>
+      <div class="list-prev-attrs" id="list-prev-attrs"></div>
+      <div class="mf" style="border-top:none;padding-top:16px;margin-top:8px;">
+        <button type="button" class="btn" id="list-prev-back">Back</button>
+        <button type="button" class="btn btn-p" id="list-prev-use">Use this template</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Quick actions (command palette — dashboard-only actions) -->
+<div class="mo qa-mo" id="quickActionsModal" aria-hidden="true">
+  <div class="md qa-md">
+    <div class="qa-md-head">
+      <input type="text" class="qa-search" id="qa-search" placeholder="Search quick actions…" autocomplete="off" aria-label="Search quick actions" />
+    </div>
+    <p class="qa-section-lbl">Quick action</p>
+    <div class="qa-scroll" id="qa-list" role="listbox" aria-label="Quick actions"></div>
+    <div class="qa-foot">
+      <span class="qa-foot-hint">↑ ↓ Navigate · Enter to run</span>
+      <button type="button" class="btn btn-p" id="qa-run">Open</button>
+    </div>
+  </div>
+</div>
+
 <!-- Workspaces (outside #app-shell so switcher works before shell is visible) -->
 <div class="mo" id="workspaceModal">
   <div class="md" style="max-width:480px;">
@@ -2699,22 +4347,76 @@
 
 <!-- First-time workspace (outside #app-shell so it can show during onboarding) -->
 <div class="mo" id="onboardModal">
-  <div class="md" style="max-width:480px;">
-    <div class="mt" id="onboard-heading">Name your workspace</div>
-    <p class="ui-public-facing" style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:12px;">Choose how your organization appears and the URL you will use to open this dashboard. Data is stored in your Supabase workspace (not only in this browser).</p>
-    <p class="ui-public-facing" style="font-size:12px;color:var(--text3);line-height:1.45;margin-bottom:18px;">If you change the URL slug later, old links will stop working—pick something you can share with your team.</p>
-    <p class="ui-internal-facing" style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:18px;">Internal: first-run org profile; updates <code style="font-size:12px;">organizations</code> + dashboard settings.</p>
-    <div class="fg" style="margin-bottom:12px;">
-      <div class="fgp" style="grid-column:1/-1;"><label class="fl">Company / workspace name *</label><input class="fi" id="ob-name" placeholder="e.g. Acme Agency" /></div>
-      <div class="fgp" style="grid-column:1/-1;"><label class="fl">URL slug *</label><input class="fi" id="ob-slug" placeholder="e.g. acme-agency" autocomplete="off" /></div>
-      <div class="fgp" style="grid-column:1/-1;"><label class="fl">Tagline (optional)</label><textarea class="fi" id="ob-tagline" rows="2" placeholder="Shown under your business name on the dashboard" style="min-height:64px;resize:vertical;"></textarea></div>
-      <div class="fgp"><label class="fl">Your name</label><input class="fi" id="ob-owner" placeholder="Jane Doe" /></div>
-      <div class="fgp"><label class="fl">Your role</label><input class="fi" id="ob-role" value="" placeholder="e.g. Founder" /></div>
-      <div class="fgp"><label class="fl">Accent color</label><input class="fi" id="ob-accent" type="color" value="#e8501a" style="min-height:40px;padding:4px 8px;" /></div>
-    </div>
-    <div id="onboard-error" style="font-size:13px;color:var(--red);margin-bottom:12px;min-height:1.2em;"></div>
-    <div class="mf" style="border-top:none;padding-top:0;">
-      <button type="button" class="btn btn-p" id="onboard-submit-btn">Save and continue</button>
+  <div class="md onboard-md">
+    <div class="onboard-split">
+      <div class="onboard-form-col">
+        <div id="onboard-step-1" class="onboard-step on">
+          <h2 class="onboard-h1">Let's get to know you</h2>
+          <div class="onboard-avatar-row">
+            <div class="onboard-avatar" id="ob-avatar-preview" aria-hidden="true">?</div>
+            <div class="onboard-avatar-meta">
+              <label class="fl" for="ob-profile-avatar-input">Profile picture</label>
+              <div class="onboard-avatar-actions">
+                <button type="button" class="btn" id="ob-profile-avatar-upload-btn">Upload image</button>
+                <button type="button" class="btn" id="ob-profile-avatar-remove" style="color:var(--text3);" disabled>Remove</button>
+              </div>
+              <input type="file" id="ob-profile-avatar-input" accept="image/png,image/jpeg,image/webp" style="display:none;" />
+              <p class="onboard-hint">PNG or JPEG, up to 10MB. At least 400×400px recommended.</p>
+            </div>
+          </div>
+          <div class="fg" style="margin-bottom:12px;">
+            <div class="fgp"><label class="fl" for="ob-first-name">First name *</label><input class="fi" id="ob-first-name" autocomplete="given-name" placeholder="Jane" /></div>
+            <div class="fgp"><label class="fl" for="ob-last-name">Last name *</label><input class="fi" id="ob-last-name" autocomplete="family-name" placeholder="Doe" /></div>
+            <div class="fgp" style="grid-column:1/-1;"><label class="fl" for="ob-email">Email</label><input class="fi" id="ob-email" type="email" autocomplete="email" readonly /></div>
+          </div>
+          <div class="onboard-toggle-row">
+            <div class="onboard-toggle-copy">
+              <div class="onboard-toggle-title">Subscribe to product update emails</div>
+              <div class="onboard-toggle-sub">Get the latest updates about features and product updates.</div>
+            </div>
+            <label class="onboard-switch">
+              <input type="checkbox" id="ob-product-updates" checked />
+              <span class="onboard-switch-ui"></span>
+            </label>
+          </div>
+          <div id="onboard-error" style="font-size:13px;color:var(--red);margin-top:12px;min-height:1.2em;"></div>
+          <div class="onboard-footer">
+            <button type="button" class="btn btn-p" id="onboard-step1-continue">Continue</button>
+          </div>
+        </div>
+        <div id="onboard-step-2" class="onboard-step">
+          <h2 class="onboard-h2">Your company</h2>
+          <p class="onboard-hint" style="margin:-8px 0 16px;font-size:13px;">Company name sets your public workspace URL. You can fine-tune the slug if needed.</p>
+          <div class="fg" style="margin-bottom:12px;">
+            <div class="fgp" style="grid-column:1/-1;"><label class="fl" for="ob-company-name">Company name *</label><input class="fi" id="ob-company-name" placeholder="e.g. Acme Agency" autocomplete="organization" /></div>
+            <div class="fgp" style="grid-column:1/-1;"><label class="fl" for="ob-slug">Workspace URL slug *</label><input class="fi" id="ob-slug" placeholder="e.g. acme-agency" autocomplete="off" /></div>
+            <div class="fgp" style="grid-column:1/-1;">
+              <label class="fl" for="ob-company-logo-input">Company logo (optional)</label>
+              <button type="button" class="btn" id="ob-company-logo-btn" style="margin-top:4px;">Upload logo</button>
+              <input type="file" id="ob-company-logo-input" accept="image/png,image/jpeg,image/webp" style="display:none;" />
+              <div class="onboard-logo-preview" id="ob-company-logo-preview-wrap" style="display:none;"><img id="ob-company-logo-preview" alt="" /></div>
+            </div>
+          </div>
+          <div id="onboard-error-2" style="font-size:13px;color:var(--red);margin-bottom:12px;min-height:1.2em;"></div>
+          <div class="onboard-footer" style="display:flex;gap:10px;flex-wrap:wrap;">
+            <button type="button" class="btn" id="onboard-step2-back">Back</button>
+            <button type="button" class="btn btn-p" id="onboard-step2-finish" style="flex:1;min-width:140px;">Finish setup</button>
+          </div>
+        </div>
+      </div>
+      <div class="onboard-preview" aria-hidden="true">
+        <div class="onboard-preview-inner">
+          <div class="onboard-preview-h">Workspace · Dashboard</div>
+          <div class="onboard-preview-body">
+            <div class="onboard-preview-row"></div>
+            <div class="onboard-preview-row short"></div>
+            <div class="onboard-preview-row tiny" style="margin-top:14px;"></div>
+            <div class="onboard-preview-row"></div>
+            <div class="onboard-preview-row"></div>
+            <div class="onboard-preview-row short"></div>
+          </div>
+        </div>
+      </div>
     </div>
   </div>
 </div>

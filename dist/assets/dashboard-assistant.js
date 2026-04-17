@@ -14,7 +14,8 @@
     '• Prioritize today\'s most important actions\n' +
     '• Follow up on overdue invoices and client outreach\n' +
     '• Understand profit or expense changes over time\n' +
-    '• Generate Monday plans and Friday recaps\n\n' +
+    '• Generate Monday plans and Friday recaps\n' +
+    '• Create follow-up tasks or log notes on clients (you confirm before anything is saved)\n\n' +
     'Advisor uses your dashboard data and signed-in session context to provide focused recommendations and drafts. You stay in control of final decisions and actions.';
   var WELCOME_MOBILE =
     'Hi — I am your business copilot.\n\n' +
@@ -821,6 +822,126 @@
       messageEl.appendChild(row);
     }
 
+    function appendAdvisorTaskProposalControls(messageEl, usageMeta, taskProposal) {
+      var prop = taskProposal && typeof taskProposal === 'object' ? taskProposal : null;
+      if (!prop || !String(prop.title || '').trim() || !messageEl || !usageMeta || !usageMeta.usageEventId) return;
+      var wrap = document.createElement('div');
+      wrap.className = 'advisor-crm-proposal-actions';
+      wrap.style.marginTop = '10px';
+      var summary = document.createElement('div');
+      summary.style.fontSize = '12px';
+      summary.style.color = 'var(--text2)';
+      summary.style.marginBottom = '8px';
+      summary.style.lineHeight = '1.45';
+      var bits = [String(prop.title).trim()];
+      if (prop.dueYmd) bits.push('Due ' + String(prop.dueYmd));
+      if (prop.clientName) bits.push('Client: ' + String(prop.clientName));
+      else if (prop.clientId) bits.push('Client id: ' + String(prop.clientId).slice(0, 8) + '…');
+      summary.textContent = bits.join(' · ');
+      var row = document.createElement('div');
+      row.style.display = 'flex';
+      row.style.gap = '6px';
+      row.style.flexWrap = 'wrap';
+      var addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'btn btn-p';
+      addBtn.textContent = 'Add task';
+      addBtn.addEventListener('click', async function () {
+        if (typeof window.bizDashCreateTaskFromAdvisor !== 'function') return;
+        if (!window.confirm('Create this task in your workspace?')) return;
+        addBtn.disabled = true;
+        var result = null;
+        try {
+          result = await window.bizDashCreateTaskFromAdvisor(prop);
+          await logAdvisorActionOutcome({
+            id: mkUuid(),
+            user_id: window.currentUser && window.currentUser.id ? window.currentUser.id : null,
+            organization_id: typeof window.bizDashGetCurrentOrgId === 'function' ? window.bizDashGetCurrentOrgId() : null,
+            usage_event_id: usageMeta.usageEventId,
+            task: usageMeta.task,
+            action_id: 'advisor-create-task',
+            action_label: 'Add task',
+            outcome: result && result.ok ? 'applied' : 'error',
+            details: { error: result && result.error ? result.error : null },
+            created_at: new Date().toISOString(),
+          });
+          if (result && result.ok && typeof window.nav === 'function') window.nav('tasks', null);
+          else if (!result || !result.ok) window.alert((result && result.error) || 'Could not create task.');
+        } finally {
+          if (!result || !result.ok) addBtn.disabled = false;
+        }
+      });
+      wrap.appendChild(summary);
+      row.appendChild(addBtn);
+      wrap.appendChild(row);
+      messageEl.appendChild(wrap);
+    }
+
+    function appendAdvisorClientNoteProposalControls(messageEl, usageMeta, clientNoteProposal) {
+      var prop = clientNoteProposal && typeof clientNoteProposal === 'object' ? clientNoteProposal : null;
+      if (!prop || !String(prop.note || '').trim() || !messageEl || !usageMeta || !usageMeta.usageEventId) return;
+      var wrap = document.createElement('div');
+      wrap.className = 'advisor-crm-proposal-actions';
+      wrap.style.marginTop = '10px';
+      var summary = document.createElement('div');
+      summary.style.fontSize = '12px';
+      summary.style.color = 'var(--text2)';
+      summary.style.marginBottom = '8px';
+      summary.style.lineHeight = '1.45';
+      summary.textContent = prop.clientName
+        ? 'Client: ' + String(prop.clientName)
+        : prop.clientId
+          ? 'Client id: ' + String(prop.clientId).slice(0, 12) + '…'
+          : 'Client';
+      var preview = document.createElement('div');
+      preview.style.fontSize = '12px';
+      preview.style.padding = '8px 10px';
+      preview.style.border = '1px solid var(--border)';
+      preview.style.borderRadius = '10px';
+      preview.style.background = 'var(--bg2)';
+      preview.style.marginBottom = '8px';
+      preview.style.whiteSpace = 'pre-wrap';
+      preview.textContent = String(prop.note).slice(0, 2000);
+      var row = document.createElement('div');
+      row.style.display = 'flex';
+      row.style.gap = '6px';
+      row.style.flexWrap = 'wrap';
+      var addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'btn btn-p';
+      addBtn.textContent = 'Save note to client';
+      addBtn.addEventListener('click', async function () {
+        if (typeof window.bizDashAppendClientNoteFromAdvisor !== 'function') return;
+        if (!window.confirm('Append this note to the client record?')) return;
+        addBtn.disabled = true;
+        var result = null;
+        try {
+          result = await window.bizDashAppendClientNoteFromAdvisor(prop);
+          await logAdvisorActionOutcome({
+            id: mkUuid(),
+            user_id: window.currentUser && window.currentUser.id ? window.currentUser.id : null,
+            organization_id: typeof window.bizDashGetCurrentOrgId === 'function' ? window.bizDashGetCurrentOrgId() : null,
+            usage_event_id: usageMeta.usageEventId,
+            task: usageMeta.task,
+            action_id: 'advisor-client-note',
+            action_label: 'Save note to client',
+            outcome: result && result.ok ? 'applied' : 'error',
+            details: { error: result && result.error ? result.error : null },
+            created_at: new Date().toISOString(),
+          });
+          if (result && result.ok && typeof window.nav === 'function') window.nav('customers', null);
+          else if (!result || !result.ok) window.alert((result && result.error) || 'Could not save note.');
+        } finally {
+          if (!result || !result.ok) addBtn.disabled = false;
+        }
+      });
+      wrap.appendChild(summary);
+      wrap.appendChild(preview);
+      row.appendChild(addBtn);
+      wrap.appendChild(row);
+      messageEl.appendChild(wrap);
+    }
+
     function appendCrmProposalControls(messageEl, usageMeta, crmProposal, contactRequestSnapshot) {
       if (!messageEl || !usageMeta || !usageMeta.usageEventId) return;
       var prop = crmProposal && typeof crmProposal === 'object' ? crmProposal : null;
@@ -973,6 +1094,12 @@
       renderAdvisorPayload(thinkingEl, out && out.response ? out.response : { text: 'No response.' });
       if (out && out.response && out.response.crmProposal && usageMeta) {
         appendCrmProposalControls(thinkingEl, usageMeta, out.response.crmProposal, contactSnapshot);
+      }
+      if (out && out.response && out.response.taskProposal && usageMeta) {
+        appendAdvisorTaskProposalControls(thinkingEl, usageMeta, out.response.taskProposal);
+      }
+      if (out && out.response && out.response.clientNoteProposal && usageMeta) {
+        appendAdvisorClientNoteProposalControls(thinkingEl, usageMeta, out.response.clientNoteProposal);
       }
       if (out && out.response && Array.isArray(out.response.actions) && usageMeta) {
         appendActionButtons(thinkingEl, usageMeta, out.response.actions);

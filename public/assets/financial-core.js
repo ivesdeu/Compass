@@ -1754,6 +1754,7 @@
         var accentNorm = normalizeHexColor(biz.accent, '#e8501a');
         setv('setting-accent', accentNorm);
         setv('setting-accent-hex', accentNorm);
+        syncAccentPresetSwatches(accentNorm);
       }
       if (biz.terms != null) setv('setting-terms', String(biz.terms));
       if (biz.tax != null) setv('setting-tax', String(biz.tax));
@@ -1822,6 +1823,19 @@
     return n && n.length === 7 ? n : null;
   }
 
+  /** Sync Settings preset swatch selection to a normalized hex (exact match only). */
+  function syncAccentPresetSwatches(hex) {
+    var wrap = document.getElementById('setting-accent-presets');
+    if (!wrap) return;
+    var h = normalizeHexColor(hex, '#e8501a').toLowerCase();
+    wrap.querySelectorAll('[data-accent-preset]').forEach(function (btn) {
+      var ph = normalizeHexColor(btn.getAttribute('data-accent-preset') || '', '').toLowerCase();
+      var on = Boolean(ph && ph === h);
+      btn.classList.toggle('on', on);
+      btn.setAttribute('aria-pressed', on ? 'true' : 'false');
+    });
+  }
+
   function hexToRgb(hex) {
     var n = normalizeHexColor(hex, '');
     if (!n || n.length !== 7) return null;
@@ -1852,6 +1866,8 @@
     if (light) img.setAttribute('data-logo-light', light);
     if (dark) img.setAttribute('data-logo-dark', dark);
   }
+
+  window.bizdashApplyBrandLogoToShell = applyBrandLogo;
 
   /** Signed URL lifetime for private brand-assets bucket (see supabase/brand_assets_org_rls.sql). */
   var BRAND_LOGO_SIGNED_URL_TTL_SEC = 60 * 60 * 24 * 7;
@@ -2183,6 +2199,8 @@
   var wfStages = [];
   var wfRules = [];
   var wfTasks = [];
+  /** Cached workspace members for Tasks tab assignee picker (from organization-team list). */
+  var tasksTabMembers = [];
   var wfSchemaUnavailable = false;
   var crmEventsTableUnavailable = false;
   var weeklySummariesTableUnavailable = false;
@@ -2244,6 +2262,9 @@
       campaignId: row.campaign_id || null,
       createdBy: row.created_by || 'user',
       workflowRunId: row.workflow_run_id || null,
+      userId: row.user_id || row.userId || null,
+      assignedToEmail: row.assigned_to_email || row.assignedToEmail || null,
+      organizationId: row.organization_id || row.organizationId || null,
     };
   }
 
@@ -2698,25 +2719,494 @@
       (rules || '<p style="font-size:12px;color:var(--text3);">No rules yet.</p>');
   }
 
-  function renderTasksPage() {
-    var body = $('wf-tasks-tbody');
-    if (!body) return;
-    var open = wfTasks.filter(function (t) { return t.status === 'open'; });
-    if (!open.length) {
-      body.innerHTML = '<tr><td colspan="4" style="font-size:13px;color:var(--text3);padding:12px;">No open tasks. Workflows can create tasks when triggers fire.</td></tr>';
+  function tasksTabStartOfLocalDay(d) {
+    var x = new Date(d);
+    x.setHours(0, 0, 0, 0);
+    return x.getTime();
+  }
+
+  function tasksTabDueMeta(task) {
+    var st = task.status || 'open';
+    if (!task.dueAt) {
+      return { key: 'nodue', label: '—', cls: 'tasks-due-muted', sort: 4 };
+    }
+    var due = new Date(task.dueAt);
+    if (isNaN(due.getTime())) {
+      return { key: 'nodue', label: '—', cls: 'tasks-due-muted', sort: 4 };
+    }
+    var startToday = tasksTabStartOfLocalDay(new Date());
+    var endToday = startToday + 86400000;
+    var tDue = tasksTabStartOfLocalDay(due);
+    if (tDue < startToday && st === 'open') {
+      return { key: 'overdue', label: 'Overdue', cls: 'tasks-due-overdue', sort: 0 };
+    }
+    if (tDue >= startToday && tDue < endToday) {
+      return { key: 'today', label: st === 'done' ? 'Today' : 'Due today', cls: 'tasks-due-today', sort: 1 };
+    }
+    if (tDue >= endToday) {
+      return {
+        key: 'upcoming',
+        label: due.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
+        cls: 'tasks-due-muted',
+        sort: 2,
+      };
+    }
+    return { key: 'earlier', label: fmtDateDisplay(task.dueAt), cls: 'tasks-due-muted', sort: 3 };
+  }
+
+  function tasksTabAssigneeDisplay(task) {
+    var email = '';
+    var m = tasksTabMembers.find(function (x) { return x.user_id === task.userId; });
+    if (m && m.email) email = String(m.email);
+    if (!email && task.assignedToEmail) email = String(task.assignedToEmail);
+    if (!email && task.userId && window.currentUser && task.userId === window.currentUser.id) {
+      email = (window.currentUser.email || 'You').trim();
+    }
+    if (!email) email = task.userId ? String(task.userId).slice(0, 8) + '…' : '—';
+    var parts = email.split('@')[0].split(/[.\s_]+/).filter(Boolean);
+    var ini =
+      parts.length >= 2
+        ? (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase()
+        : (email.charAt(0) || '?').toUpperCase();
+    return { email: email, initials: ini.slice(0, 2) };
+  }
+
+  async function tasksTabBearerForEdge(supabase) {
+    try {
+      var ref = await supabase.auth.refreshSession();
+      if (ref && ref.error) return null;
+      var s = ref && ref.data && ref.data.session;
+      if (s && s.access_token) return s.access_token;
+      var g = await supabase.auth.getSession();
+      s = g && g.data && g.data.session;
+      return s && s.access_token ? s.access_token : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  async function tasksTabInvokeOrganizationTeamRaw(supabase, orgId, body, accessToken) {
+    var base = (
+      (supabase && supabase.supabaseUrl ? String(supabase.supabaseUrl) : '') ||
+      (typeof window.__bizdashSupabaseUrl === 'string' ? window.__bizdashSupabaseUrl : '')
+    ).replace(/\/$/, '');
+    var anon =
+      (supabase && supabase.supabaseKey ? String(supabase.supabaseKey) : '') ||
+      (typeof window.__bizdashSupabaseAnonKey === 'string' ? window.__bizdashSupabaseAnonKey : '');
+    if (!base || !anon) return { ok: false, status: 0, data: null };
+    var url = base + '/functions/v1/organization-team';
+    var res = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + accessToken,
+        apikey: anon,
+      },
+      body: JSON.stringify(Object.assign({ organizationId: orgId }, body)),
+    });
+    var text = await res.text();
+    var data = null;
+    try {
+      data = text ? JSON.parse(text) : null;
+    } catch (_) {
+      data = { error: text || 'Invalid JSON' };
+    }
+    return { ok: res.ok, status: res.status, data: data };
+  }
+
+  async function tasksTabRefreshMembers() {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    var orgId = typeof getCurrentOrgId === 'function' ? getCurrentOrgId() : null;
+    tasksTabMembers = [];
+    if (!supabase || !currentUser || !orgId || isDemoDashboardUser()) return;
+    try {
+      var token = await tasksTabBearerForEdge(supabase);
+      if (!token) return;
+      var raw = await tasksTabInvokeOrganizationTeamRaw(supabase, orgId, { action: 'list' }, token);
+      if (!raw.ok && raw.status === 401) {
+        token = await tasksTabBearerForEdge(supabase);
+        if (token) raw = await tasksTabInvokeOrganizationTeamRaw(supabase, orgId, { action: 'list' }, token);
+      }
+      if (raw.ok && raw.data && Array.isArray(raw.data.members)) {
+        tasksTabMembers = raw.data.members;
+      }
+    } catch (e) {
+      console.warn('tasksTabRefreshMembers', e);
+    }
+  }
+
+  function tasksTabFillAssigneeSelect(sel) {
+    if (!sel) return;
+    var uid = window.currentUser && window.currentUser.id ? window.currentUser.id : '';
+    var opts = [];
+    if (tasksTabMembers.length) {
+      tasksTabMembers.forEach(function (m) {
+        var em = (m.email || m.user_id || '').trim();
+        if (!em) return;
+        opts.push({
+          id: m.user_id,
+          label: em,
+          selected: uid && m.user_id === uid,
+        });
+      });
+    } else if (uid) {
+      opts.push({ id: uid, label: (window.currentUser.email || 'Me').trim(), selected: true });
+    }
+    if (!opts.length) {
+      sel.innerHTML = '<option value="">No teammates loaded</option>';
       return;
     }
-    body.innerHTML = open.map(function (t) {
+    sel.innerHTML = opts
+      .map(function (o) {
+        return (
+          '<option value="' +
+          esc(o.id) +
+          '"' +
+          (o.selected ? ' selected' : '') +
+          '>' +
+          esc(o.label) +
+          '</option>'
+        );
+      })
+      .join('');
+  }
+
+  function tasksTabFillClientSelect(sel) {
+    if (!sel) return;
+    var cur = sel.value;
+    var rows = '<option value="">— None —</option>' +
+      (clients || [])
+        .filter(function (c) { return c && c.id; })
+        .map(function (c) {
+          return '<option value="' + esc(c.id) + '">' + esc(c.companyName || c.contactName || 'Client') + '</option>';
+        })
+        .join('');
+    sel.innerHTML = rows;
+    if (cur) {
+      for (var i = 0; i < sel.options.length; i++) {
+        if (sel.options[i].value === cur) {
+          sel.value = cur;
+          break;
+        }
+      }
+    }
+  }
+
+  function renderTasksPage() {
+    var page = document.getElementById('page-tasks');
+    var empty = document.getElementById('tasks-tab-empty');
+    var main = document.getElementById('tasks-tab-main');
+    var demoHint = document.getElementById('tasks-tab-demo');
+    if (!page || !empty || !main) return;
+
+    var demo = isDemoDashboardUser();
+    if (demoHint) {
+      demoHint.style.display = demo ? 'block' : 'none';
+      demoHint.textContent = demo
+        ? 'Preview mode: sign in to create and assign tasks that sync to your workspace.'
+        : '';
+    }
+
+    var filterEl = document.getElementById('tasks-filter');
+    var filter = filterEl && filterEl.value ? filterEl.value : 'open';
+
+    var list = (wfTasks || []).slice();
+    if (filter === 'open') list = list.filter(function (t) { return (t.status || 'open') === 'open'; });
+    else if (filter === 'done') list = list.filter(function (t) { return t.status === 'done'; });
+
+    list.sort(function (a, b) {
+      var ma = tasksTabDueMeta(a);
+      var mb = tasksTabDueMeta(b);
+      if (ma.sort !== mb.sort) return ma.sort - mb.sort;
+      var da = a.dueAt ? new Date(a.dueAt).getTime() : 9e15;
+      var db = b.dueAt ? new Date(b.dueAt).getTime() : 9e15;
+      if (da !== db) return da - db;
+      return String(a.title || '').localeCompare(String(b.title || ''));
+    });
+
+    if (!list.length) {
+      empty.classList.add('on');
+      main.classList.remove('on');
+      main.innerHTML = '';
+      return;
+    }
+
+    empty.classList.remove('on');
+    main.classList.add('on');
+
+    var groups = ['overdue', 'today', 'upcoming', 'nodue', 'donegroup'];
+    var groupLabels = {
+      overdue: 'Overdue',
+      today: 'Today',
+      upcoming: 'Upcoming',
+      nodue: 'No due date',
+      donegroup: 'Done',
+    };
+    var byGroup = {};
+    groups.forEach(function (g) {
+      byGroup[g] = [];
+    });
+    list.forEach(function (t) {
+      var meta = tasksTabDueMeta(t);
+      var gkey = meta.key;
+      if (filter === 'done' || t.status === 'done') {
+        byGroup.donegroup.push(t);
+      } else if (gkey === 'overdue') byGroup.overdue.push(t);
+      else if (gkey === 'today') byGroup.today.push(t);
+      else if (gkey === 'upcoming') byGroup.upcoming.push(t);
+      else byGroup.nodue.push(t);
+    });
+
+    function rowHtml(t) {
       var cl = t.clientId ? (clients.find(function (c) { return c.id === t.clientId; }) || {}) : {};
-      var cn = cl.companyName || '—';
-      var due = t.dueAt ? String(t.dueAt).slice(0, 10) : '—';
-      return '<tr>' +
-        '<td style="font-size:13px;">' + esc(t.title) + '</td>' +
-        '<td style="font-size:12px;color:var(--text3);">' + esc(cn) + '</td>' +
-        '<td style="font-size:12px;">' + esc(due) + '</td>' +
-        '<td><button type="button" class="btn" data-wf-task-done="' + esc(t.id) + '">Done</button></td>' +
-      '</tr>';
-    }).join('');
+      var cn = cl.companyName || cl.contactName || '—';
+      var meta = tasksTabDueMeta(t);
+      var ad = tasksTabAssigneeDisplay(t);
+      var done = t.status === 'done';
+      return (
+        '<tr data-task-id="' +
+        esc(t.id) +
+        '">' +
+        '<td class="tasks-col-task"><div class="tasks-row-title">' +
+        '<input type="checkbox" data-task-toggle="' +
+        esc(t.id) +
+        '" ' +
+        (done ? 'checked' : '') +
+        (demo ? ' disabled' : '') +
+        ' title="Mark done" />' +
+        '<span' +
+        (done ? ' style="text-decoration:line-through;color:var(--text3);"' : '') +
+        '>' +
+        esc(t.title || '') +
+        '</span></div></td>' +
+        '<td><span class="' +
+        esc(meta.cls) +
+        '">' +
+        esc(meta.label) +
+        '</span></td>' +
+        '<td style="font-size:13px;color:var(--text2);">' +
+        esc(cn) +
+        '</td>' +
+        '<td><span class="tasks-assignee"><span class="tasks-assignee-av">' +
+        esc(ad.initials) +
+        '</span><span class="tasks-assignee-em">' +
+        esc(ad.email) +
+        '</span></span></td>' +
+        '<td style="text-align:right;width:48px;">' +
+        (demo
+          ? ''
+          : '<button type="button" class="tasks-row-menu" data-task-menu="' +
+            esc(t.id) +
+            '" title="Delete">⋯</button>') +
+        '</td></tr>'
+      );
+    }
+
+    var html = '';
+    groups.forEach(function (gk) {
+      var rows = byGroup[gk];
+      if (!rows.length) return;
+      html +=
+        '<div class="tasks-group-hdr">' +
+        esc(groupLabels[gk] || gk) +
+        ' <span class="tasks-group-count">' +
+        String(rows.length) +
+        '</span></div>' +
+        '<table class="tasks-table"><thead><tr>' +
+        '<th>Task</th><th>Due date</th><th>Record</th><th>Assigned to</th><th></th>' +
+        '</tr></thead><tbody>' +
+        rows.map(rowHtml).join('') +
+        '</tbody></table>';
+    });
+
+    main.innerHTML = html || '<p style="font-size:13px;color:var(--text3);padding:12px;">No tasks match this filter.</p>';
+  }
+
+  function wireTasksTab() {
+    var root = document.getElementById('page-tasks');
+    if (!root || root.getAttribute('data-tasks-wired') === '1') return;
+    root.setAttribute('data-tasks-wired', '1');
+
+    var main = document.getElementById('tasks-tab-main');
+    var overlay = document.getElementById('tasks-modal-overlay');
+    var help = document.getElementById('tasks-link-help');
+    var ask = document.getElementById('tasks-link-ask');
+    if (help) {
+      help.addEventListener('click', function (e) {
+        e.preventDefault();
+        if (typeof window.nav === 'function') window.nav('chat');
+      });
+    }
+    if (ask) {
+      ask.addEventListener('click', function (e) {
+        e.preventDefault();
+        if (typeof window.nav === 'function') window.nav('chat');
+      });
+    }
+
+    function openModal() {
+      var titleIn = document.getElementById('tasks-modal-title');
+      var dueIn = document.getElementById('tasks-modal-due');
+      var asg = document.getElementById('tasks-modal-assignee');
+      var err = document.getElementById('tasks-modal-error');
+      if (err) {
+        err.style.display = 'none';
+        err.textContent = '';
+      }
+      if (titleIn) titleIn.value = '';
+      if (dueIn) dueIn.value = '';
+      tasksTabFillClientSelect(document.getElementById('tasks-modal-client'));
+      tasksTabRefreshMembers().then(function () {
+        tasksTabFillAssigneeSelect(asg);
+      });
+      if (overlay) {
+        overlay.classList.add('on');
+        overlay.setAttribute('aria-hidden', 'false');
+      }
+    }
+
+    function closeModal() {
+      if (overlay) {
+        overlay.classList.remove('on');
+        overlay.setAttribute('aria-hidden', 'true');
+      }
+    }
+
+    var btnNew = document.getElementById('btn-tasks-new');
+    var btnNewE = document.getElementById('btn-tasks-new-empty');
+    if (btnNew) btnNew.addEventListener('click', function () { openModal(); });
+    if (btnNewE) btnNewE.addEventListener('click', function () { openModal(); });
+
+    var cancel = document.getElementById('tasks-modal-cancel');
+    if (cancel) cancel.addEventListener('click', closeModal);
+    if (overlay) {
+      overlay.addEventListener('click', function (e) {
+        if (e.target === overlay) closeModal();
+      });
+    }
+
+    var save = document.getElementById('tasks-modal-save');
+    if (save) {
+      save.addEventListener('click', async function () {
+        var errEl = document.getElementById('tasks-modal-error');
+        var titleIn = document.getElementById('tasks-modal-title');
+        var dueIn = document.getElementById('tasks-modal-due');
+        var asg = document.getElementById('tasks-modal-assignee');
+        var cli = document.getElementById('tasks-modal-client');
+        if (errEl) {
+          errEl.style.display = 'none';
+          errEl.textContent = '';
+        }
+        if (isDemoDashboardUser()) {
+          if (errEl) {
+            errEl.textContent = 'Sign in to create tasks.';
+            errEl.style.display = 'block';
+          }
+          return;
+        }
+        supabase = window.supabaseClient || supabase;
+        currentUser = window.currentUser || currentUser;
+        var orgId = typeof getCurrentOrgId === 'function' ? getCurrentOrgId() : null;
+        var title = titleIn && titleIn.value ? String(titleIn.value).trim() : '';
+        if (!title) {
+          if (errEl) {
+            errEl.textContent = 'Title is required.';
+            errEl.style.display = 'block';
+          }
+          return;
+        }
+        var assigneeId = asg && asg.value ? String(asg.value).trim() : '';
+        if (!assigneeId) {
+          if (errEl) {
+            errEl.textContent = 'Choose an assignee.';
+            errEl.style.display = 'block';
+          }
+          return;
+        }
+        var assigneeEmail = '';
+        if (asg && asg.selectedOptions && asg.selectedOptions[0]) {
+          assigneeEmail = String(asg.selectedOptions[0].textContent || '').trim();
+        }
+        var dueAt = null;
+        if (dueIn && dueIn.value) {
+          var d = new Date(dueIn.value + 'T12:00:00');
+          dueAt = isNaN(d.getTime()) ? null : d.toISOString();
+        }
+        var clientId = cli && cli.value ? String(cli.value).trim() : null;
+        if (!supabase || !currentUser || !orgId) {
+          if (errEl) {
+            errEl.textContent = 'Sign in and open a workspace to save tasks.';
+            errEl.style.display = 'block';
+          }
+          return;
+        }
+        var row = {
+          id: uuid(),
+          user_id: assigneeId,
+          organization_id: orgId,
+          title: title,
+          body: '',
+          status: 'open',
+          due_at: dueAt,
+          client_id: clientId || null,
+          campaign_id: null,
+          created_by: 'user',
+          workflow_run_id: null,
+          assigned_to_email: assigneeEmail || null,
+        };
+        var ins = await supabase.from('workspace_tasks').insert(row);
+        if (ins.error) {
+          if (errEl) {
+            errEl.textContent = String(ins.error.message || ins.error);
+            errEl.style.display = 'block';
+          }
+          return;
+        }
+        closeModal();
+        await wfRefreshFromSupabase();
+        renderTasksPage();
+      });
+    }
+
+    var filt = document.getElementById('tasks-filter');
+    if (filt) {
+      filt.addEventListener('change', function () {
+        renderTasksPage();
+      });
+    }
+
+    if (main) {
+      main.addEventListener('click', async function (ev) {
+        var menuBtn = ev.target.closest('[data-task-menu]');
+        if (menuBtn && !isDemoDashboardUser()) {
+          var tid = menuBtn.getAttribute('data-task-menu');
+          if (tid && confirm('Delete this task?')) {
+            supabase = window.supabaseClient || supabase;
+            if (supabase && getCurrentOrgId()) {
+              await supabase.from('workspace_tasks').delete().eq('id', tid).eq('organization_id', getCurrentOrgId());
+              await wfRefreshFromSupabase();
+              renderTasksPage();
+            }
+          }
+          return;
+        }
+        var cb = ev.target.closest('[data-task-toggle]');
+        if (!cb || isDemoDashboardUser()) return;
+        var id = cb.getAttribute('data-task-toggle');
+        if (!id) return;
+        var nowDone = !!cb.checked;
+        supabase = window.supabaseClient || supabase;
+        if (!supabase || !getCurrentOrgId()) return;
+        await supabase
+          .from('workspace_tasks')
+          .update({ status: nowDone ? 'done' : 'open', updated_at: new Date().toISOString() })
+          .eq('id', id)
+          .eq('organization_id', getCurrentOrgId());
+        await wfRefreshFromSupabase();
+        renderTasksPage();
+      });
+    }
   }
 
   function wireWorkflowAutomation() {
@@ -2749,21 +3239,6 @@
       btnS.setAttribute('data-wf-wired', '1');
       btnS.addEventListener('click', function () {
         wfSeedExampleMeetingRule();
-      });
-    }
-    var tasksTable = $('wf-tasks-table');
-    if (tasksTable && tasksTable.getAttribute('data-wf-wired') !== '1') {
-      tasksTable.setAttribute('data-wf-wired', '1');
-      tasksTable.addEventListener('click', async function (ev) {
-        var b = ev.target.closest('[data-wf-task-done]');
-        if (!b) return;
-        var tid = b.getAttribute('data-wf-task-done');
-        supabase = window.supabaseClient || supabase;
-        currentUser = window.currentUser || currentUser;
-        if (!supabase || !currentUser || !tid) return;
-        await supabase.from('workspace_tasks').update({ status: 'done', updated_at: new Date().toISOString() }).eq('id', tid).eq('organization_id', getCurrentOrgId());
-        await wfRefreshFromSupabase();
-        renderTasksPage();
       });
     }
   }
@@ -4666,6 +5141,7 @@ var incomePowerState = {
     var accentInput = document.getElementById('setting-accent');
     var accentHexInput = document.getElementById('setting-accent-hex');
     if (accentInput) {
+      var accentPresets = document.getElementById('setting-accent-presets');
       function accentHexNow() {
         return parseAccentHexOrNull(accentHexInput && accentHexInput.value) || normalizeHexColor(accentInput.value, '#e8501a');
       }
@@ -4673,6 +5149,7 @@ var incomePowerState = {
         var h = normalizeHexColor(hex, '#e8501a');
         accentInput.value = h;
         if (accentHexInput) accentHexInput.value = h;
+        syncAccentPresetSwatches(h);
         applyAccentBranding(h);
         if (state.computed) {
           renderAll();
@@ -4683,24 +5160,13 @@ var incomePowerState = {
         accentHexInput.value = normalizeHexColor(accentInput.value, '#e8501a');
       }
       syncAccentFieldsAndApply(accentHexNow());
-      accentInput.addEventListener('input', function () {
-        syncAccentFieldsAndApply(normalizeHexColor(accentInput.value, '#e8501a'));
-      });
-      accentInput.addEventListener('change', function () {
-        syncAccentFieldsAndApply(normalizeHexColor(accentInput.value, '#e8501a'));
-      });
-      if (accentHexInput) {
-        accentHexInput.addEventListener('input', function () {
-          var p = parseAccentHexOrNull(accentHexInput.value);
-          if (p) syncAccentFieldsAndApply(p);
-        });
-        accentHexInput.addEventListener('change', function () {
-          var p = parseAccentHexOrNull(accentHexInput.value);
-          if (p) {
-            syncAccentFieldsAndApply(p);
-          } else {
-            syncAccentFieldsAndApply(normalizeHexColor(accentInput.value, '#e8501a'));
-          }
+      if (accentPresets) {
+        accentPresets.addEventListener('click', function (ev) {
+          var t = ev.target && ev.target.closest ? ev.target.closest('[data-accent-preset]') : null;
+          if (!t || !accentPresets.contains(t)) return;
+          var raw = t.getAttribute('data-accent-preset');
+          var p = parseAccentHexOrNull(raw) || normalizeHexColor(raw, '#e8501a');
+          syncAccentFieldsAndApply(p);
         });
       }
     }
@@ -4782,6 +5248,87 @@ var incomePowerState = {
         setTimeout(function () { saveBtn.textContent = orig; }, 1400);
       });
     }
+  }
+
+  function wireSettingsShell() {
+    var root = document.getElementById('page-settings');
+    if (!root || root.getAttribute('data-settings-shell-wired') === '1') return;
+    root.setAttribute('data-settings-shell-wired', '1');
+
+    var filterInput = document.getElementById('settings-nav-filter');
+    var activeTitle = document.getElementById('settings-active-title');
+    var activeDesc = document.getElementById('settings-active-desc');
+    var activeKicker = document.getElementById('settings-active-kicker');
+    var navItems = root.querySelectorAll('.settings-nav-item');
+
+    function applyNavFilter() {
+      var q = (filterInput && filterInput.value ? String(filterInput.value) : '').trim().toLowerCase();
+      if (!q) {
+        root.querySelectorAll('.settings-nav-group').forEach(function (g) {
+          var title = g.querySelector('.settings-nav-group-title');
+          g.querySelectorAll('.settings-nav-item').forEach(function (item) {
+            item.style.display = '';
+          });
+          if (title) title.style.display = '';
+        });
+        return;
+      }
+      root.querySelectorAll('.settings-nav-group').forEach(function (g) {
+        var title = g.querySelector('.settings-nav-group-title');
+        var items = g.querySelectorAll('.settings-nav-item');
+        var visibleCount = 0;
+        items.forEach(function (item) {
+          var label = (item.getAttribute('data-settings-title') || '') + ' ' + (item.textContent || '');
+          label = label.toLowerCase();
+          var match = label.indexOf(q) !== -1;
+          item.style.display = match ? '' : 'none';
+          if (match) visibleCount++;
+        });
+        if (title) title.style.display = visibleCount ? '' : 'none';
+      });
+    }
+
+    function setSettingsPanel(panelId, openerBtn) {
+      if (!panelId) return;
+      navItems.forEach(function (btn) {
+        var id = btn.getAttribute('data-settings-panel');
+        var on = id === panelId;
+        btn.classList.toggle('on', on);
+        btn.setAttribute('aria-selected', on ? 'true' : 'false');
+      });
+      root.querySelectorAll('.settings-panel').forEach(function (p) {
+        var pid = p.getAttribute('data-settings-panel-id');
+        p.classList.toggle('on', pid === panelId);
+      });
+      var opener =
+        openerBtn || root.querySelector('.settings-nav-item[data-settings-panel="' + panelId + '"]');
+      if (!opener) return;
+      if (activeTitle) activeTitle.textContent = opener.getAttribute('data-settings-title') || '';
+      if (activeDesc) activeDesc.textContent = opener.getAttribute('data-settings-desc') || '';
+      if (activeKicker) activeKicker.textContent = opener.getAttribute('data-settings-kicker') || '';
+    }
+
+    navItems.forEach(function (btn) {
+      btn.setAttribute('role', 'tab');
+      var pid = btn.getAttribute('data-settings-panel');
+      if (pid) btn.setAttribute('aria-controls', 'settings-panel-' + pid);
+      btn.setAttribute('aria-selected', btn.classList.contains('on') ? 'true' : 'false');
+      btn.addEventListener('click', function () {
+        setSettingsPanel(btn.getAttribute('data-settings-panel'), btn);
+      });
+    });
+
+    if (filterInput) {
+      filterInput.addEventListener('input', function () {
+        applyNavFilter();
+      });
+    }
+
+    var initial = root.querySelector('.settings-nav-item.on');
+    setSettingsPanel(
+      (initial && initial.getAttribute('data-settings-panel')) || 'general',
+      initial
+    );
   }
 
   function wireSpendingReport() {
@@ -6309,159 +6856,6 @@ var incomePowerState = {
     }
   }
 
-  var marketingGa4State = {
-    orgId: '',
-    loading: false,
-    loaded: false,
-    error: '',
-    data: null,
-    inFlight: null,
-  };
-
-  function setGa4Value(id, value) {
-    var el = $(id);
-    if (!el) return;
-    el.textContent = value;
-  }
-
-  function fmtInt(n) {
-    var v = Number(n || 0) || 0;
-    return v.toLocaleString();
-  }
-
-  function renderMarketingGa4Panel() {
-    var status = $('marketing-ga4-status');
-    var channelsEl = $('marketing-ga4-channels');
-    if (!status || !channelsEl) return;
-
-    if (marketingGa4State.loading) {
-      status.textContent = 'Loading analytics…';
-      status.style.color = 'var(--text3)';
-      channelsEl.textContent = '';
-      setGa4Value('ga4-users', '—');
-      setGa4Value('ga4-sessions', '—');
-      setGa4Value('ga4-new-users', '—');
-      setGa4Value('ga4-page-views', '—');
-      setGa4Value('ga4-conversions', '—');
-      return;
-    }
-
-    if (marketingGa4State.error) {
-      status.textContent = marketingGa4State.error;
-      status.style.color = 'var(--red)';
-      channelsEl.textContent = '';
-      return;
-    }
-
-    var payload = marketingGa4State.data || null;
-    if (!payload) {
-      status.textContent = 'Analytics unavailable.';
-      status.style.color = 'var(--text3)';
-      channelsEl.textContent = '';
-      return;
-    }
-
-    if (payload.configured === false) {
-      status.textContent = payload.reason || 'GA4 is not configured yet.';
-      status.style.color = 'var(--amber)';
-      channelsEl.textContent = '';
-      return;
-    }
-
-    if (payload.error) {
-      status.textContent = payload.details ? String(payload.error) + ' ' + String(payload.details) : String(payload.error);
-      status.style.color = 'var(--red)';
-      channelsEl.textContent = '';
-      return;
-    }
-
-    var summary = payload.summary || {};
-    setGa4Value('ga4-users', fmtInt(summary.users));
-    setGa4Value('ga4-sessions', fmtInt(summary.sessions));
-    setGa4Value('ga4-new-users', fmtInt(summary.newUsers));
-    setGa4Value('ga4-page-views', fmtInt(summary.pageViews));
-    setGa4Value('ga4-conversions', fmtInt(summary.conversions));
-
-    status.textContent = 'Connected to GA4';
-    status.style.color = 'var(--green)';
-
-    var channels = Array.isArray(payload.channels) ? payload.channels : [];
-    if (!channels.length) {
-      channelsEl.textContent = 'No channel breakdown available.';
-      return;
-    }
-    channelsEl.innerHTML = channels
-      .map(function (c) {
-        return (
-          '<span style="display:inline-block;margin-right:10px;margin-bottom:6px;padding:4px 8px;border:1px solid var(--border);border-radius:999px;background:var(--bg3);">' +
-          esc(c.source || 'Unknown') + ': ' + fmtInt(c.sessions || 0) +
-          '</span>'
-        );
-      })
-      .join('');
-  }
-
-  async function loadMarketingGa4() {
-    var supabase = window.supabaseClient;
-    var orgId = typeof getCurrentOrgId === 'function' ? getCurrentOrgId() : null;
-    if (!supabase || !orgId) {
-      marketingGa4State = {
-        orgId: orgId || '',
-        loading: false,
-        loaded: true,
-        error: 'Select a workspace to load analytics.',
-        data: null,
-        inFlight: null,
-      };
-      renderMarketingGa4Panel();
-      return;
-    }
-    if (marketingGa4State.orgId === orgId && marketingGa4State.loaded) {
-      renderMarketingGa4Panel();
-      return;
-    }
-    if (marketingGa4State.inFlight) {
-      renderMarketingGa4Panel();
-      return marketingGa4State.inFlight;
-    }
-
-    marketingGa4State.orgId = orgId;
-    marketingGa4State.loading = true;
-    marketingGa4State.loaded = false;
-    marketingGa4State.error = '';
-    marketingGa4State.data = null;
-    renderMarketingGa4Panel();
-
-    marketingGa4State.inFlight = (async function () {
-      try {
-        var sessRes = await supabase.auth.getSession();
-        var sess = sessRes && sessRes.data ? sessRes.data.session : null;
-        if (!sess || !sess.access_token) {
-          marketingGa4State.error = 'Sign in to load analytics.';
-          return;
-        }
-        var res = await supabase.functions.invoke('marketing-ga4', {
-          body: { organizationId: orgId },
-          headers: { Authorization: 'Bearer ' + sess.access_token },
-        });
-        if (res.error) {
-          marketingGa4State.error = res.error.message || 'Failed to load GA4 analytics.';
-          return;
-        }
-        marketingGa4State.data = res.data || null;
-      } catch (err) {
-        marketingGa4State.error = String(err && err.message ? err.message : err || 'Failed to load GA4 analytics.');
-      } finally {
-        marketingGa4State.loading = false;
-        marketingGa4State.loaded = true;
-        marketingGa4State.inFlight = null;
-        renderMarketingGa4Panel();
-      }
-    })();
-
-    return marketingGa4State.inFlight;
-  }
-
   function renderMarketing() {
     var empty = $('campaigns-empty');
     var pipe = $('marketing-pipeline');
@@ -6526,8 +6920,6 @@ var incomePowerState = {
     setText('mkt-kpi-3', fmtCurrency(pipeSum));
 
     renderLeadSourcesChart(activePipeline);
-    renderMarketingGa4Panel();
-    loadMarketingGa4();
   }
 
   function openCampaignModal(editId) {
@@ -11653,14 +12045,6 @@ var incomePowerState = {
     projects = [];
     invoices = [];
     campaigns = [];
-    marketingGa4State = {
-      orgId: '',
-      loading: false,
-      loaded: false,
-      error: '',
-      data: null,
-      inFlight: null,
-    };
     timesheetEntries = [];
     crmEvents = [];
     weeklySummaries = [];
@@ -11668,6 +12052,16 @@ var incomePowerState = {
     renderAll();
     renderProjects();
     refreshCloudSyncStatus();
+    closeListTemplatesModal();
+    closeListPreviewModal();
+    closeListDetailView();
+    if (listsFeatureWired) {
+      renderListsSidebar();
+      renderListsPageGrid();
+    }
+    if (typeof window.refreshSidebarWorkspaceChrome === 'function') {
+      window.refreshSidebarWorkspaceChrome();
+    }
   }
 
   window.bizDashSetAdvisorContactContext = function (obj) {
@@ -11676,17 +12070,132 @@ var incomePowerState = {
   window.bizDashGetAdvisorContactContext = function () {
     return advisorContactContext ? Object.assign({}, advisorContactContext) : null;
   };
+
+  function resolveAdvisorClientRef(draft) {
+    var d = draft || {};
+    var cid = String(d.clientId || d.client_id || '').trim();
+    if (cid) {
+      if (!isUuidForDb(cid)) {
+        return { client: null, error: 'Invalid client id.' };
+      }
+      var byId = (clients || []).find(function (x) {
+        return x && x.id === cid;
+      });
+      if (byId) return { client: byId, error: null };
+      return { client: null, error: 'No client with that id in this workspace.' };
+    }
+    var name = String(d.clientName || d.companyName || '').trim().toLowerCase();
+    if (!name) return { client: null, error: null };
+    var exact = (clients || []).find(function (x) {
+      return x && String(x.companyName || '').trim().toLowerCase() === name;
+    });
+    if (exact) return { client: exact, error: null };
+    var partial = (clients || []).find(function (x) {
+      return x && String(x.companyName || '').toLowerCase().indexOf(name) !== -1;
+    });
+    if (partial) return { client: partial, error: null };
+    return { client: null, error: 'No client matched "' + name + '".' };
+  }
+
   window.bizDashGetClientsDigestForAdvisor = function () {
     var out = [];
     (clients || []).forEach(function (c) {
       if (!c || out.length >= 30) return;
       out.push({
+        id: c.id,
         companyName: String(c.companyName || '').slice(0, 120),
         email: String(c.email || '').slice(0, 160),
       });
     });
     return out;
   };
+
+  /**
+   * Create a workspace task from an Advisor-confirmed proposal (assignee = current user).
+   * @returns {Promise<{ok:boolean, task?:object, error?:string}>}
+   */
+  window.bizDashCreateTaskFromAdvisor = async function (draft) {
+    draft = draft || {};
+    var title = String(draft.title || '').trim();
+    if (!title) return { ok: false, error: 'Task title is required.' };
+    if (isDemoDashboardUser()) return { ok: false, error: 'Sign in to create tasks.' };
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    var orgId = getCurrentOrgId();
+    if (!supabase || !currentUser || !orgId) {
+      return { ok: false, error: 'Sign in and open a workspace to save tasks.' };
+    }
+    var body = String(draft.body || '').trim().slice(0, 8000);
+    var dueAt = null;
+    var ymd = String(draft.dueYmd || draft.due_ymd || '').trim();
+    if (/^\d{4}-\d{2}-\d{2}$/.test(ymd)) {
+      var d = new Date(ymd + 'T12:00:00');
+      if (!isNaN(d.getTime())) dueAt = d.toISOString();
+    }
+    var clientId = null;
+    if (draft.clientId || draft.client_id || draft.clientName || draft.companyName) {
+      var tr = resolveAdvisorClientRef(draft);
+      if (!tr.client) return { ok: false, error: tr.error || 'Could not find that client.' };
+      clientId = tr.client.id;
+    }
+    var row = {
+      id: uuid(),
+      user_id: currentUser.id,
+      organization_id: orgId,
+      title: title.slice(0, 500),
+      body: body,
+      status: 'open',
+      due_at: dueAt,
+      client_id: clientId,
+      campaign_id: null,
+      created_by: 'user',
+      workflow_run_id: null,
+      assigned_to_email: null,
+    };
+    var ins = await supabase.from('workspace_tasks').insert(row);
+    if (ins.error) return { ok: false, error: formatSupabaseErr(ins.error) };
+    await wfRefreshFromSupabase();
+    try {
+      renderTasksPage();
+    } catch (e) {
+      console.warn('renderTasksPage', e);
+    }
+    return { ok: true, task: mapWorkspaceTaskRow(row) };
+  };
+
+  /**
+   * Append a timestamped note to a client from an Advisor-confirmed proposal.
+   * @returns {Promise<{ok:boolean, client?:object, error?:string}>}
+   */
+  window.bizDashAppendClientNoteFromAdvisor = async function (draft) {
+    draft = draft || {};
+    var note = String(draft.note || '').trim();
+    if (!note) return { ok: false, error: 'Note text is required.' };
+    if (isDemoDashboardUser()) return { ok: false, error: 'Sign in to save notes.' };
+    var r = resolveAdvisorClientRef(draft);
+    if (!r.client) return { ok: false, error: r.error || 'Pick a client (id or company name from the digest).' };
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !getCurrentOrgId()) {
+      return { ok: false, error: 'Sign in and open a workspace.' };
+    }
+    var stamp = new Date().toISOString().slice(0, 10);
+    var prev = String(r.client.notes || '').trim();
+    var sep = prev ? '\n\n' : '';
+    var next = Object.assign({}, r.client, {
+      notes: prev + sep + '— Advisor note (' + stamp + ')\n' + note,
+    });
+    var u = await persistClientToSupabase(next, 'update');
+    if (u === 'skipped') return { ok: false, error: persistClientLastError || 'Could not save.' };
+    if (u !== 'ok') return { ok: false, error: persistClientLastError || 'Update failed.' };
+    clients = (clients || []).map(function (c) {
+      return c.id === next.id ? next : c;
+    });
+    saveClients(clients);
+    renderClients();
+    return { ok: true, client: next };
+  };
+
   /**
    * One-click insert from Advisor CRM proposal (user must confirm in Advisor UI before calling).
    * @returns {Promise<{ok:boolean, client?:object, error?:string}>}
@@ -11726,6 +12235,30 @@ var incomePowerState = {
   };
 
   /**
+   * Upload an image to private brand-assets storage. First path segment must be auth.uid()
+   * or an organization UUID the user can write (see brand_assets_org_rls.sql).
+   * @returns {{ signedUrl: string, path: string }}
+   */
+  window.bizdashUploadBrandAssetFile = async function (file, folderFirstSegment, namePrefix) {
+    if (!file || !window.supabaseClient || !window.currentUser || !window.currentUser.id) {
+      return { signedUrl: '', path: '' };
+    }
+    var supa = window.supabaseClient;
+    var seg = String(folderFirstSegment || '').trim();
+    var prefix = String(namePrefix || 'file').replace(/[^a-z0-9-]/gi, '-').slice(0, 32);
+    if (!seg || !prefix) return { signedUrl: '', path: '' };
+    var ext = (String(file.name || '').split('.').pop() || 'png').toLowerCase();
+    if (!/^png|jpe?g|webp|gif$/i.test(ext)) ext = 'png';
+    var path = seg + '/' + prefix + '-' + Date.now() + '.' + ext;
+    var upload = await supa.storage.from('brand-assets').upload(path, file, { upsert: true, cacheControl: '3600' });
+    if (upload.error) throw upload.error;
+    var signed = await supa.storage.from('brand-assets').createSignedUrl(path, 60 * 60 * 24 * 7);
+    if (signed.error) throw signed.error;
+    var signedUrl = signed.data && signed.data.signedUrl ? String(signed.data.signedUrl) : '';
+    return { signedUrl: signedUrl, path: path };
+  };
+
+  /**
    * Called after first-time workspace setup (org name + slug) to sync Settings fields,
    * accent, optional tagline / role, and persist dashboard_settings to Supabase.
    */
@@ -11748,6 +12281,7 @@ var incomePowerState = {
       var hex = normalizeHexColor(payload.accent, '#e8501a');
       if (ac) ac.value = hex;
       if (ach) ach.value = hex;
+      syncAccentPresetSwatches(hex);
       applyAccentBranding(hex);
     }
     var tagOut = gid('dash-brand-tagline');
@@ -12137,6 +12671,1006 @@ var incomePowerState = {
     window.refreshTeamPage = refreshTeamPage;
   }
 
+  // ---------- Workspace lists (sidebar + templates modals; localStorage test) ----------
+  var listsFeatureWired = false;
+  var listsUi = { selectedTplId: null, activeCat: 'content', search: '' };
+
+  var LIST_CATEGORIES = [
+    { id: 'content', label: 'Content' },
+    { id: 'operations', label: 'Operations' },
+    { id: 'sales', label: 'Sales' },
+  ];
+
+  var LIST_TEMPLATES = [
+    {
+      id: 'tpl-content',
+      category: 'content',
+      emoji: '🎨',
+      title: 'Content co-creation',
+      dataType: 'People',
+      desc:
+        'Manage your content pipeline and streamline outreach to co-creators. Organize podcasts, interviews, and published pieces.',
+      tags: [
+        { label: 'Content', tone: 'amber' },
+        { label: 'PR', tone: 'mint' },
+      ],
+      columns: [
+        { id: 'c1', name: 'Person' },
+        { id: 'c2', name: 'Content piece' },
+        { id: 'c3', name: 'Topics' },
+      ],
+      rows: [
+        { c1: 'Steven Walsh', c2: 'Blogpost', c3: 'Startups' },
+        { c1: 'Lori Simpson', c2: 'Customer Story', c3: 'Investing' },
+        { c1: 'Alex Kim', c2: 'Tutorial', c3: 'Product' },
+      ],
+    },
+    {
+      id: 'tpl-editorial',
+      category: 'content',
+      emoji: '📝',
+      title: 'Editorial calendar',
+      dataType: 'People',
+      desc: 'Track drafts, reviews, and publish dates across channels in one lightweight list.',
+      tags: [{ label: 'Content', tone: 'amber' }],
+      columns: [
+        { id: 'c1', name: 'Title' },
+        { id: 'c2', name: 'Channel' },
+        { id: 'c3', name: 'Status' },
+      ],
+      rows: [
+        { c1: 'Q2 launch post', c2: 'Blog', c3: 'Draft' },
+        { c1: 'Customer webinar', c2: 'Email', c3: 'Scheduled' },
+      ],
+    },
+    {
+      id: 'tpl-rollout',
+      category: 'operations',
+      emoji: '🚀',
+      title: 'Weekly rollout checklist',
+      dataType: 'Tasks',
+      desc: 'Ship checklist for releases: owners, blockers, and sign-off in one view.',
+      tags: [{ label: 'Operations', tone: 'blue' }],
+      columns: [
+        { id: 'c1', name: 'Task' },
+        { id: 'c2', name: 'Owner' },
+        { id: 'c3', name: 'Status' },
+      ],
+      rows: [
+        { c1: 'Freeze dependencies', c2: 'Eng', c3: 'Done' },
+        { c1: 'Staging smoke test', c2: 'QA', c3: 'In progress' },
+        { c1: 'Announce in Slack', c2: 'PM', c3: 'Todo' },
+      ],
+    },
+    {
+      id: 'tpl-pipeline',
+      category: 'sales',
+      emoji: '📈',
+      title: 'Deal pipeline',
+      dataType: 'Companies',
+      desc: 'Lightweight pipeline: company, stage, and amount for quick reviews.',
+      tags: [{ label: 'Sales', tone: 'blue' }],
+      columns: [
+        { id: 'c1', name: 'Company' },
+        { id: 'c2', name: 'Stage' },
+        { id: 'c3', name: 'Amount' },
+      ],
+      rows: [
+        { c1: 'Northwind', c2: 'Proposal', c3: '$24k' },
+        { c1: 'Acme Co', c2: 'Discovery', c3: '$8k' },
+        { c1: 'Contoso', c2: 'Closed won', c3: '$42k' },
+      ],
+    },
+  ];
+
+  function listsStorageKey() {
+    var u = window.currentUser && window.currentUser.id ? String(window.currentUser.id) : 'guest';
+    var o = window.currentOrganizationId ? String(window.currentOrganizationId) : 'noorg';
+    return 'bizdash:' + u + ':' + o + ':workspace-lists:v1';
+  }
+
+  function loadWorkspaceLists() {
+    try {
+      var raw = localStorage.getItem(listsStorageKey());
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function saveWorkspaceLists(arr) {
+    try {
+      localStorage.setItem(listsStorageKey(), JSON.stringify(arr || []));
+    } catch (_) {}
+  }
+
+  function escList(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function newListId() {
+    return typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : 'L' + Date.now() + Math.random().toString(36).slice(2, 9);
+  }
+
+  function findListTemplate(id) {
+    var tid = String(id || '');
+    for (var i = 0; i < LIST_TEMPLATES.length; i++) {
+      if (LIST_TEMPLATES[i].id === tid) return LIST_TEMPLATES[i];
+    }
+    return null;
+  }
+
+  function listInstanceFromTemplate(tpl) {
+    return {
+      id: newListId(),
+      title: tpl.title,
+      templateId: tpl.id,
+      category: tpl.category,
+      dataType: tpl.dataType,
+      columns: JSON.parse(JSON.stringify(tpl.columns)),
+      rows: JSON.parse(JSON.stringify(tpl.rows)),
+    };
+  }
+
+  function blankWorkspaceList(title) {
+    return {
+      id: newListId(),
+      title: title || 'Untitled list',
+      templateId: null,
+      category: 'operations',
+      dataType: 'Rows',
+      columns: [
+        { id: 'c1', name: 'Name' },
+        { id: 'c2', name: 'Notes' },
+      ],
+      rows: [
+        { c1: '', c2: '' },
+        { c1: '', c2: '' },
+      ],
+    };
+  }
+
+  function pushWorkspaceList(L) {
+    var arr = loadWorkspaceLists();
+    arr.unshift(L);
+    saveWorkspaceLists(arr);
+    renderListsSidebar();
+    renderListsPageGrid();
+  }
+
+  function renderListsSidebar() {
+    var host = document.getElementById('lists-sb-items');
+    if (!host) return;
+    var lists = loadWorkspaceLists();
+    if (!lists.length) {
+      host.innerHTML = '<div style="font-size:11px;color:var(--text3);padding:4px 10px;">No saved lists</div>';
+      return;
+    }
+    host.innerHTML = lists
+      .slice(0, 8)
+      .map(function (L) {
+        return (
+          '<button type="button" class="lists-sb-item" data-list-id="' +
+          escList(L.id) +
+          '">' +
+          escList(L.title) +
+          '</button>'
+        );
+      })
+      .join('');
+    host.querySelectorAll('.lists-sb-item').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-list-id');
+        openListDetailView(id);
+        window.nav('lists', document.querySelector('.ni[data-nav="lists"]'));
+        document.body.classList.remove('mobile-nav-open');
+      });
+    });
+  }
+
+  function renderListsPageGrid() {
+    var grid = document.getElementById('lists-grid');
+    var empty = document.getElementById('lists-empty-hint');
+    if (!grid || !empty) return;
+    var lists = loadWorkspaceLists();
+    if (!lists.length) {
+      empty.style.display = 'block';
+      grid.style.display = 'none';
+      return;
+    }
+    empty.style.display = 'none';
+    grid.style.display = 'grid';
+    grid.innerHTML = lists
+      .map(function (L) {
+        return (
+          '<div class="card list-card" data-list-id="' +
+          escList(L.id) +
+          '" style="cursor:pointer;padding:16px;border-radius:10px;">' +
+          '<div style="font-weight:600;font-size:15px;margin-bottom:6px;">' +
+          escList(L.title) +
+          '</div>' +
+          '<div style="font-size:12px;color:var(--text3);">' +
+          escList(L.dataType || 'List') +
+          ' · ' +
+          (L.rows || []).length +
+          ' rows</div></div>'
+        );
+      })
+      .join('');
+    grid.querySelectorAll('.list-card').forEach(function (card) {
+      card.addEventListener('click', function () {
+        openListDetailView(card.getAttribute('data-list-id'));
+      });
+    });
+  }
+
+  function openListDetailView(listId) {
+    var lists = loadWorkspaceLists();
+    var L = null;
+    for (var i = 0; i < lists.length; i++) {
+      if (String(lists[i].id) === String(listId)) L = lists[i];
+    }
+    var main = document.getElementById('lists-view-main');
+    var det = document.getElementById('lists-view-detail');
+    var title = document.getElementById('lists-detail-title');
+    var sub = document.getElementById('lists-detail-sub');
+    var wrap = document.getElementById('lists-detail-table-wrap');
+    if (!L || !main || !det || !wrap) return;
+    main.style.display = 'none';
+    det.style.display = 'block';
+    if (title) title.textContent = L.title;
+    if (sub) sub.textContent = (L.dataType || 'List') + (L.templateId ? ' · from template' : '');
+    var cols = L.columns || [];
+    var thead =
+      '<tr>' +
+      cols
+        .map(function (c) {
+          return '<th>' + escList(c.name) + '</th>';
+        })
+        .join('') +
+      '</tr>';
+    var rows = L.rows || [];
+    var tb = rows
+      .map(function (r) {
+        return (
+          '<tr>' +
+          cols
+            .map(function (c) {
+              return '<td>' + escList(r[c.id] != null ? r[c.id] : '') + '</td>';
+            })
+            .join('') +
+          '</tr>'
+        );
+      })
+      .join('');
+    wrap.innerHTML = '<table class="dt"><thead>' + thead + '</thead><tbody>' + tb + '</tbody></table>';
+    det.setAttribute('data-active-list', L.id);
+  }
+
+  function closeListDetailView() {
+    var main = document.getElementById('lists-view-main');
+    var det = document.getElementById('lists-view-detail');
+    if (main) main.style.display = 'block';
+    if (det) {
+      det.style.display = 'none';
+      det.removeAttribute('data-active-list');
+    }
+    renderListsPageGrid();
+  }
+
+  function openListTemplatesModal() {
+    listsUi.selectedTplId = null;
+    listsUi.activeCat = LIST_CATEGORIES[0].id;
+    listsUi.search = '';
+    var q = document.getElementById('list-tmpl-search');
+    if (q) q.value = '';
+    var modal = document.getElementById('listTemplatesModal');
+    if (modal) {
+      modal.classList.add('on');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+    renderListTemplateCategories();
+    renderListTemplateCards();
+    syncListPreviewButton();
+  }
+
+  function closeListTemplatesModal() {
+    var modal = document.getElementById('listTemplatesModal');
+    if (modal) {
+      modal.classList.remove('on');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  function renderListTemplateCategories() {
+    var host = document.getElementById('list-tmpl-cats');
+    if (!host) return;
+    host.innerHTML = LIST_CATEGORIES.map(function (c) {
+      return (
+        '<button type="button" class="list-tmpl-cat' +
+        (c.id === listsUi.activeCat ? ' on' : '') +
+        '" data-cat="' +
+        escList(c.id) +
+        '"><span class="dot" aria-hidden="true"></span>' +
+        escList(c.label) +
+        '</button>'
+      );
+    }).join('');
+    host.querySelectorAll('.list-tmpl-cat').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        listsUi.activeCat = btn.getAttribute('data-cat') || 'content';
+        renderListTemplateCategories();
+        renderListTemplateCards();
+      });
+    });
+  }
+
+  function filteredListTemplates() {
+    var q = (listsUi.search || '').toLowerCase().trim();
+    return LIST_TEMPLATES.filter(function (t) {
+      if (t.category !== listsUi.activeCat) return false;
+      if (!q) return true;
+      return (
+        (t.title && t.title.toLowerCase().indexOf(q) !== -1) ||
+        (t.desc && t.desc.toLowerCase().indexOf(q) !== -1)
+      );
+    });
+  }
+
+  function renderListTemplateCards() {
+    var host = document.getElementById('list-tmpl-cards');
+    if (!host) return;
+    var arr = filteredListTemplates();
+    if (!arr.length) {
+      host.innerHTML = '<p style="font-size:13px;color:#94a3b8;padding:12px;">No templates in this category.</p>';
+      return;
+    }
+    host.innerHTML = arr
+      .map(function (t) {
+        var tags = (t.tags || [])
+          .map(function (g) {
+            var bg = '#93c5fd33';
+            if (g.tone === 'mint') bg = 'rgba(110,231,183,0.25)';
+            if (g.tone === 'amber') bg = 'rgba(252,211,77,0.35)';
+            return (
+              '<span class="list-tmpl-tag" style="background:' +
+              bg +
+              ';color:#334155;">' +
+              escList(g.label) +
+              '</span>'
+            );
+          })
+          .join('');
+        return (
+          '<button type="button" class="list-tmpl-card' +
+          (t.id === listsUi.selectedTplId ? ' on' : '') +
+          '" data-tpl="' +
+          escList(t.id) +
+          '"><div class="list-tmpl-thumb" aria-hidden="true">' +
+          escList(t.emoji || '📋') +
+          '</div><div><div class="list-tmpl-card-title">' +
+          escList(t.title) +
+          '<span class="list-tmpl-badge">◎ ' +
+          escList(t.dataType) +
+          '</span></div><p class="list-tmpl-desc">' +
+          escList(t.desc) +
+          '</p><div class="list-tmpl-tags">' +
+          tags +
+          '</div></div></button>'
+        );
+      })
+      .join('');
+    host.querySelectorAll('.list-tmpl-card').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        listsUi.selectedTplId = btn.getAttribute('data-tpl');
+        renderListTemplateCards();
+        syncListPreviewButton();
+      });
+    });
+  }
+
+  function syncListPreviewButton() {
+    var b = document.getElementById('list-tmpl-preview');
+    if (b) b.disabled = !listsUi.selectedTplId;
+  }
+
+  function openListPreviewModal(tplId) {
+    var tpl = findListTemplate(tplId);
+    if (!tpl) return;
+    var modal = document.getElementById('listPreviewModal');
+    var ti = document.getElementById('list-prev-title');
+    var ent = document.getElementById('list-prev-entity');
+    var desc = document.getElementById('list-prev-desc');
+    var thead = document.getElementById('list-prev-thead');
+    var tbody = document.getElementById('list-prev-tbody');
+    var attrs = document.getElementById('list-prev-attrs');
+    if (ti) ti.textContent = (tpl.emoji ? tpl.emoji + ' ' : '') + tpl.title;
+    if (ent) ent.textContent = tpl.dataType || 'List';
+    if (desc) desc.textContent = tpl.desc || '';
+    if (thead) {
+      thead.innerHTML =
+        '<tr>' +
+        tpl.columns
+          .map(function (c) {
+            return '<th>' + escList(c.name) + '</th>';
+          })
+          .join('') +
+        '</tr>';
+    }
+    if (tbody) {
+      tbody.innerHTML = (tpl.rows || [])
+        .map(function (r) {
+          return (
+            '<tr>' +
+            tpl.columns
+              .map(function (c) {
+                return '<td>' + escList(r[c.id] != null ? r[c.id] : '') + '</td>';
+              })
+              .join('') +
+            '</tr>'
+          );
+        })
+        .join('');
+    }
+    if (attrs) {
+      attrs.textContent = 'Columns: ' + tpl.columns.map(function (c) { return c.name; }).join(', ');
+    }
+    if (modal) {
+      modal.classList.add('on');
+      modal.setAttribute('aria-hidden', 'false');
+      modal.setAttribute('data-tpl', tplId);
+    }
+  }
+
+  function closeListPreviewModal() {
+    var modal = document.getElementById('listPreviewModal');
+    if (modal) {
+      modal.classList.remove('on');
+      modal.setAttribute('aria-hidden', 'true');
+      modal.removeAttribute('data-tpl');
+    }
+  }
+
+  function wireListsFeature() {
+    if (listsFeatureWired) return;
+    listsFeatureWired = true;
+
+    var wrap = document.getElementById('lists-sb-wrap');
+    var toggle = document.getElementById('lists-sb-toggle');
+    if (toggle && wrap) {
+      toggle.addEventListener('click', function () {
+        wrap.classList.toggle('collapsed');
+        toggle.setAttribute('aria-expanded', wrap.classList.contains('collapsed') ? 'false' : 'true');
+      });
+    }
+
+    function bindNew(id) {
+      var b = document.getElementById(id);
+      if (b) b.addEventListener('click', openListTemplatesModal);
+    }
+    bindNew('lists-btn-sidebar-new');
+    bindNew('lists-btn-page-new');
+
+    var browse = document.getElementById('lists-sb-browse');
+    if (browse) {
+      browse.addEventListener('click', function () {
+        window.nav('lists', document.querySelector('.ni[data-nav="lists"]'));
+        document.body.classList.remove('mobile-nav-open');
+      });
+    }
+
+    var closeT = document.getElementById('list-tmpl-close');
+    if (closeT) closeT.addEventListener('click', closeListTemplatesModal);
+    var scratch = document.getElementById('list-tmpl-scratch');
+    if (scratch) {
+      scratch.addEventListener('click', function () {
+        closeListTemplatesModal();
+        var name = window.prompt('Name your list', 'Untitled list');
+        if (name === null) return;
+        pushWorkspaceList(blankWorkspaceList(String(name).trim() || 'Untitled list'));
+        window.nav('lists', document.querySelector('.ni[data-nav="lists"]'));
+        var first = loadWorkspaceLists()[0];
+        if (first) openListDetailView(first.id);
+      });
+    }
+    var prevBtn = document.getElementById('list-tmpl-preview');
+    if (prevBtn) {
+      prevBtn.addEventListener('click', function () {
+        if (!listsUi.selectedTplId) return;
+        openListPreviewModal(listsUi.selectedTplId);
+      });
+    }
+    var tModal = document.getElementById('listTemplatesModal');
+    if (tModal) {
+      tModal.addEventListener('click', function (ev) {
+        if (ev.target === tModal) closeListTemplatesModal();
+      });
+    }
+
+    var search = document.getElementById('list-tmpl-search');
+    if (search) {
+      search.addEventListener('input', function () {
+        listsUi.search = search.value;
+        renderListTemplateCards();
+      });
+    }
+
+    var prevClose = document.getElementById('list-prev-close');
+    if (prevClose) prevClose.addEventListener('click', closeListPreviewModal);
+    var prevBack = document.getElementById('list-prev-back');
+    if (prevBack) prevBack.addEventListener('click', closeListPreviewModal);
+    var pModal = document.getElementById('listPreviewModal');
+    if (pModal) {
+      pModal.addEventListener('click', function (ev) {
+        if (ev.target === pModal) closeListPreviewModal();
+      });
+    }
+    var useTpl = document.getElementById('list-prev-use');
+    if (useTpl) {
+      useTpl.addEventListener('click', function () {
+        var modal = document.getElementById('listPreviewModal');
+        var tid = modal && modal.getAttribute('data-tpl');
+        if (!tid) return;
+        var tpl = findListTemplate(tid);
+        closeListPreviewModal();
+        closeListTemplatesModal();
+        if (tpl) pushWorkspaceList(listInstanceFromTemplate(tpl));
+        window.nav('lists', document.querySelector('.ni[data-nav="lists"]'));
+        var first = loadWorkspaceLists()[0];
+        if (first) openListDetailView(first.id);
+      });
+    }
+
+    var backLists = document.getElementById('lists-btn-back');
+    if (backLists) backLists.addEventListener('click', closeListDetailView);
+
+    document.addEventListener('keydown', function (ev) {
+      var m = document.getElementById('listTemplatesModal');
+      if (m && m.classList.contains('on') && ev.key === 'Escape') closeListTemplatesModal();
+      var p = document.getElementById('listPreviewModal');
+      if (p && p.classList.contains('on') && ev.key === 'Escape') closeListPreviewModal();
+    });
+
+    renderListsSidebar();
+    renderListsPageGrid();
+  }
+
+  // ---------- Sidebar top chrome (workspace label + quick actions / search pills) ----------
+  var sidebarChromeWired = false;
+
+  function parseTenantSlugForChrome() {
+    var raw = (window.location.pathname || '/').replace(/\/+/g, '/');
+    if (raw !== '/' && raw.endsWith('/')) raw = raw.slice(0, -1);
+    var parts = raw.split('/').filter(Boolean);
+    if (!parts.length) return null;
+    var seg = parts[0];
+    if (seg === 'index.html' || seg === 'dist') return null;
+    if (/\.[a-z0-9]{1,8}$/i.test(seg)) return null;
+    var head = (seg || '').toLowerCase().split('.')[0];
+    var block = { login: 1, assets: 1, api: 1, favicon: 1, health: 1 };
+    if (block[head]) return null;
+    return String(seg).toLowerCase();
+  }
+
+  function refreshSidebarWorkspaceChrome() {
+    var slug = window.currentOrganizationSlug || parseTenantSlugForChrome();
+    var labelEl = document.getElementById('sb-ws-label');
+    var monoEl = document.getElementById('sb-ws-mono');
+    var display = slug ? String(slug) : 'Workspace';
+    if (labelEl) labelEl.textContent = display;
+    if (monoEl) {
+      monoEl.textContent = slug ? String(slug).trim().charAt(0).toUpperCase() : '?';
+    }
+  }
+
+  function wireSidebarChrome() {
+    if (sidebarChromeWired) return;
+    sidebarChromeWired = true;
+    window.refreshSidebarWorkspaceChrome = refreshSidebarWorkspaceChrome;
+
+    refreshSidebarWorkspaceChrome();
+
+    var wsBtn = document.getElementById('btn-sb-workspace-switch');
+    if (wsBtn) {
+      wsBtn.addEventListener('click', function () {
+        if (typeof window.openWorkspaceSwitcherModal === 'function') window.openWorkspaceSwitcherModal();
+      });
+    }
+    function openPaletteFromSidebar() {
+      if (typeof window.openQuickActionsModal === 'function') window.openQuickActionsModal();
+    }
+    var qaPill = document.getElementById('btn-sb-quick-actions');
+    if (qaPill) qaPill.addEventListener('click', openPaletteFromSidebar);
+    var searchPill = document.getElementById('btn-sb-search-palette');
+    if (searchPill) searchPill.addEventListener('click', openPaletteFromSidebar);
+  }
+
+  // ---------- Quick actions (command palette; dashboard-only entries) ----------
+  var quickActionsWired = false;
+  var qaSelectedIndex = 0;
+  var qaFiltered = [];
+
+  function qaEsc(s) {
+    return String(s || '')
+      .replace(/&/g, '&amp;')
+      .replace(/</g, '&lt;')
+      .replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+
+  function qaNavItem(pageId) {
+    return document.querySelector('.ni[data-nav="' + pageId + '"]');
+  }
+
+  function qaGo(pageId) {
+    var el = qaNavItem(pageId);
+    window.nav(pageId, el);
+    document.body.classList.remove('mobile-nav-open');
+    closeQuickActionsModal();
+  }
+
+  function qaClickById(btnId) {
+    var el = document.getElementById(btnId);
+    if (el && !el.disabled) el.click();
+    closeQuickActionsModal();
+  }
+
+  function qaMarketingNavVisible() {
+    var el = document.querySelector('.ni.nav-public-facing[data-nav="marketing"]');
+    if (!el) return false;
+    return el.offsetParent !== null && window.getComputedStyle(el).display !== 'none';
+  }
+
+  function buildQuickActionDefs() {
+    var defs = [
+      {
+        id: 'search-clients',
+        label: 'Search clients',
+        keys: '/',
+        kw: 'search find customers clients crm people',
+        run: function () {
+          qaGo('customers');
+          window.setTimeout(function () {
+            var inp = document.getElementById('customers-search');
+            if (inp) {
+              inp.focus();
+              inp.select();
+            }
+          }, 100);
+        },
+      },
+      { id: 'go-dash', label: 'Go to Dashboard', keys: '', kw: 'home performance kpi', run: function () { qaGo('dashboard'); } },
+      { id: 'go-cust', label: 'Go to Customers', keys: '', kw: 'clients pipeline', run: function () { qaGo('customers'); } },
+      { id: 'go-tasks', label: 'Go to Tasks', keys: '', kw: 'todo workflow', run: function () { qaGo('tasks'); } },
+      { id: 'go-inc', label: 'Go to Income', keys: '', kw: 'revenue invoices ar', run: function () { qaGo('revenue'); } },
+      { id: 'go-exp', label: 'Go to Expenses', keys: '', kw: 'spend budget vendors', run: function () { qaGo('expenses'); } },
+      { id: 'go-ts', label: 'Go to Timesheet', keys: '', kw: 'hours time', run: function () { qaGo('timesheet'); } },
+      { id: 'go-lists', label: 'Browse all lists', keys: '', kw: 'lists templates', run: function () { qaGo('lists'); } },
+      {
+        id: 'new-list',
+        label: 'New list…',
+        keys: '',
+        kw: 'template lists create',
+        run: function () {
+          closeQuickActionsModal();
+          openListTemplatesModal();
+        },
+      },
+      { id: 'go-perf', label: 'Go to Performance (Projects)', keys: '', kw: 'projects delivery', run: function () { qaGo('performance'); } },
+      { id: 'go-ret', label: 'Go to Retention', keys: '', kw: 'churn', run: function () { qaGo('retention'); } },
+      { id: 'go-ins', label: 'Go to Insights', keys: '', kw: 'analytics forecast', run: function () { qaGo('insights'); } },
+      { id: 'go-adv', label: 'Open Advisor', keys: '', kw: 'ai chat copilot assistant', run: function () { qaGo('chat'); } },
+      { id: 'go-team', label: 'Go to Your team', keys: '', kw: 'invite members', run: function () { qaGo('team'); } },
+      { id: 'go-set', label: 'Open Settings', keys: '', kw: 'preferences profile branding', run: function () { qaGo('settings'); } },
+      {
+        id: 'workspaces',
+        label: 'Switch workspace…',
+        keys: '',
+        kw: 'org organization url slug',
+        run: function () {
+          closeQuickActionsModal();
+          if (typeof window.openWorkspaceSwitcherModal === 'function') window.openWorkspaceSwitcherModal();
+        },
+      },
+      {
+        id: 'add-tx',
+        label: 'Add transaction',
+        keys: '',
+        kw: 'ledger log income expense line',
+        run: function () {
+          qaGo('dashboard');
+          window.setTimeout(function () { qaClickById('btn-open-transaction'); }, 120);
+        },
+      },
+      {
+        id: 'upd-tot',
+        label: 'Update totals',
+        keys: '',
+        kw: 'manual dashboard input',
+        run: function () {
+          qaGo('dashboard');
+          window.setTimeout(function () { qaClickById('btn-open-input'); }, 120);
+        },
+      },
+      {
+        id: 'csv-im',
+        label: 'Import transaction CSV',
+        keys: '',
+        kw: 'upload import',
+        run: function () {
+          qaGo('dashboard');
+          window.setTimeout(function () { qaClickById('btn-csv-import-open'); }, 120);
+        },
+      },
+      {
+        id: 'csv-ex',
+        label: 'Export journal CSV',
+        keys: '',
+        kw: 'download export',
+        run: function () {
+          qaGo('dashboard');
+          window.setTimeout(function () { qaClickById('btn-journal-export-open'); }, 120);
+        },
+      },
+      {
+        id: 'mon',
+        label: 'Generate Monday summary',
+        keys: '',
+        kw: 'crm recap personable',
+        run: function () {
+          qaGo('dashboard');
+          window.setTimeout(function () { qaClickById('btn-generate-monday'); }, 120);
+        },
+      },
+      {
+        id: 'fri',
+        label: 'Generate Friday recap',
+        keys: '',
+        kw: 'crm recap personable',
+        run: function () {
+          qaGo('dashboard');
+          window.setTimeout(function () { qaClickById('btn-generate-friday'); }, 120);
+        },
+      },
+      { id: 'add-cl', label: 'Add client', keys: '', kw: 'new customer company', run: function () { qaGo('customers'); window.setTimeout(function () { qaClickById('btn-add-client'); }, 100); } },
+      { id: 'add-in', label: 'Add income', keys: '', kw: 'invoice payment', run: function () { qaGo('revenue'); window.setTimeout(function () { qaClickById('btn-add-income'); }, 100); } },
+      { id: 'add-ex', label: 'Add expense', keys: '', kw: 'cost vendor', run: function () { qaGo('expenses'); window.setTimeout(function () { qaClickById('btn-add-expense'); }, 100); } },
+      { id: 'add-tm', label: 'Add time entry', keys: '', kw: 'timesheet hours', run: function () { qaGo('timesheet'); window.setTimeout(function () { qaClickById('btn-add-time'); }, 100); } },
+      {
+        id: 'new-task',
+        label: 'New task',
+        keys: '',
+        kw: 'workflow tasks',
+        run: function () {
+          qaGo('tasks');
+          window.setTimeout(function () {
+            var b = document.getElementById('btn-tasks-new') || document.getElementById('btn-tasks-new-empty');
+            if (b && !b.disabled) b.click();
+          }, 120);
+        },
+      },
+      {
+        id: 'add-proj',
+        label: 'Add project',
+        keys: '',
+        kw: 'projects performance',
+        run: function () {
+          qaGo('performance');
+          window.setTimeout(function () { qaClickById('btn-add-project'); }, 120);
+        },
+      },
+      {
+        id: 'manage-st',
+        label: 'Manage project statuses',
+        keys: '',
+        kw: 'status labels pipeline',
+        run: function () {
+          qaGo('performance');
+          window.setTimeout(function () { qaClickById('btn-manage-statuses'); }, 120);
+        },
+      },
+    ];
+    if (qaMarketingNavVisible()) {
+      var ins = defs.findIndex(function (d) {
+        return d.id === 'go-adv';
+      });
+      if (ins < 0) ins = defs.length;
+      defs.splice(
+        ins,
+        0,
+        {
+          id: 'go-mkt',
+          label: 'Go to Marketing',
+          keys: '',
+          kw: 'campaigns pipeline leads',
+          run: function () {
+            qaGo('marketing');
+          },
+        },
+        {
+          id: 'new-camp',
+          label: 'New campaign',
+          keys: '',
+          kw: 'marketing campaign',
+          run: function () {
+            qaGo('marketing');
+            window.setTimeout(function () {
+              qaClickById('btn-new-campaign');
+            }, 120);
+          },
+        }
+      );
+    }
+    return defs;
+  }
+
+  function closeQuickActionsModal() {
+    var m = document.getElementById('quickActionsModal');
+    if (m) {
+      m.classList.remove('on');
+      m.setAttribute('aria-hidden', 'true');
+    }
+  }
+
+  function renderQuickActionsList() {
+    var host = document.getElementById('qa-list');
+    var inp = document.getElementById('qa-search');
+    if (!host) return;
+    var q = inp && inp.value ? String(inp.value).toLowerCase().trim() : '';
+    var defs = buildQuickActionDefs();
+    qaFiltered = !q
+      ? defs
+      : defs.filter(function (d) {
+          var blob = (d.label + ' ' + (d.kw || '') + ' ' + (d.id || '')).toLowerCase();
+          return blob.indexOf(q) !== -1;
+        });
+    if (qaSelectedIndex >= qaFiltered.length) qaSelectedIndex = Math.max(0, qaFiltered.length - 1);
+    if (qaSelectedIndex < 0) qaSelectedIndex = 0;
+    host.innerHTML = qaFiltered
+      .map(function (d, i) {
+        var kbd = d.keys ? '<span class="qa-kbd">' + qaEsc(d.keys) + '</span>' : '';
+        return (
+          '<button type="button" role="option" class="qa-row' +
+          (i === qaSelectedIndex ? ' on' : '') +
+          '" data-qa-idx="' +
+          i +
+          '">' +
+          '<span class="qa-row-ico" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 18l6-6-6-6"/></svg></span>' +
+          '<span class="qa-row-lbl">' +
+          qaEsc(d.label) +
+          '</span>' +
+          kbd +
+          '</button>'
+        );
+      })
+      .join('');
+    host.querySelectorAll('.qa-row').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var idx = parseInt(btn.getAttribute('data-qa-idx'), 10);
+        if (!isNaN(idx)) {
+          qaSelectedIndex = idx;
+          qaRunSelected();
+        }
+      });
+    });
+    var sel = host.querySelector('.qa-row.on');
+    if (sel) sel.scrollIntoView({ block: 'nearest' });
+  }
+
+  function qaRunSelected() {
+    var d = qaFiltered[qaSelectedIndex];
+    if (!d || typeof d.run !== 'function') return;
+    try {
+      d.run();
+    } catch (e) {
+      console.warn('quick action', e);
+    }
+  }
+
+  function openQuickActionsModal(opts) {
+    opts = opts || {};
+    var m = document.getElementById('quickActionsModal');
+    if (!m) return;
+    qaSelectedIndex = 0;
+    var inp = document.getElementById('qa-search');
+    if (inp && opts.preserveQuery !== true) inp.value = '';
+    m.classList.add('on');
+    m.setAttribute('aria-hidden', 'false');
+    renderQuickActionsList();
+    window.setTimeout(function () {
+      if (inp) inp.focus();
+    }, 30);
+  }
+
+  function qaIsTypingContext(el) {
+    if (!el || !el.tagName) return false;
+    var t = el.tagName.toLowerCase();
+    if (t === 'textarea' || t === 'select') return true;
+    if (t === 'input') {
+      var typ = (el.type || '').toLowerCase();
+      if (typ === 'checkbox' || typ === 'radio' || typ === 'button' || typ === 'submit') return false;
+      return true;
+    }
+    if (el.isContentEditable) return true;
+    return false;
+  }
+
+  function wireQuickActionsPalette() {
+    if (quickActionsWired) return;
+    quickActionsWired = true;
+
+    window.openQuickActionsModal = openQuickActionsModal;
+    window.closeQuickActionsModal = closeQuickActionsModal;
+
+    var m = document.getElementById('quickActionsModal');
+    if (m) {
+      m.addEventListener('click', function (ev) {
+        if (ev.target === m) closeQuickActionsModal();
+      });
+    }
+    var runBtn = document.getElementById('qa-run');
+    if (runBtn) runBtn.addEventListener('click', qaRunSelected);
+    var qIn = document.getElementById('qa-search');
+    if (qIn) {
+      qIn.addEventListener('input', function () {
+        qaSelectedIndex = 0;
+        renderQuickActionsList();
+      });
+      qIn.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          qaRunSelected();
+        }
+      });
+    }
+
+    document.addEventListener('keydown', function (ev) {
+      var modal = document.getElementById('quickActionsModal');
+      var open = modal && modal.classList.contains('on');
+      if (open && ev.key === 'Escape') {
+        ev.preventDefault();
+        closeQuickActionsModal();
+        return;
+      }
+      if (open && (ev.key === 'ArrowDown' || ev.key === 'ArrowUp')) {
+        ev.preventDefault();
+        if (ev.key === 'ArrowDown') qaSelectedIndex = Math.min(qaFiltered.length - 1, qaSelectedIndex + 1);
+        else qaSelectedIndex = Math.max(0, qaSelectedIndex - 1);
+        renderQuickActionsList();
+        return;
+      }
+      if ((ev.metaKey || ev.ctrlKey) && (ev.key === 'k' || ev.key === 'K')) {
+        if (open) {
+          ev.preventDefault();
+          closeQuickActionsModal();
+          return;
+        }
+        if (qaIsTypingContext(ev.target)) return;
+        ev.preventDefault();
+        openQuickActionsModal();
+        return;
+      }
+      if (!open && ev.key === '/' && !ev.metaKey && !ev.ctrlKey && !ev.altKey) {
+        if (qaIsTypingContext(ev.target)) return;
+        ev.preventDefault();
+        openQuickActionsModal();
+        var inp2 = document.getElementById('qa-search');
+        if (inp2) {
+          window.setTimeout(function () {
+            inp2.focus();
+          }, 0);
+        }
+      }
+    });
+  }
+
   function init() {
     state.filter = { mode: 'all', start: null, end: null };
     wireTransactionForm();
@@ -12153,6 +13687,7 @@ var incomePowerState = {
     wireIncomePowerTable();
     wireSpendingReport();
     wireSettingsSave();
+    wireSettingsShell();
     wirePersonableActions();
     wireCloudSyncPanel();
     wireMarketingCampaign();
@@ -12161,6 +13696,10 @@ var incomePowerState = {
       window.wireDashboardAssistant();
     }
     wireTeamPage();
+    wireTasksTab();
+    wireListsFeature();
+    wireQuickActionsPalette();
+    wireSidebarChrome();
 
     // Simple page navigation wiring to replace the original bundle's nav().
     // Exposed globally so existing onclick="nav('dashboard', this)" continues to work.
@@ -12209,16 +13748,26 @@ var incomePowerState = {
           chat: 'Advisor',
           team: 'Your team',
           settings: 'Settings',
+          lists: 'Lists',
         };
         mobileTitle.textContent = titles[pageId] || 'Dashboard';
       }
       if (pageId === 'team' && typeof window.refreshTeamPage === 'function') {
         window.refreshTeamPage();
       }
+      if (pageId === 'lists') {
+        closeListDetailView();
+        renderListsSidebar();
+        renderListsPageGrid();
+      }
       if (pageId === 'tasks') {
-        wfRefreshFromSupabase().then(function () {
-          renderTasksPage();
-        });
+        wfRefreshFromSupabase()
+          .then(function () {
+            return tasksTabRefreshMembers();
+          })
+          .then(function () {
+            renderTasksPage();
+          });
       }
       if (pageId === 'settings') {
         wfRefreshFromSupabase().then(function () {
@@ -12233,9 +13782,17 @@ var incomePowerState = {
 
     stagePageMotion(document.querySelector('.pg.on'));
 
-    // Load data only when session is already present (auth also calls init after login).
+    // Load data only when session is already present (auth calls init after login from showApp).
+    // Do not run while signed in but workspace id is still resolving — otherwise the first init
+    // completes without org, skips remote fetch, and the user can stay on empty local state.
     if (typeof initDataFromSupabase === 'function' && window.currentUser && window.supabaseClient) {
-      initDataFromSupabase();
+      var demoUid = window.DEMO_DASHBOARD_USER_ID || '00000000-0000-4000-8000-000000000001';
+      var isDemoUser = window.currentUser.id === demoUid;
+      var orgReady =
+        typeof window.bizDashGetCurrentOrgId === 'function' ? window.bizDashGetCurrentOrgId() : window.currentOrganizationId;
+      if (isDemoUser || (orgReady && String(orgReady).trim())) {
+        initDataFromSupabase();
+      }
     }
   }
 
