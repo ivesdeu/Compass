@@ -40,6 +40,8 @@ Then run [`supabase/organization_members_manage.sql`](supabase/organization_memb
 
 Then run [`supabase/workspace_onboarding_and_create.sql`](supabase/workspace_onboarding_and_create.sql) for **first-time workspace setup** and **creating extra workspaces**: adds `organizations.onboarding_completed`, replaces `handle_new_user_org` so new signups start with `onboarding_completed = false`, and creates RPCs `update_workspace_profile` and `create_workspace_for_user` used by the dashboard.
 
+For **Google/Microsoft integration OAuth** (Edge Functions that write tokens with the service role), run [`supabase/integration_credentials.sql`](supabase/integration_credentials.sql) after multitenancy so `integration_credentials` exists and RLS locks out direct client access.
+
 ## First-time users and onboarding
 
 1. **Default org**: After `organizations_multitenancy.sql` + `workspace_onboarding_and_create.sql`, each new `auth.users` row gets an organization via `handle_new_user_org` with `onboarding_completed = false` until the user completes the in-app **Name your workspace** step (company name, URL slug, optional branding).
@@ -69,6 +71,10 @@ Browser calls to Edge Functions (`ai-assistant`, `create-stripe-checkout-session
 
 Local dev defaults include `http://localhost:5173` and `http://127.0.0.1:5173`. Without a production origin in the list, browsers will block cross-origin requests from your deployed dashboard.
 
+### Workspace integrations (Gmail / Google OAuth)
+
+**Gmail** uses Edge Functions `oauth-google-start` and `oauth-google-callback`, not Supabase Auth’s Google sign-in. Register redirect URI `https://<ref>.supabase.co/functions/v1/oauth-google-callback` in **Google Cloud** (plus local callback URL if you test against `supabase start`). Secrets include `OAUTH_STATE_SECRET`, `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, and `APP_SITE_URL`. Optional: `INTEGRATION_WORKER_SECRET` for scheduled `integration-worker`. Full checklist: [`docs/SUPABASE_EDGE_INTEGRATIONS.md`](SUPABASE_EDGE_INTEGRATIONS.md).
+
 ### Stripe webhooks and `organization_id`
 
 The `stripe-webhook` function **requires** `metadata.organization_id` on `checkout.session.completed` and `checkout.session.expired`, and checks that it matches the invoice row. Checkout sessions created by the current `create-stripe-checkout-session` function include this metadata. **Legacy** Checkout sessions that lack `organization_id` will no longer update invoices until customers complete payment using a new session (or you fix metadata in Stripe manually).
@@ -77,4 +83,5 @@ The `stripe-webhook` function **requires** `metadata.organization_id` on `checko
 
 After changing function code or secrets, deploy from the repo root, for example:
 
-`supabase functions deploy ai-assistant create-stripe-checkout-session stripe-webhook organization-team accept-org-invite --project-ref <your-project-ref>`
+`supabase functions deploy ai-assistant create-stripe-checkout-session stripe-webhook organization-team accept-org-invite oauth-google-start oauth-google-callback integration-worker --project-ref <your-project-ref>`  
+(If you use Microsoft integrations, add `oauth-microsoft-start oauth-microsoft-callback`.)

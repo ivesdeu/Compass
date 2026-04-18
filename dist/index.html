@@ -99,16 +99,16 @@
   button, input, select, textarea { font-family: inherit; font-style: normal; }
 
   /* SIDEBAR (light surface — accent via active state only) */
-  .sb { width:230px; background:var(--bg2); border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; }
+  .sb { width:220px; background:var(--bg2); border-right:1px solid var(--border); display:flex; flex-direction:column; flex-shrink:0; }
   /* Top chrome: workspace + command palette entry + account */
-  .sb-chrome { flex-shrink: 0; padding: 12px 10px 10px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 10px; }
+  .sb-chrome { flex-shrink: 0; padding: 8px 8px 8px; border-bottom: 1px solid var(--border); display: flex; flex-direction: column; gap: 6px; }
   .sb-ws-row {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 8px;
     width: 100%;
     margin: 0;
-    padding: 6px 8px;
+    padding: 4px 6px;
     border: none;
     border-radius: var(--rs);
     background: var(--bg3);
@@ -121,8 +121,136 @@
   }
   .sb-ws-row:hover { background: var(--bg4); }
   .sb-ws-mono {
-    width: 32px;
-    height: 32px;
+    width: 28px;
+    height: 28px;
+    border-radius: 7px;
+    background: var(--coral);
+    color: #fff;
+    font-size: 12px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+    line-height: 1;
+  }
+  .sb-ws-meta { flex: 1; min-width: 0; }
+  .sb-ws-label { display: block; font-size: 12px; font-weight: 600; color: var(--text); line-height: 1.2; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sb-ws-chev { flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--text3); }
+  .sb-ws-chev svg { width: 16px; height: 16px; }
+  /* Combined Quick actions + search trigger (opens workspace/account menu) */
+  .sb-action-combo {
+    display: flex;
+    align-items: stretch;
+    width: 100%;
+    margin: 0;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg);
+    cursor: pointer;
+    font: inherit;
+    color: inherit;
+    overflow: hidden;
+    transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+    box-sizing: border-box;
+  }
+  .sb-action-combo:hover {
+    background: var(--bg3);
+    border-color: var(--text3);
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  }
+  .sb-action-combo:focus-visible {
+    outline: 2px solid var(--coral);
+    outline-offset: 1px;
+  }
+  .sb-action-combo-main {
+    flex: 1;
+    min-width: 0;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    padding: 6px 8px;
+    text-align: left;
+  }
+  .sb-action-combo-ico {
+    width: 15px;
+    height: 15px;
+    flex-shrink: 0;
+    color: var(--text3);
+  }
+  .sb-action-combo-txt {
+    flex: 1;
+    min-width: 0;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: 0.01em;
+  }
+  .sb-action-combo-sep {
+    width: 1px;
+    flex-shrink: 0;
+    background: var(--border);
+    align-self: stretch;
+  }
+  .sb-action-combo-search {
+    display: flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 8px;
+    flex-shrink: 0;
+    color: var(--text3);
+  }
+  .sb-action-combo-search svg {
+    width: 14px;
+    height: 14px;
+  }
+  .sb-kbd {
+    font-size: 9px;
+    font-weight: 600;
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    padding: 2px 5px;
+    border-radius: 5px;
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    color: var(--text2);
+    line-height: 1.2;
+  }
+  .sb-chrome-menu-backdrop {
+    display: none;
+    position: fixed;
+    inset: 0;
+    z-index: 210;
+    background: transparent;
+  }
+  .sb-chrome-menu-backdrop.on {
+    display: block;
+  }
+  .sb-chrome-menu-pop {
+    display: none;
+    position: fixed;
+    z-index: 220;
+    min-width: 232px;
+    max-width: min(280px, calc(100vw - 16px));
+    background: var(--bg);
+    border: 1px solid var(--border);
+    border-radius: 12px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.12), 0 2px 8px rgba(0, 0, 0, 0.06);
+    padding: 4px 0 6px;
+    box-sizing: border-box;
+  }
+  .sb-chrome-menu-pop.on {
+    display: block;
+  }
+  .sb-chrome-menu-hdr {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 10px 12px 8px;
+  }
+  .sb-chrome-menu-mono {
+    width: 30px;
+    height: 30px;
     border-radius: 8px;
     background: var(--coral);
     color: #fff;
@@ -132,48 +260,100 @@
     align-items: center;
     justify-content: center;
     flex-shrink: 0;
-    line-height: 1;
   }
-  .sb-ws-meta { flex: 1; min-width: 0; }
-  .sb-ws-label { display: block; font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.25; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .sb-ws-chev { flex-shrink: 0; display: flex; align-items: center; justify-content: center; color: var(--text3); }
-  .sb-ws-chev svg { width: 16px; height: 16px; }
-  .sb-pills { display: flex; flex-wrap: wrap; gap: 6px; }
-  .sb-pill {
-    flex: 1 1 auto;
+  .sb-chrome-menu-hdr-meta {
+    flex: 1;
     min-width: 0;
-    font-size: 11px;
-    font-weight: 600;
-    padding: 7px 10px;
-    border-radius: 999px;
-    border: 1px solid var(--border);
-    background: var(--bg);
-    color: var(--text2);
-    cursor: pointer;
-    transition: background 0.15s, color 0.15s, border-color 0.15s;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
   }
-  .sb-pill:hover { background: var(--bg3); color: var(--text); border-color: var(--text3); }
-  .sb-pill:focus-visible { outline: 2px solid var(--coral); outline-offset: 1px; }
-  .sb-chrome .sb-user { margin: 0 -2px 0; padding: 10px 8px 10px; border-top: 1px solid var(--border); border-radius: 0 0 var(--rs) var(--rs); }
-  .sb-foot { flex-shrink: 0; padding: 8px 10px 14px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 2px; }
-  .sb-logo { padding:16px 14px 16px; border-bottom:1px solid var(--border); display:flex; align-items:center; justify-content:center; }
-  /* Legacy text-brand classes kept for possible reuse; sidebar uses .sb-brand-img. */
+  .sb-chrome-menu-slug {
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .sb-chrome-menu-check {
+    width: 20px;
+    height: 20px;
+    border-radius: 50%;
+    background: #2563eb;
+    color: #fff;
+    font-size: 11px;
+    font-weight: 700;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    flex-shrink: 0;
+  }
+  .sb-chrome-menu-sep {
+    height: 1px;
+    background: var(--border);
+    margin: 4px 10px;
+  }
+  .sb-chrome-menu-item {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    padding: 9px 12px;
+    border: none;
+    background: transparent;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+    transition: background 0.12s;
+  }
+  .sb-chrome-menu-item:hover {
+    background: var(--bg3);
+  }
+  .sb-chrome-menu-item svg {
+    width: 16px;
+    height: 16px;
+    flex-shrink: 0;
+    color: var(--text2);
+  }
+  .sb-chrome-menu-item.sb-chrome-menu-danger {
+    color: var(--red, #b91c1c);
+  }
+  .sb-chrome-menu-item.sb-chrome-menu-danger svg {
+    color: inherit;
+  }
+  .sb-chrome .sb-user { margin: 0 -2px 0; padding: 8px 6px 8px; border-top: 1px solid var(--border); border-radius: 0 0 var(--rs) var(--rs); }
+  .sb-foot { flex-shrink: 0; padding: 6px 8px 10px; border-top: 1px solid var(--border); display: flex; flex-direction: column; gap: 1px; }
+  /* #sb-brand-img: off-screen holder for custom logo URLs (settings persist); sidebar mark removed. */
+  .bizdash-brand-asset-holder {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    border: 0;
+  }
+  /* Legacy text-brand classes kept for possible reuse. */
   .sb-idm { font-size:28px; font-weight:600; color:var(--text); letter-spacing:-0.03em; line-height:1; }
   .sb-sub { font-size:9px; color:var(--text3); text-transform:uppercase; letter-spacing:0.05em; line-height:1.4; font-weight:400; }
-  .sb-brand-img { width:100%; max-width:220px; height:auto; display:block; border-radius:0; }
-  .sb-nav { flex:1; display:flex; flex-direction:column; padding:14px 10px; gap:2px; overflow-y:auto; }
-  .nav-lbl { font-size:10px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--text3); padding:10px 10px 5px; }
-  .ni { display:flex; align-items:center; gap:10px; padding:9px 12px 9px 9px; border-radius:var(--rs); border-left:3px solid transparent; cursor:pointer; color:var(--text2); font-size:0.875rem; font-weight:500; transition:background .15s,color .15s,border-color .15s; user-select:none; }
+  .sb-nav { flex:1; display:flex; flex-direction:column; padding:6px 6px 8px; gap:1px; overflow-y:auto; }
+  .nav-lbl { font-size:9px; font-weight:600; text-transform:uppercase; letter-spacing:0.08em; color:var(--text3); padding:5px 8px 2px; line-height:1.2; }
+  .ni { display:flex; align-items:center; gap:8px; padding:5px 8px 5px 6px; border-radius:var(--rs); border-left:3px solid transparent; cursor:pointer; color:var(--text2); font-size:13px; font-weight:500; line-height:1.2; transition:background .15s,color .15s,border-color .15s; user-select:none; }
   .ni:hover { background:var(--bg3); color:var(--text); }
   .ni.active { background:var(--coral-bg); border-left-color:var(--coral); color:var(--coral); font-weight:600; }
-  .ni svg { width:15px; height:15px; flex-shrink:0; }
+  .ni svg { width:14px; height:14px; flex-shrink:0; }
   .sb-spacer { flex:1; }
-  .sb-div { height:1px; background:var(--border); margin:6px 0; }
-  .sb-user { display:flex; align-items:center; gap:10px; padding:14px 16px 18px; border-top:1px solid var(--border); color:var(--text2); font-size:13px; cursor:pointer; transition:background .15s; }
+  .sb-div { height:1px; background:var(--border); margin:4px 0; }
+  .sb-user { display:flex; align-items:center; gap:8px; padding:10px 10px 12px; border-top:1px solid var(--border); color:var(--text2); font-size:12px; cursor:pointer; transition:background .15s; }
   .sb-user:hover { background:var(--bg3); color:var(--text); }
-  .sb-user-name { font-size:13px; color:var(--text); font-weight:600; line-height:1.25; }
-  .sb-user-role { font-size:11px; color:var(--text3); margin-top:2px; line-height:1.25; }
-  .avatar { width:28px; height:28px; border-radius:50%; background:var(--coral); display:flex; align-items:center; justify-content:center; font-size:11px; font-weight:600; color:#fff; flex-shrink:0; overflow:hidden; }
+  .sb-user-name { font-size:12px; color:var(--text); font-weight:600; line-height:1.2; }
+  .sb-user-role { font-size:10px; color:var(--text3); margin-top:1px; line-height:1.2; }
+  .avatar { width:26px; height:26px; border-radius:50%; background:var(--coral); display:flex; align-items:center; justify-content:center; font-size:10px; font-weight:600; color:#fff; flex-shrink:0; overflow:hidden; }
   .avatar img { width:100%; height:100%; object-fit:cover; display:block; }
 
   /* Mobile chrome hidden on desktop; enabled inside @media (max-width: 960px) below */
@@ -250,23 +430,81 @@
     max-width: none;
     margin: 0;
   }
+  #page-settings.pg.on {
+    display: flex;
+    flex-direction: column;
+    min-height: 100%;
+  }
+  /* Full-width settings: hide primary app sidebar (desktop) so only settings nav shows. */
+  @media (min-width: 961px) {
+    #app-shell.settings-route .sb {
+      display: none !important;
+    }
+    #app-shell.settings-route .main {
+      flex: 1;
+      width: 100%;
+      max-width: none;
+      min-width: 0;
+    }
+  }
+  .settings-appbar {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    flex-shrink: 0;
+    padding: 12px 18px;
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .settings-appbar-back {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    padding: 7px 12px 7px 10px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg2);
+    color: var(--text2);
+    font-size: 13px;
+    font-weight: 500;
+    font-family: inherit;
+    cursor: pointer;
+    transition: background 0.12s ease, color 0.12s ease, border-color 0.12s ease;
+  }
+  .settings-appbar-back:hover {
+    background: var(--bg3);
+    color: var(--text);
+    border-color: var(--text3);
+  }
+  .settings-appbar-back svg {
+    width: 18px;
+    height: 18px;
+    flex-shrink: 0;
+  }
+  .settings-appbar-title {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.02em;
+  }
   .settings-shell {
     display: flex;
     align-items: stretch;
-    min-height: calc(100dvh - 96px);
+    flex: 1;
+    min-height: 0;
     box-sizing: border-box;
   }
   .settings-nav {
-    flex: 0 0 248px;
-    width: 248px;
+    flex: 0 0 212px;
+    width: 212px;
     max-width: 100%;
     box-sizing: border-box;
-    padding: 20px 14px 24px 16px;
+    padding: 12px 10px 16px 12px;
     border-right: 1px solid var(--border);
     background: var(--bg2);
     display: flex;
     flex-direction: column;
-    gap: 14px;
+    gap: 8px;
   }
   .settings-nav-search-wrap {
     position: relative;
@@ -284,8 +522,8 @@
   .settings-nav-search {
     width: 100%;
     box-sizing: border-box;
-    padding: 8px 10px 8px 34px;
-    font-size: 13px;
+    padding: 6px 8px 6px 30px;
+    font-size: 12px;
     border-radius: 10px;
     border: 1px solid var(--border);
     background: var(--bg);
@@ -297,32 +535,34 @@
     padding-right: 2px;
     display: flex;
     flex-direction: column;
-    gap: 22px;
+    gap: 12px;
   }
   .settings-nav-scroll::-webkit-scrollbar { width: 4px; }
   .settings-nav-scroll::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 2px; }
   .settings-nav-group-title {
-    font-size: 11px;
+    font-size: 9px;
     font-weight: 600;
-    letter-spacing: 0.06em;
+    letter-spacing: 0.07em;
     text-transform: uppercase;
     color: var(--text3);
-    margin: 0 0 8px 8px;
+    margin: 0 0 4px 6px;
+    line-height: 1.2;
   }
   .settings-nav-item {
     display: flex;
     align-items: center;
-    gap: 10px;
+    gap: 7px;
     width: 100%;
     text-align: left;
     border: none;
-    border-radius: 10px;
-    padding: 9px 10px 9px 8px;
-    margin-bottom: 2px;
+    border-radius: 8px;
+    padding: 5px 8px 5px 6px;
+    margin-bottom: 0;
     background: transparent;
     color: var(--text2);
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 500;
+    line-height: 1.25;
     font-family: inherit;
     cursor: pointer;
     transition: background 0.12s ease, color 0.12s ease;
@@ -338,16 +578,16 @@
   }
   .settings-nav-ic {
     flex-shrink: 0;
-    width: 18px;
-    height: 18px;
+    width: 15px;
+    height: 15px;
     display: flex;
     align-items: center;
     justify-content: center;
     color: inherit;
   }
   .settings-nav-ic svg {
-    width: 18px;
-    height: 18px;
+    width: 15px;
+    height: 15px;
   }
   .settings-main {
     flex: 1;
@@ -974,7 +1214,8 @@
   #page-tasks.tasks-attio {
     max-width: 1100px;
     margin: 0 auto;
-    padding: 0 4px 32px;
+    /* Match .pg vertical rhythm; do not zero top padding or the header sits under the chrome. */
+    padding: 36px 4px 32px;
   }
   #page-tasks .tasks-attio-hdr {
     display: flex;
@@ -1664,20 +1905,20 @@
 
   /* Sidebar Lists (collapsible + dashed New list) */
   .lists-sb-wrap {
-    padding: 4px 10px 10px;
-    margin-bottom: 2px;
+    padding: 2px 6px 6px;
+    margin-bottom: 0;
   }
   .lists-sb-toggle {
     width: 100%;
     display: flex;
     align-items: center;
-    gap: 8px;
-    padding: 8px 10px;
+    gap: 6px;
+    padding: 5px 8px;
     border: none;
     border-radius: var(--rs);
     background: transparent;
     cursor: pointer;
-    font-size: 0.875rem;
+    font-size: 13px;
     font-weight: 600;
     color: var(--text2);
     text-align: left;
@@ -1688,8 +1929,8 @@
     color: var(--text);
   }
   .lists-sb-chevron {
-    width: 14px;
-    height: 14px;
+    width: 12px;
+    height: 12px;
     flex-shrink: 0;
     transition: transform 0.2s var(--ease-premium);
     color: var(--text3);
@@ -1698,7 +1939,7 @@
     transform: rotate(-90deg);
   }
   .lists-sb-panel {
-    padding: 4px 0 2px 4px;
+    padding: 2px 0 0 2px;
   }
   .lists-sb-wrap.collapsed .lists-sb-panel {
     display: none;
@@ -1708,13 +1949,13 @@
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 8px;
-    padding: 10px 12px;
-    margin-bottom: 6px;
+    gap: 6px;
+    padding: 6px 10px;
+    margin-bottom: 4px;
     border: 1px dashed var(--border2);
     border-radius: 999px;
     background: transparent;
-    font-size: 0.8125rem;
+    font-size: 12px;
     font-weight: 500;
     color: var(--text2);
     cursor: pointer;
@@ -1728,20 +1969,20 @@
   .lists-sb-items {
     display: flex;
     flex-direction: column;
-    gap: 2px;
-    max-height: 160px;
+    gap: 0;
+    max-height: 200px;
     overflow-y: auto;
-    margin-bottom: 6px;
+    margin-bottom: 4px;
   }
   .lists-sb-item {
     display: block;
     width: 100%;
     text-align: left;
-    padding: 7px 10px;
+    padding: 4px 8px;
     border: none;
     border-radius: var(--rs);
     background: transparent;
-    font-size: 0.8125rem;
+    font-size: 12px;
     color: var(--text2);
     cursor: pointer;
     white-space: nowrap;
@@ -1754,7 +1995,7 @@
   }
   .lists-sb-browse {
     width: 100%;
-    padding: 6px 10px;
+    padding: 4px 8px;
     border: none;
     background: none;
     font-size: 11px;
@@ -2294,6 +2535,7 @@
     width:100%;
     flex-direction:row;
     align-items:stretch;
+    position: relative;
   }
   #app-shell.on {
     display:flex !important;
@@ -2425,6 +2667,12 @@
     }
 
     .pg { padding: 24px 16px 20px; }
+    #page-tasks.tasks-attio {
+      padding: 24px 16px 20px;
+    }
+    .settings-appbar {
+      padding: 10px 14px;
+    }
     .ph { flex-direction: column; align-items: flex-start; gap: 10px; }
     .pg .pt { font-size: clamp(1.85rem, 6vw, 2.35rem); }
     .hr { width: 100%; justify-content: flex-start; flex-wrap: wrap; }
@@ -2723,6 +2971,7 @@
 </div>
 
 <div id="app-shell">
+<img id="sb-brand-img" class="bizdash-brand-asset-holder" alt="" decoding="async" aria-hidden="true" />
 <div id="app-invite-flash" style="display:none;margin:0;padding:10px 14px;font-size:13px;line-height:1.45;color:var(--text);background:var(--bg3);border-bottom:1px solid var(--border);"></div>
 <div class="mobile-topbar">
   <button type="button" id="btn-mobile-menu" class="mobile-menu-btn" aria-label="Open navigation" onclick="document.body.classList.toggle('mobile-nav-open')"><span></span></button>
@@ -2736,21 +2985,26 @@
       <span class="sb-ws-meta"><span class="sb-ws-label" id="sb-ws-label">Workspace</span></span>
       <span class="sb-ws-chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></span>
     </button>
-    <div class="sb-pills">
-      <button type="button" class="sb-pill" id="btn-sb-quick-actions" title="Keyboard: ⌘K or Ctrl+K">Quick actions</button>
-      <button type="button" class="sb-pill" id="btn-sb-search-palette" title="Search and jump">Search</button>
-    </div>
+    <button type="button" class="sb-action-combo" id="btn-sb-chrome-menu" aria-haspopup="menu" aria-expanded="false" aria-controls="sb-chrome-menu-pop" title="Workspace &amp; account menu · ⌘K or Ctrl+K opens command palette · / search">
+      <span class="sb-action-combo-main">
+        <svg class="sb-action-combo-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+        <span class="sb-action-combo-txt">Quick actions</span>
+        <kbd class="sb-kbd" id="sb-chrome-kbd-qa" aria-hidden="true">⌘K</kbd>
+      </span>
+      <span class="sb-action-combo-sep" aria-hidden="true"></span>
+      <span class="sb-action-combo-search" aria-hidden="true">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <kbd class="sb-kbd">/</kbd>
+      </span>
+    </button>
     <div class="sb-user" id="sb-user-menu" title="Account" data-public-title="Account">
       <div class="avatar" id="user-avatar">?</div>
       <div style="min-width:0;flex:1;">
         <div id="user-name" class="sb-user-name">—</div>
         <div id="user-role" class="sb-user-role">—</div>
-        <button type="button" class="btn" id="btn-open-workspaces" style="margin-top:8px;width:100%;font-size:11px;padding:6px 8px;">Workspaces</button>
+        <button type="button" class="btn" id="btn-open-workspaces" style="margin-top:6px;width:100%;font-size:10px;padding:5px 8px;">Workspaces</button>
       </div>
     </div>
-  </div>
-    <div class="sb-logo">
-    <img class="sb-brand-img" id="sb-brand-img" src="/idm-logo.png?v=transparent-1" width="400" height="123" alt="ives deutschmann management" loading="eager" decoding="async" />
   </div>
   <nav class="sb-nav">
     <div class="nav-lbl">Overview</div>
@@ -2857,11 +3111,7 @@
     </div>
     <div class="card mb" style="margin-top:12px;">
       <div class="sh" style="align-items:flex-start;gap:14px;">
-        <div><div class="st">Personable CRM</div><div class="ss">Suggestions, milestones, and quick weekly recaps</div></div>
-        <div class="hr">
-          <button type="button" class="btn" id="btn-generate-monday">Generate Monday summary</button>
-          <button type="button" class="btn" id="btn-generate-friday">Generate Friday recap</button>
-        </div>
+        <div><div class="st">Personable CRM</div><div class="ss">Suggestions, milestones, and a live business recap</div></div>
       </div>
       <div class="g2" style="margin-top:12px;grid-template-columns:1.3fr 1fr;">
         <div>
@@ -2873,9 +3123,9 @@
           <div id="crm-milestones-list" style="display:flex;flex-direction:column;gap:8px;"></div>
         </div>
       </div>
-      <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+      <div id="crm-latest-summary-section" style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
         <div class="st" style="font-size:13px;margin-bottom:8px;">Latest summary</div>
-        <div id="crm-latest-summary" style="font-size:13px;color:var(--text2);">No summary generated yet.</div>
+        <div id="crm-latest-summary" style="font-size:13px;color:var(--text2);line-height:1.5;">—</div>
       </div>
     </div>
     <div class="g2">
@@ -3604,6 +3854,13 @@
 
   <!-- SETTINGS -->
   <div class="pg" id="page-settings">
+    <header class="settings-appbar">
+      <button type="button" class="settings-appbar-back" id="settings-btn-back" aria-label="Back to dashboard">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>
+        <span>Dashboard</span>
+      </button>
+      <span class="settings-appbar-title">Settings</span>
+    </header>
     <div class="settings-shell">
       <aside class="settings-nav" aria-label="Settings sections">
         <div class="settings-nav-search-wrap">
@@ -3730,6 +3987,12 @@
                     Data syncs to your workspace in the cloud (per organization). Open your workspace URL on each device and sign in with the <strong>same email</strong>. Use <strong>Sync</strong> on the dashboard to refresh from the server.
                   </div>
                 </div>
+              </div>
+              <div class="card">
+                <div class="fst">Gmail</div>
+                <p style="font-size:12px;color:var(--text3);line-height:1.5;margin-bottom:12px;">Connect Google to store OAuth tokens for this workspace (Gmail read/send per <code style="font-size:11px;">GOOGLE_OAUTH_SCOPES</code>). Tokens are saved by Supabase Edge Functions—add your redirect URI and secrets per <code style="font-size:11px;">docs/SUPABASE_EDGE_INTEGRATIONS.md</code>.</p>
+                <button type="button" class="btn btn-p" id="settings-btn-google-oauth">Connect Google</button>
+                <p style="font-size:11px;color:var(--text3);margin-top:10px;line-height:1.45;">Redirect URI in Google Cloud must be <code style="font-size:10px;">https://&lt;project&gt;.supabase.co/functions/v1/oauth-google-callback</code> unless you override with <code style="font-size:10px;">GOOGLE_REDIRECT_URI</code>.</p>
               </div>
             </div>
           </div>
@@ -4343,6 +4606,56 @@
       <button type="button" class="btn" id="btn-workspace-modal-close">Close</button>
     </div>
   </div>
+</div>
+
+<!-- Sidebar chrome: workspace & account menu (fixed; opened from #btn-sb-chrome-menu) -->
+<div id="sb-chrome-menu-backdrop" class="sb-chrome-menu-backdrop" aria-hidden="true"></div>
+<div id="sb-chrome-menu-pop" class="sb-chrome-menu-pop" role="menu" aria-label="Workspace and account">
+  <div class="sb-chrome-menu-hdr">
+    <span class="sb-chrome-menu-mono" id="sb-menu-ws-mono">?</span>
+    <div class="sb-chrome-menu-hdr-meta">
+      <span class="sb-chrome-menu-slug" id="sb-menu-ws-label">Workspace</span>
+      <span class="sb-chrome-menu-check" aria-hidden="true">✓</span>
+    </div>
+  </div>
+  <div class="sb-chrome-menu-sep" role="presentation"></div>
+  <button type="button" class="sb-chrome-menu-item" role="menuitem" data-chrome-act="new-ws">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+    New workspace
+  </button>
+  <div class="sb-chrome-menu-sep" role="presentation"></div>
+  <button type="button" class="sb-chrome-menu-item" role="menuitem" data-chrome-act="account-settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
+    Account settings
+  </button>
+  <button type="button" class="sb-chrome-menu-item" role="menuitem" data-chrome-act="workspace-settings">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.671 4.136a2.34 2.34 0 0 1 4.659 0 2.34 2.34 0 0 0 3.319 1.915 2.34 2.34 0 0 1 2.33 4.033 2.34 2.34 0 0 0 0 3.831 2.34 2.34 0 0 1-2.33 4.033 2.34 2.34 0 0 0-3.319 1.915 2.34 2.34 0 0 1-4.659 0 2.34 2.34 0 0 0-3.32-1.915 2.34 2.34 0 0 1-2.33-4.033 2.34 2.34 0 0 0 0-3.831A2.34 2.34 0 0 1 6.35 6.051a2.34 2.34 0 0 0 3.319-1.915"/><circle cx="12" cy="12" r="3"/></svg>
+    Workspace settings
+  </button>
+  <div class="sb-chrome-menu-sep" role="presentation"></div>
+  <button type="button" class="sb-chrome-menu-item" role="menuitem" data-chrome-act="invite-team">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><line x1="19" x2="19" y1="8" y2="14"/><line x1="22" x2="16" y1="11" y2="11"/></svg>
+    Invite team members
+  </button>
+  <button type="button" class="sb-chrome-menu-item" role="menuitem" data-chrome-act="refer-team">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M19 14c1.49-1.46 3-3.21 3-5.5A5.5 5.5 0 0 0 16.5 3c-1.76 0-3 .5-4.5 2-1.5-1.5-2.74-2-4.5-2A5.5 5.5 0 0 0 2 8.5c0 2.3 1.5 4.05 3 5.5l7 7Z"/></svg>
+    Refer another team
+  </button>
+  <div class="sb-chrome-menu-sep" role="presentation"></div>
+  <button type="button" class="sb-chrome-menu-item" role="menuitem" data-chrome-act="apps">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+    Apps and integrations
+  </button>
+  <div class="sb-chrome-menu-sep" role="presentation"></div>
+  <button type="button" class="sb-chrome-menu-item" role="menuitem" data-chrome-act="search-commands">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    Search &amp; commands
+  </button>
+  <div class="sb-chrome-menu-sep" role="presentation"></div>
+  <button type="button" class="sb-chrome-menu-item sb-chrome-menu-danger" role="menuitem" data-chrome-act="sign-out">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" x2="9" y1="12" y2="12"/></svg>
+    Sign out
+  </button>
 </div>
 
 <!-- First-time workspace (outside #app-shell so it can show during onboarding) -->

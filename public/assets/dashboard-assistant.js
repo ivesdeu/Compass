@@ -14,7 +14,7 @@
     '• Prioritize today\'s most important actions\n' +
     '• Follow up on overdue invoices and client outreach\n' +
     '• Understand profit or expense changes over time\n' +
-    '• Generate Monday plans and Friday recaps\n' +
+    '• See a live business recap on the dashboard (Personable CRM)\n' +
     '• Create follow-up tasks or log notes on clients (you confirm before anything is saved)\n\n' +
     'Advisor uses your dashboard data and signed-in session context to provide focused recommendations and drafts. You stay in control of final decisions and actions.';
   var WELCOME_MOBILE =

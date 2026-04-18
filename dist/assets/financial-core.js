@@ -5329,6 +5329,102 @@ var incomePowerState = {
       (initial && initial.getAttribute('data-settings-panel')) || 'general',
       initial
     );
+
+    var back = document.getElementById('settings-btn-back');
+    if (back && back.getAttribute('data-settings-back-wired') !== '1') {
+      back.setAttribute('data-settings-back-wired', '1');
+      back.addEventListener('click', function () {
+        var dash = document.querySelector('.ni[data-nav="dashboard"]');
+        if (typeof window.nav === 'function') window.nav('dashboard', dash || null);
+      });
+    }
+  }
+
+  function wireGoogleOAuthInSettings() {
+    var btn = document.getElementById('settings-btn-google-oauth');
+    if (!btn || btn.getAttribute('data-wired-google-oauth') === '1') return;
+    btn.setAttribute('data-wired-google-oauth', '1');
+    btn.addEventListener('click', async function () {
+      var supa = window.supabaseClient;
+      var sessRes = supa ? await supa.auth.getSession() : null;
+      var sess = sessRes && sessRes.data ? sessRes.data.session : null;
+      if (!sess || !sess.access_token) {
+        alert('Sign in first.');
+        return;
+      }
+      var base = typeof window.__bizdashSupabaseUrl === 'string' ? window.__bizdashSupabaseUrl.trim().replace(/\/$/, '') : '';
+      var anon = typeof window.__bizdashSupabaseAnonKey === 'string' ? window.__bizdashSupabaseAnonKey.trim() : '';
+      if (!base || !anon) {
+        alert('Supabase URL or anon key is not configured in this app.');
+        return;
+      }
+      var orgId = getCurrentOrgId();
+      if (!orgId || !String(orgId).trim()) {
+        alert('Open a workspace before connecting Google.');
+        return;
+      }
+      var returnPath = window.location.pathname || '/';
+      var res = await fetch(base + '/functions/v1/oauth-google-start', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + sess.access_token,
+          apikey: anon,
+        },
+        body: JSON.stringify({ organization_id: orgId, return_path: returnPath }),
+      });
+      var j = {};
+      try {
+        j = await res.json();
+      } catch (_) {}
+      if (!res.ok || !j.url) {
+        alert(j.error ? String(j.error) : 'Could not start Google sign-in. Deploy oauth-google-start and set GOOGLE_CLIENT_ID, OAUTH_STATE_SECRET, etc.');
+        return;
+      }
+      window.location.href = String(j.url);
+    });
+  }
+
+  /** After Google redirects back to APP_SITE_URL with ?oauth=… strip params and show status. */
+  function consumeOAuthReturnFromUrl() {
+    try {
+      var params = new URLSearchParams(window.location.search || '');
+      var oauth = (params.get('oauth') || '').trim();
+      if (!oauth) return;
+      var provider = (params.get('provider') || '').trim();
+      var detail = (params.get('detail') || '').trim();
+      params.delete('oauth');
+      params.delete('provider');
+      params.delete('detail');
+      var qs = params.toString();
+      var path = window.location.pathname || '/';
+      window.history.replaceState(null, '', path + (qs ? '?' + qs : '') + (window.location.hash || ''));
+
+      var bar = document.getElementById('app-invite-flash');
+      var msg = '';
+      if (oauth === 'ok') {
+        msg = provider ? 'Connected ' + provider + ' for this workspace.' : 'Connected.';
+      } else {
+        msg =
+          'Could not complete sign-in' +
+          (provider ? ' (' + provider + ')' : '') +
+          (detail ? ': ' + detail : '') +
+          '.';
+      }
+      if (bar && msg) {
+        bar.textContent = msg;
+        bar.style.display = 'block';
+        window.setTimeout(function () {
+          bar.style.display = 'none';
+          bar.textContent = '';
+        }, 12000);
+      }
+      if (typeof window.nav === 'function') {
+        window.nav('settings', document.querySelector('.ni[data-nav="settings"]'));
+        var syncTab = document.getElementById('settings-nav-sync');
+        if (syncTab) syncTab.click();
+      }
+    } catch (_) {}
   }
 
   function wireSpendingReport() {
@@ -5446,12 +5542,24 @@ var incomePowerState = {
     syncFromDom();
   }
 
-  function buildWeeklySummaryText(kind) {
+  /** Live recap for Personable CRM “Latest summary” (same metrics as the former Monday/Friday buttons). */
+  function buildDashboardRecapText() {
     var c = state.computed || compute({ mode: 'all', start: null, end: null });
     var openInvoices = invoices.filter(function (i) { return i && i.status !== 'paid'; }).length;
     var doneProjects = projects.filter(function (p) { return p && String(p.status || '').toLowerCase().indexOf('complete') !== -1; }).length;
-    var prefix = kind === 'monday' ? 'Monday summary' : 'Friday recap';
-    return prefix + ': Revenue ' + fmtCurrency(c.revenueTotal || 0) + ', expenses ' + fmtCurrency(c.expenseTotal || 0) + ', open invoices ' + openInvoices + ', delivered projects ' + doneProjects + '.';
+    return (
+      'Business recap: Revenue ' +
+      fmtCurrency(c.revenueTotal || 0) +
+      ', expenses ' +
+      fmtCurrency(c.expenseTotal || 0) +
+      ', net profit ' +
+      fmtCurrency(c.netProfit || 0) +
+      ', open invoices ' +
+      openInvoices +
+      ', delivered projects ' +
+      doneProjects +
+      '.'
+    );
   }
 
   function wirePersonableActions() {
@@ -5468,34 +5576,6 @@ var incomePowerState = {
         }
       });
     }
-
-    async function handleSummary(kind) {
-      var txt = buildWeeklySummaryText(kind);
-      var today = dateYMD(new Date());
-      supabase = window.supabaseClient || supabase;
-      currentUser = window.currentUser || currentUser;
-      if (supabase && currentUser && getCurrentOrgId()) {
-        try {
-          await supabase.from('weekly_summaries').upsert({
-            id: uuid(),
-            user_id: currentUser.id,
-            organization_id: getCurrentOrgId(),
-            summary_type: kind,
-            summary_date: today,
-            payload: { text: txt },
-            created_at: new Date().toISOString(),
-          }, { onConflict: 'organization_id,summary_type,summary_date' });
-        } catch (_) {}
-      }
-      weeklySummaries.unshift({ summary_type: kind, summary_date: today, payload: { text: txt } });
-      await addCrmEvent('weekly_summary', kind === 'monday' ? 'Monday summary generated' : 'Friday recap generated', { text: txt }, null, 'weekly:' + kind + ':' + today);
-      renderPersonableCards();
-    }
-
-    var mon = $('btn-generate-monday');
-    if (mon) mon.addEventListener('click', function () { handleSummary('monday'); });
-    var fri = $('btn-generate-friday');
-    if (fri) fri.addEventListener('click', function () { handleSummary('friday'); });
   }
 
   function renderDashAR() {
@@ -5689,12 +5769,10 @@ var incomePowerState = {
 
     var latestSummary = $('crm-latest-summary');
     if (latestSummary) {
-      if (weeklySummaries.length) {
-        var ws = weeklySummaries[0];
-        var txt = ws && ws.payload && ws.payload.text ? ws.payload.text : '';
-        latestSummary.textContent = txt || 'Latest summary saved.';
-      } else {
-        latestSummary.textContent = 'No summary generated yet.';
+      try {
+        latestSummary.textContent = buildDashboardRecapText();
+      } catch (e) {
+        latestSummary.textContent = 'Recap will appear once dashboard numbers are loaded.';
       }
     }
   }
@@ -13264,11 +13342,59 @@ var incomePowerState = {
     var labelEl = document.getElementById('sb-ws-label');
     var monoEl = document.getElementById('sb-ws-mono');
     var display = slug ? String(slug) : 'Workspace';
+    var letter = slug ? String(slug).trim().charAt(0).toUpperCase() : '?';
     if (labelEl) labelEl.textContent = display;
-    if (monoEl) {
-      monoEl.textContent = slug ? String(slug).trim().charAt(0).toUpperCase() : '?';
-    }
+    if (monoEl) monoEl.textContent = letter;
+    var menuMono = document.getElementById('sb-menu-ws-mono');
+    var menuLabel = document.getElementById('sb-menu-ws-label');
+    if (menuMono) menuMono.textContent = letter;
+    if (menuLabel) menuLabel.textContent = display;
   }
+
+  var sidebarChromeMenuOpen = false;
+
+  function positionSidebarChromeMenu() {
+    var btn = document.getElementById('btn-sb-chrome-menu');
+    var pop = document.getElementById('sb-chrome-menu-pop');
+    if (!btn || !pop || !pop.classList.contains('on')) return;
+    var r = btn.getBoundingClientRect();
+    var pr = pop.getBoundingClientRect();
+    var w = pr.width;
+    var h = pr.height;
+    var margin = 6;
+    var left = r.left;
+    var top = r.bottom + margin;
+    if (left + w > window.innerWidth - 8) left = Math.max(8, window.innerWidth - w - 8);
+    if (left < 8) left = 8;
+    if (top + h > window.innerHeight - 8) top = Math.max(8, r.top - h - margin);
+    pop.style.left = left + 'px';
+    pop.style.top = top + 'px';
+  }
+
+  function openSidebarChromeMenu() {
+    var pop = document.getElementById('sb-chrome-menu-pop');
+    var bd = document.getElementById('sb-chrome-menu-backdrop');
+    var btn = document.getElementById('btn-sb-chrome-menu');
+    if (!pop || !btn) return;
+    refreshSidebarWorkspaceChrome();
+    pop.classList.add('on');
+    if (bd) bd.classList.add('on');
+    btn.setAttribute('aria-expanded', 'true');
+    sidebarChromeMenuOpen = true;
+    positionSidebarChromeMenu();
+  }
+
+  function closeSidebarChromeMenu() {
+    var pop = document.getElementById('sb-chrome-menu-pop');
+    var bd = document.getElementById('sb-chrome-menu-backdrop');
+    var btn = document.getElementById('btn-sb-chrome-menu');
+    if (pop) pop.classList.remove('on');
+    if (bd) bd.classList.remove('on');
+    if (btn) btn.setAttribute('aria-expanded', 'false');
+    sidebarChromeMenuOpen = false;
+  }
+
+  window.closeSidebarChromeMenu = closeSidebarChromeMenu;
 
   function wireSidebarChrome() {
     if (sidebarChromeWired) return;
@@ -13283,13 +13409,81 @@ var incomePowerState = {
         if (typeof window.openWorkspaceSwitcherModal === 'function') window.openWorkspaceSwitcherModal();
       });
     }
-    function openPaletteFromSidebar() {
-      if (typeof window.openQuickActionsModal === 'function') window.openQuickActionsModal();
+
+    var kbdQa = document.getElementById('sb-chrome-kbd-qa');
+    try {
+      var mac =
+        /Mac|iPhone|iPad|iPod/i.test(navigator.platform || '') ||
+        (typeof navigator.userAgent === 'string' && navigator.userAgent.includes('Mac OS'));
+      if (kbdQa) kbdQa.textContent = mac ? '⌘K' : 'Ctrl+K';
+    } catch (_) {}
+
+    var chromeBtn = document.getElementById('btn-sb-chrome-menu');
+    var backdrop = document.getElementById('sb-chrome-menu-backdrop');
+    var pop = document.getElementById('sb-chrome-menu-pop');
+    if (chromeBtn) {
+      chromeBtn.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        if (sidebarChromeMenuOpen) closeSidebarChromeMenu();
+        else openSidebarChromeMenu();
+      });
     }
-    var qaPill = document.getElementById('btn-sb-quick-actions');
-    if (qaPill) qaPill.addEventListener('click', openPaletteFromSidebar);
-    var searchPill = document.getElementById('btn-sb-search-palette');
-    if (searchPill) searchPill.addEventListener('click', openPaletteFromSidebar);
+    if (backdrop) {
+      backdrop.addEventListener('click', function () {
+        closeSidebarChromeMenu();
+      });
+    }
+    function chromeMenuSignOut() {
+      var sb = window.supabaseClient;
+      if (sb && sb.auth) {
+        sb.auth.signOut().finally(function () {
+          if (typeof window.__dashboardShowLogin === 'function') window.__dashboardShowLogin();
+        });
+      } else if (typeof window.__dashboardShowLogin === 'function') {
+        window.__dashboardShowLogin();
+      }
+    }
+    if (pop) {
+      pop.addEventListener('click', function (ev) {
+        var row = ev.target.closest('[data-chrome-act]');
+        if (!row) return;
+        var act = row.getAttribute('data-chrome-act');
+        closeSidebarChromeMenu();
+        document.body.classList.remove('mobile-nav-open');
+        if (act === 'new-ws') {
+          if (typeof window.openWorkspaceSwitcherModal === 'function') window.openWorkspaceSwitcherModal();
+        } else if (act === 'account-settings' || act === 'workspace-settings' || act === 'apps') {
+          if (typeof window.nav === 'function') window.nav('settings', null);
+        } else if (act === 'invite-team') {
+          if (typeof window.nav === 'function') window.nav('team', null);
+        } else if (act === 'refer-team') {
+          try {
+            var shareUrl = window.location.href || '';
+            if (typeof window.prompt === 'function') {
+              window.prompt('Copy your workspace link to share with another team:', shareUrl);
+            }
+          } catch (_) {}
+        } else if (act === 'search-commands') {
+          if (typeof window.openQuickActionsModal === 'function') window.openQuickActionsModal();
+        } else if (act === 'sign-out') {
+          chromeMenuSignOut();
+        }
+      });
+    }
+    window.addEventListener('resize', function () {
+      if (sidebarChromeMenuOpen) positionSidebarChromeMenu();
+    });
+    document.addEventListener(
+      'keydown',
+      function (ev) {
+        if (sidebarChromeMenuOpen && ev.key === 'Escape') {
+          ev.preventDefault();
+          ev.stopPropagation();
+          closeSidebarChromeMenu();
+        }
+      },
+      true
+    );
   }
 
   // ---------- Quick actions (command palette; dashboard-only entries) ----------
@@ -13420,23 +13614,16 @@ var incomePowerState = {
         },
       },
       {
-        id: 'mon',
-        label: 'Generate Monday summary',
+        id: 'dash-recap',
+        label: 'View latest summary (Personable CRM)',
         keys: '',
-        kw: 'crm recap personable',
+        kw: 'recap crm personable dashboard summary',
         run: function () {
           qaGo('dashboard');
-          window.setTimeout(function () { qaClickById('btn-generate-monday'); }, 120);
-        },
-      },
-      {
-        id: 'fri',
-        label: 'Generate Friday recap',
-        keys: '',
-        kw: 'crm recap personable',
-        run: function () {
-          qaGo('dashboard');
-          window.setTimeout(function () { qaClickById('btn-generate-friday'); }, 120);
+          window.setTimeout(function () {
+            var sec = document.getElementById('crm-latest-summary-section');
+            if (sec) sec.scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+          }, 120);
         },
       },
       { id: 'add-cl', label: 'Add client', keys: '', kw: 'new customer company', run: function () { qaGo('customers'); window.setTimeout(function () { qaClickById('btn-add-client'); }, 100); } },
@@ -13576,6 +13763,7 @@ var incomePowerState = {
 
   function openQuickActionsModal(opts) {
     opts = opts || {};
+    if (typeof window.closeSidebarChromeMenu === 'function') window.closeSidebarChromeMenu();
     var m = document.getElementById('quickActionsModal');
     if (!m) return;
     qaSelectedIndex = 0;
@@ -13688,6 +13876,7 @@ var incomePowerState = {
     wireSpendingReport();
     wireSettingsSave();
     wireSettingsShell();
+    wireGoogleOAuthInSettings();
     wirePersonableActions();
     wireCloudSyncPanel();
     wireMarketingCampaign();
@@ -13705,6 +13894,9 @@ var incomePowerState = {
     // Exposed globally so existing onclick="nav('dashboard', this)" continues to work.
     window.nav = function (pageId, el) {
       document.body.classList.remove('mobile-nav-open');
+
+      var appShell = document.getElementById('app-shell');
+      if (appShell) appShell.classList.toggle('settings-route', pageId === 'settings');
 
       // Switch visible page
       var pages = document.querySelectorAll('.pg');
@@ -13775,6 +13967,8 @@ var incomePowerState = {
         });
       }
     };
+
+    consumeOAuthReturnFromUrl();
 
     document.addEventListener('keydown', function (ev) {
       if (ev.key === 'Escape') document.body.classList.remove('mobile-nav-open');

@@ -406,3 +406,20 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 # Gateway JWT verify can reject otherwise-valid user sessions; this function validates via auth.getUser(accessToken).
 [functions.organization-team]
 verify_jwt = false
+
+# Google / Microsoft workspace OAuth (browser redirects on callback — no Supabase JWT).
+[functions.oauth-google-start]
+verify_jwt = true
+
+[functions.oauth-google-callback]
+verify_jwt = false
+
+[functions.oauth-microsoft-start]
+verify_jwt = true
+
+[functions.oauth-microsoft-callback]
+verify_jwt = false
+
+# Cron / external scheduler; authenticates with INTEGRATION_WORKER_SECRET header or Bearer.
+[functions.integration-worker]
+verify_jwt = false
