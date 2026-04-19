@@ -431,6 +431,76 @@
 
   var onboardSlugManual = false;
   var onboardProfileAvatarObjectUrl = null;
+  /** Last server onboarding json (shallow merge target for UI restore). */
+  var onboardRemote = null;
+  var onboardLastInviteUrl = '';
+  var onboardPrimaryUseCase = '';
+  var onboardSecondaryUseCase = '';
+
+  var USE_CASE_PRIMARY = [
+    { id: 'sales', label: 'Sales' },
+    { id: 'customer_success', label: 'Customer success' },
+    { id: 'recruiting', label: 'Recruiting' },
+    { id: 'fundraising', label: 'Fundraising' },
+    { id: 'investing', label: 'Investing' },
+    { id: 'other', label: 'Other' },
+  ];
+  var USE_CASE_SECONDARY = {
+    sales: ['Product-led', 'Sales-led', 'Inbound', 'Outbound', 'SMB', 'Mid-market', 'Enterprise'],
+    customer_success: ['Low-touch', 'High-touch', 'SMB', 'Mid-market', 'Enterprise'],
+    recruiting: ['Agency', 'In-house', 'Executive', 'High volume', 'Technical'],
+    fundraising: ['Early-stage', 'Growth-stage', 'Late-stage'],
+    investing: ['Early-stage', 'Growth-stage', 'Late-stage'],
+    other: [],
+  };
+
+  function parseRpcJson(data) {
+    var payload = data;
+    if (typeof payload === 'string') {
+      try {
+        payload = JSON.parse(payload);
+      } catch (_) {
+        payload = null;
+      }
+    }
+    return payload && typeof payload === 'object' ? payload : null;
+  }
+
+  async function rpcSaveOnboardingProgress(orgId, patch) {
+    if (!orgId || !patch || typeof patch !== 'object') return { ok: false, error: 'Bad arguments' };
+    var rpcRes = await retryOnAuthLock(function () {
+      return supabase.rpc('save_onboarding_progress', { p_org_id: orgId, p_patch: patch });
+    });
+    var payload = parseRpcJson(rpcRes.data);
+    if (rpcRes.error || !payload || !payload.ok) {
+      return {
+        ok: false,
+        error: rpcRes.error ? String(rpcRes.error.message || rpcRes.error) : payload && payload.error ? String(payload.error) : 'Save failed',
+      };
+    }
+    if (payload.onboarding && typeof payload.onboarding === 'object') {
+      onboardRemote = payload.onboarding;
+    }
+    return { ok: true };
+  }
+
+  async function rpcCompleteWorkspaceOnboarding(orgId, finalPatch) {
+    if (!orgId) return { ok: false, error: 'No workspace' };
+    var rpcRes = await retryOnAuthLock(function () {
+      return supabase.rpc('complete_workspace_onboarding', {
+        p_org_id: orgId,
+        p_final: finalPatch && typeof finalPatch === 'object' ? finalPatch : {},
+      });
+    });
+    var payload = parseRpcJson(rpcRes.data);
+    if (rpcRes.error || !payload || !payload.ok) {
+      return {
+        ok: false,
+        error: rpcRes.error ? String(rpcRes.error.message || rpcRes.error) : payload && payload.error ? String(payload.error) : 'Complete failed',
+      };
+    }
+    return { ok: true };
+  }
 
   function slugifyCompanyToSlug(name) {
     var s = String(name || '')
@@ -445,20 +515,25 @@
   }
 
   function showOnboardStep(step) {
-    var s1 = $('onboard-step-1');
-    var s2 = $('onboard-step-2');
-    if (!s1 || !s2) return;
-    if (step === 2) {
-      s1.classList.remove('on');
-      s2.classList.add('on');
-    } else {
-      s2.classList.remove('on');
-      s1.classList.add('on');
+    var n = Math.max(1, Math.min(6, parseInt(String(step), 10) || 1));
+    for (var s = 1; s <= 6; s++) {
+      var el = $('onboard-step-' + s);
+      if (el) el.classList.toggle('on', s === n);
+    }
+    for (var e = 1; e <= 6; e++) {
+      var errEl = $('onboard-error-' + e);
+      if (errEl && e !== 1) errEl.textContent = '';
     }
     var e1 = $('onboard-error');
-    var e2 = $('onboard-error-2');
     if (e1) e1.textContent = '';
-    if (e2) e2.textContent = '';
+    var pref = $('ob-slug-prefix-host');
+    if (pref) {
+      var o = '';
+      try {
+        o = window.location.origin || '';
+      } catch (_) {}
+      pref.textContent = o ? o + '/' : '/';
+    }
   }
 
   function setOnboardAvatarPreviewLetter(letter) {
@@ -478,9 +553,96 @@
     el.appendChild(img);
   }
 
+  function renderPrimaryUseCaseChips() {
+    var wrap = $('ob-primary-use-case');
+    if (!wrap) return;
+    wrap.innerHTML = '';
+    USE_CASE_PRIMARY.forEach(function (opt) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'onboard-chip';
+      b.setAttribute('data-primary-use', opt.id);
+      b.textContent = opt.label;
+      wrap.appendChild(b);
+    });
+  }
+
+  function renderSecondaryUseCaseChips(primaryId) {
+    var wrap = $('ob-secondary-use-case');
+    var outer = $('ob-secondary-wrap');
+    var label = $('ob-secondary-label');
+    if (!wrap || !outer) return;
+    wrap.innerHTML = '';
+    var opts = USE_CASE_SECONDARY[primaryId] || [];
+    if (!opts.length) {
+      outer.style.display = 'none';
+      onboardSecondaryUseCase = '';
+      return;
+    }
+    outer.style.display = 'block';
+    if (label) label.textContent = 'Please tell us more about your use case.';
+    opts.forEach(function (txt) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'onboard-chip';
+      b.setAttribute('data-secondary-use', txt);
+      b.textContent = txt;
+      wrap.appendChild(b);
+    });
+  }
+
+  function syncPrimaryChipUi() {
+    var wrap = $('ob-primary-use-case');
+    if (!wrap) return;
+    wrap.querySelectorAll('.onboard-chip').forEach(function (b) {
+      var id = b.getAttribute('data-primary-use') || '';
+      b.classList.toggle('on', id === onboardPrimaryUseCase);
+    });
+  }
+
+  function syncSecondaryChipUi() {
+    var wrap = $('ob-secondary-use-case');
+    if (!wrap) return;
+    wrap.querySelectorAll('.onboard-chip').forEach(function (b) {
+      var t = b.getAttribute('data-secondary-use') || '';
+      b.classList.toggle('on', t === onboardSecondaryUseCase);
+    });
+  }
+
+  function syncReferralChipUi() {
+    var ref = onboardRemote && onboardRemote.referral != null ? String(onboardRemote.referral) : '';
+    var wrap = $('ob-referral-chips');
+    if (!wrap) return;
+    wrap.querySelectorAll('.onboard-chip').forEach(function (b) {
+      var id = b.getAttribute('data-referral') || '';
+      b.classList.toggle('on', ref && id === ref);
+    });
+  }
+
+  function buildInviteRows() {
+    var host = $('ob-invite-rows');
+    if (!host) return;
+    host.innerHTML = '';
+    for (var i = 0; i < 2; i++) {
+      var row = document.createElement('div');
+      row.className = 'onboard-invite-row';
+      row.innerHTML =
+        '<input class="fi ob-invite-email" type="email" autocomplete="email" placeholder="name@company.com" />' +
+        '<select class="fi ob-invite-role" aria-label="Role">' +
+        '<option value="member" selected>Member</option>' +
+        '<option value="admin">Admin</option>' +
+        '<option value="viewer">Viewer</option>' +
+        '</select>';
+      host.appendChild(row);
+    }
+  }
+
   async function prefillOnboardingWizard(user) {
-    showOnboardStep(1);
     onboardSlugManual = false;
+    onboardLastInviteUrl = '';
+    onboardRemote = null;
+    onboardPrimaryUseCase = '';
+    onboardSecondaryUseCase = '';
     var meta = (user && user.user_metadata) || {};
     var fnEl = $('ob-first-name');
     var lnEl = $('ob-last-name');
@@ -531,19 +693,64 @@
     var logoIn = $('ob-company-logo-input');
     var logoWrap = $('ob-company-logo-preview-wrap');
     var logoImg = $('ob-company-logo-preview');
+    var bill = $('ob-billing-country');
     if (logoIn) logoIn.value = '';
     if (logoWrap) logoWrap.style.display = 'none';
     if (logoImg) logoImg.removeAttribute('src');
     var orgId = window.currentOrganizationId;
-    if (!orgId || !cn || !sl) return;
+    if (!orgId || !cn || !sl) {
+      showOnboardStep(1);
+      return;
+    }
     var r = await retryOnAuthLock(function () {
-      return supabase.from('organizations').select('name,slug').eq('id', orgId).maybeSingle();
+      return supabase.from('organizations').select('name,slug,onboarding').eq('id', orgId).maybeSingle();
     });
+    var ob = {};
+    if (r.data && r.data.onboarding != null) {
+      if (typeof r.data.onboarding === 'string') {
+        try {
+          ob = JSON.parse(r.data.onboarding);
+        } catch (_) {
+          ob = {};
+        }
+      } else if (typeof r.data.onboarding === 'object') {
+        ob = r.data.onboarding;
+      }
+    }
+    onboardRemote = ob && typeof ob === 'object' ? ob : {};
     if (r.data) {
       cn.value = r.data.name || '';
       var suggest = slugifyCompanyToSlug(cn.value);
       sl.value = suggest || String(r.data.slug || '').trim() || '';
     }
+    if (bill && onboardRemote.billingCountry) {
+      bill.value = String(onboardRemote.billingCountry);
+    }
+    if (onboardRemote.primaryUseCase) {
+      onboardPrimaryUseCase = String(onboardRemote.primaryUseCase);
+      renderSecondaryUseCaseChips(onboardPrimaryUseCase);
+      syncPrimaryChipUi();
+    }
+    if (onboardRemote.secondaryUseCase) {
+      onboardSecondaryUseCase = String(onboardRemote.secondaryUseCase);
+      syncSecondaryChipUi();
+    }
+    syncReferralChipUi();
+
+    var resumeStep = parseInt(String(onboardRemote.currentStep || ''), 10);
+    if (!resumeStep || resumeStep < 1) resumeStep = 1;
+    if (resumeStep > 6) resumeStep = 6;
+    try {
+      if (sessionStorage.getItem('bizdash_post_oauth_onboard_resume') === '1') {
+        sessionStorage.removeItem('bizdash_post_oauth_onboard_resume');
+        resumeStep = 4;
+      }
+    } catch (_) {}
+    var fnOk = (fnEl && fnEl.value.trim() && lnEl && lnEl.value.trim()) ? true : false;
+    if (!fnOk) resumeStep = 1;
+    if (resumeStep > 1 && !sl.value.trim()) resumeStep = 1;
+    showOnboardStep(resumeStep);
+    if (resumeStep === 6) buildInviteRows();
   }
 
   async function maybeWorkspaceOnboardingThenShowApp(user, needsOnboardingKnown) {
@@ -690,6 +897,11 @@
           if (upd.data && upd.data.user) {
             setCurrentUser(upd.data.user);
           }
+          var orgIdStep1 = window.currentOrganizationId;
+          if (orgIdStep1) {
+            var sv1 = await rpcSaveOnboardingProgress(orgIdStep1, { currentStep: 2 });
+            if (!sv1.ok) console.warn('save onboarding step', sv1.error);
+          }
           showOnboardStep(2);
         } catch (e1) {
           console.error('onboard step1', e1);
@@ -698,20 +910,147 @@
       });
     }
 
-    var back2 = $('onboard-step2-back');
-    if (back2) {
-      back2.addEventListener('click', function () {
-        showOnboardStep(1);
-      });
+    renderPrimaryUseCaseChips();
+
+    function goBackToStep(fromStep, toStep) {
+      showOnboardStep(toStep);
+      var oid = window.currentOrganizationId;
+      if (oid) void rpcSaveOnboardingProgress(oid, { currentStep: toStep });
     }
 
-    var btn2 = $('onboard-step2-finish');
+    async function finishOnboardingShowApp(name, ownerFull) {
+      if (typeof window.bizdashApplyWorkspaceBrandingFromOnboarding === 'function') {
+        try {
+          await window.bizdashApplyWorkspaceBrandingFromOnboarding({
+            businessName: name || '',
+            owner: ownerFull,
+            ownerRole: '',
+            tagline: '',
+            accent: '#e8501a',
+          });
+        } catch (_) {}
+      }
+      hideOnboardModal();
+      showApp(user);
+    }
+
+    async function invokeOrganizationTeamInvite(email, role) {
+      var orgId = window.currentOrganizationId;
+      var base = (typeof window.__bizdashSupabaseUrl === 'string' ? window.__bizdashSupabaseUrl : '').replace(/\/$/, '');
+      var anon = typeof window.__bizdashSupabaseAnonKey === 'string' ? window.__bizdashSupabaseAnonKey : '';
+      var sessRes = await getSessionNow();
+      var sess = sessRes && sessRes.data ? sessRes.data.session : null;
+      var token = sess && sess.access_token ? sess.access_token : '';
+      if (!orgId || !base || !anon || !token) return { ok: false, error: 'Session or workspace missing.' };
+      var res = await fetch(base + '/functions/v1/organization-team', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + token,
+          apikey: anon,
+        },
+        body: JSON.stringify({
+          organizationId: orgId,
+          action: 'invite',
+          email: String(email || '').trim().toLowerCase(),
+          role: role || 'member',
+        }),
+      });
+      var j = {};
+      try {
+        j = await res.json();
+      } catch (_) {}
+      if (!res.ok || !j.ok) {
+        return { ok: false, error: j.error ? String(j.error) : 'Invite failed' };
+      }
+      if (j.inviteUrl) onboardLastInviteUrl = String(j.inviteUrl);
+      return { ok: true, inviteUrl: j.inviteUrl ? String(j.inviteUrl) : '' };
+    }
+
+    async function startOAuthFromOnboarding(provider) {
+      var err = $('onboard-error-4');
+      if (err) err.textContent = '';
+      var orgId = window.currentOrganizationId;
+      var sessRes = await getSessionNow();
+      var sess = sessRes && sessRes.data ? sessRes.data.session : null;
+      if (!sess || !sess.access_token) {
+        if (err) err.textContent = 'Sign in again to connect.';
+        return;
+      }
+      var base = (typeof window.__bizdashSupabaseUrl === 'string' ? window.__bizdashSupabaseUrl : '').replace(/\/$/, '');
+      var anon = typeof window.__bizdashSupabaseAnonKey === 'string' ? window.__bizdashSupabaseAnonKey : '';
+      if (!orgId || !base || !anon) {
+        if (err) err.textContent = 'Missing configuration.';
+        return;
+      }
+      var returnPath = window.location.pathname || '/';
+      try {
+        sessionStorage.setItem('bizdash_oauth_from_onboarding', '1');
+      } catch (_) {}
+      var fn = provider === 'microsoft' ? 'oauth-microsoft-start' : 'oauth-google-start';
+      var res = await fetch(base + '/functions/v1/' + fn, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + sess.access_token,
+          apikey: anon,
+        },
+        body: JSON.stringify({ organization_id: orgId, return_path: returnPath }),
+      });
+      var j = {};
+      try {
+        j = await res.json();
+      } catch (_) {}
+      if (!res.ok || !j.url) {
+        try {
+          sessionStorage.removeItem('bizdash_oauth_from_onboarding');
+        } catch (_) {}
+        if (err) err.textContent = j.error ? String(j.error) : 'Could not start sign-in.';
+        return;
+      }
+      window.location.href = String(j.url);
+    }
+
+    window.bizdashOnboardingOAuthDone = function (ok /*, provider */) {
+      var bar = $('app-invite-flash');
+      if (bar) {
+        bar.textContent = ok ? 'Account connected. Continue when you are ready.' : 'Connection was not completed. You can try again or skip.';
+        bar.style.display = 'block';
+        window.setTimeout(function () {
+          bar.style.display = 'none';
+        }, 10000);
+      }
+      var oid = window.currentOrganizationId;
+      if (oid) {
+        rpcSaveOnboardingProgress(oid, { currentStep: 4, oauthConnected: !!ok }).catch(function () {});
+      }
+      try {
+        var m = $('onboardModal');
+        var shell = $('app-shell');
+        if (m && !m.classList.contains('on') && shell && !shell.classList.contains('on')) {
+          showOnboardModal();
+        }
+      } catch (_) {}
+      showOnboardStep(4);
+    };
+
+    var back2 = $('onboard-step2-back');
+    var back2t = $('onboard-step2-back-top');
+    function step2Back() {
+      goBackToStep(2, 1);
+    }
+    if (back2) back2.addEventListener('click', step2Back);
+    if (back2t) back2t.addEventListener('click', step2Back);
+
+    var btn2 = $('onboard-step2-continue');
     if (btn2) {
       btn2.addEventListener('click', async function () {
         var err = $('onboard-error-2');
         if (err) err.textContent = '';
         var name = ($('ob-company-name') && $('ob-company-name').value.trim()) || '';
         var slug = ($('ob-slug') && $('ob-slug').value.trim().toLowerCase()) || '';
+        var billEl = $('ob-billing-country');
+        var billingCountry = billEl && billEl.value ? String(billEl.value) : 'US';
         if (!name) {
           if (err) err.textContent = 'Company name is required.';
           return;
@@ -743,12 +1082,7 @@
             p_name: name,
             p_slug: slug,
           });
-          var payload = rpcRes.data;
-          if (typeof payload === 'string') {
-            try {
-              payload = JSON.parse(payload);
-            } catch (_) {}
-          }
+          var payload = parseRpcJson(rpcRes.data);
           if (rpcRes.error || !payload || typeof payload !== 'object') {
             if (err) err.textContent = rpcRes.error ? String(rpcRes.error.message || rpcRes.error) : 'Could not save workspace.';
             return;
@@ -762,9 +1096,6 @@
           if (prevSlug && newSlug && String(prevSlug).toLowerCase() !== String(newSlug).toLowerCase()) {
             replaceBrowserPathForSlug(newSlug);
           }
-          var fn = ($('ob-first-name') && $('ob-first-name').value.trim()) || '';
-          var ln = ($('ob-last-name') && $('ob-last-name').value.trim()) || '';
-          var ownerFull = (fn + ' ' + ln).trim();
           var logoFile = logoIn && logoIn.files && logoIn.files[0];
           if (logoFile && typeof window.bizdashUploadBrandAssetFile === 'function' && typeof window.bizdashApplyBrandLogoToShell === 'function') {
             try {
@@ -776,23 +1107,244 @@
               console.warn('onboard logo upload', logoErr);
             }
           }
-          if (typeof window.bizdashApplyWorkspaceBrandingFromOnboarding === 'function') {
-            await window.bizdashApplyWorkspaceBrandingFromOnboarding({
-              businessName: name,
-              owner: ownerFull,
-              ownerRole: '',
-              tagline: '',
-              accent: '#e8501a',
-            });
-          }
-          hideOnboardModal();
-          showApp(user);
+          var sv = await rpcSaveOnboardingProgress(orgId, {
+            currentStep: 3,
+            billingCountry: billingCountry,
+          });
+          if (!sv.ok && err) err.textContent = sv.error || 'Could not save progress.';
+          if (sv.ok) showOnboardStep(3);
         } catch (e2) {
           console.error('onboard step2', e2);
           if (err) err.textContent = 'Could not save workspace. If this persists, confirm the database migration ran.';
         }
       });
     }
+
+    var refWrap = $('ob-referral-chips');
+    if (refWrap) {
+      refWrap.addEventListener('click', function (ev) {
+        var t = ev.target;
+        if (!t || !t.getAttribute || !t.classList || !t.classList.contains('onboard-chip')) return;
+        var id = t.getAttribute('data-referral');
+        refWrap.querySelectorAll('.onboard-chip').forEach(function (b) {
+          b.classList.remove('on');
+        });
+        if (id) {
+          t.classList.add('on');
+          onboardRemote = onboardRemote || {};
+          onboardRemote.referral = id;
+        }
+      });
+    }
+
+    var b3 = $('onboard-step3-continue');
+    if (b3) {
+      b3.addEventListener('click', async function () {
+        var err = $('onboard-error-3');
+        if (err) err.textContent = '';
+        var orgId = window.currentOrganizationId;
+        var refSel = refWrap && refWrap.querySelector('.onboard-chip.on');
+        var refVal = refSel && refSel.getAttribute('data-referral') ? String(refSel.getAttribute('data-referral')) : null;
+        var sv = await rpcSaveOnboardingProgress(orgId, { currentStep: 4, referral: refVal });
+        if (!sv.ok) {
+          if (err) err.textContent = sv.error || 'Could not save.';
+          return;
+        }
+        showOnboardStep(4);
+      });
+    }
+    var b3s = $('onboard-step3-skip');
+    if (b3s) {
+      b3s.addEventListener('click', async function () {
+        var err = $('onboard-error-3');
+        if (err) err.textContent = '';
+        var orgId = window.currentOrganizationId;
+        var sv = await rpcSaveOnboardingProgress(orgId, { currentStep: 4, referral: null });
+        if (!sv.ok) {
+          if (err) err.textContent = sv.error || 'Could not save.';
+          return;
+        }
+        if (refWrap) refWrap.querySelectorAll('.onboard-chip').forEach(function (b) { b.classList.remove('on'); });
+        showOnboardStep(4);
+      });
+    }
+
+    var b3back = $('onboard-step3-back-top');
+    if (b3back) b3back.addEventListener('click', function () { goBackToStep(3, 2); });
+
+    var og = $('onboard-oauth-google');
+    if (og) og.addEventListener('click', function () { startOAuthFromOnboarding('google'); });
+    var om = $('onboard-oauth-microsoft');
+    if (om) om.addEventListener('click', function () { startOAuthFromOnboarding('microsoft'); });
+
+    function advanceFromStep4() {
+      var orgId = window.currentOrganizationId;
+      rpcSaveOnboardingProgress(orgId, { currentStep: 5 }).then(function (sv) {
+        if (!sv.ok) {
+          var err = $('onboard-error-4');
+          if (err) err.textContent = sv.error || 'Could not save.';
+          return;
+        }
+        showOnboardStep(5);
+      });
+    }
+    var b4c = $('onboard-step4-continue');
+    if (b4c) b4c.addEventListener('click', advanceFromStep4);
+    var b4m = $('onboard-step4-manual');
+    if (b4m) b4m.addEventListener('click', advanceFromStep4);
+    var b4back = $('onboard-step4-back-top');
+    if (b4back) b4back.addEventListener('click', function () { goBackToStep(4, 3); });
+
+    var pwrap = $('ob-primary-use-case');
+    if (pwrap) {
+      pwrap.addEventListener('click', function (ev) {
+        var t = ev.target;
+        if (!t || !t.getAttribute || !t.classList || !t.classList.contains('onboard-chip')) return;
+        var id = t.getAttribute('data-primary-use');
+        if (!id) return;
+        onboardPrimaryUseCase = id;
+        onboardSecondaryUseCase = '';
+        syncPrimaryChipUi();
+        renderSecondaryUseCaseChips(id);
+        syncSecondaryChipUi();
+      });
+    }
+    var swrap = $('ob-secondary-use-case');
+    if (swrap) {
+      swrap.addEventListener('click', function (ev) {
+        var t = ev.target;
+        if (!t || !t.getAttribute || !t.classList || !t.classList.contains('onboard-chip')) return;
+        var lab = t.getAttribute('data-secondary-use');
+        onboardSecondaryUseCase = lab ? String(lab) : '';
+        syncSecondaryChipUi();
+      });
+    }
+    var b5 = $('onboard-step5-continue');
+    if (b5) {
+      b5.addEventListener('click', async function () {
+        var err = $('onboard-error-5');
+        if (err) err.textContent = '';
+        if (!onboardPrimaryUseCase) {
+          if (err) err.textContent = 'Choose how you will use this workspace.';
+          return;
+        }
+        var orgId = window.currentOrganizationId;
+        var patch = {
+          currentStep: 6,
+          primaryUseCase: onboardPrimaryUseCase,
+          secondaryUseCase: onboardSecondaryUseCase || null,
+        };
+        var sv = await rpcSaveOnboardingProgress(orgId, patch);
+        if (!sv.ok) {
+          if (err) err.textContent = sv.error || 'Could not save.';
+          return;
+        }
+        buildInviteRows();
+        showOnboardStep(6);
+      });
+    }
+    var b5back = $('onboard-step5-back-top');
+    if (b5back) b5back.addEventListener('click', function () { goBackToStep(5, 4); });
+
+    var addInv = $('ob-invite-add-row');
+    if (addInv) {
+      addInv.addEventListener('click', function () {
+        var host = $('ob-invite-rows');
+        if (!host) return;
+        var row = document.createElement('div');
+        row.className = 'onboard-invite-row';
+        row.innerHTML =
+          '<input class="fi ob-invite-email" type="email" autocomplete="email" placeholder="name@company.com" />' +
+          '<select class="fi ob-invite-role" aria-label="Role">' +
+          '<option value="member" selected>Member</option>' +
+          '<option value="admin">Admin</option>' +
+          '<option value="viewer">Viewer</option>' +
+          '</select>';
+        host.appendChild(row);
+      });
+    }
+    var copyInv = $('ob-invite-copy-link');
+    if (copyInv) {
+      copyInv.addEventListener('click', async function () {
+        var err = $('onboard-error-6');
+        if (err) err.textContent = '';
+        var emails = [];
+        document.querySelectorAll('.ob-invite-email').forEach(function (inp) {
+          var v = (inp.value || '').trim().toLowerCase();
+          if (v) emails.push(v);
+        });
+        if (!emails.length) {
+          if (err) err.textContent = 'Enter at least one email to generate an invite link.';
+          return;
+        }
+        var r = await invokeOrganizationTeamInvite(emails[0], 'member');
+        if (!r.ok) {
+          if (err) err.textContent = r.error || 'Could not create link.';
+          return;
+        }
+        var url = r.inviteUrl || onboardLastInviteUrl;
+        try {
+          await navigator.clipboard.writeText(url);
+        } catch (_) {
+          if (err) err.textContent = 'Link created but clipboard failed. Copy manually: ' + url;
+          return;
+        }
+        if (err) err.textContent = 'Invite link copied to clipboard.';
+      });
+    }
+    var b6 = $('onboard-step6-send');
+    if (b6) {
+      b6.addEventListener('click', async function () {
+        var err = $('onboard-error-6');
+        if (err) err.textContent = '';
+        var orgId = window.currentOrganizationId;
+        var name = ($('ob-company-name') && $('ob-company-name').value.trim()) || '';
+        var fn = ($('ob-first-name') && $('ob-first-name').value.trim()) || '';
+        var ln = ($('ob-last-name') && $('ob-last-name').value.trim()) || '';
+        var ownerFull = (fn + ' ' + ln).trim();
+        var rows = document.querySelectorAll('.onboard-invite-row');
+        var anySent = false;
+        for (var i = 0; i < rows.length; i++) {
+          var em = rows[i].querySelector('.ob-invite-email');
+          var ro = rows[i].querySelector('.ob-invite-role');
+          var ev = em && em.value ? String(em.value).trim().toLowerCase() : '';
+          if (!ev) continue;
+          var role = ro && ro.value ? String(ro.value) : 'member';
+          var inv = await invokeOrganizationTeamInvite(ev, role);
+          if (!inv.ok) {
+            if (err) err.textContent = inv.error || 'Invite failed for ' + ev;
+            return;
+          }
+          anySent = true;
+        }
+        var fin = await rpcCompleteWorkspaceOnboarding(orgId, { teamInvitesSent: anySent });
+        if (!fin.ok) {
+          if (err) err.textContent = fin.error || 'Could not finish setup.';
+          return;
+        }
+        await finishOnboardingShowApp(name, ownerFull);
+      });
+    }
+    var b6s = $('onboard-step6-skip');
+    if (b6s) {
+      b6s.addEventListener('click', async function () {
+        var err = $('onboard-error-6');
+        if (err) err.textContent = '';
+        var orgId = window.currentOrganizationId;
+        var name = ($('ob-company-name') && $('ob-company-name').value.trim()) || '';
+        var fn = ($('ob-first-name') && $('ob-first-name').value.trim()) || '';
+        var ln = ($('ob-last-name') && $('ob-last-name').value.trim()) || '';
+        var ownerFull = (fn + ' ' + ln).trim();
+        var fin = await rpcCompleteWorkspaceOnboarding(orgId, { teamInvitesSent: false });
+        if (!fin.ok) {
+          if (err) err.textContent = fin.error || 'Could not finish setup.';
+          return;
+        }
+        await finishOnboardingShowApp(name, ownerFull);
+      });
+    }
+    var b6back = $('onboard-step6-back-top');
+    if (b6back) b6back.addEventListener('click', function () { goBackToStep(6, 5); });
   }
 
   function renderWorkspaceList(rows) {

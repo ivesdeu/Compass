@@ -14,6 +14,9 @@ CREATE TABLE IF NOT EXISTS public.organizations (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS organizations_slug_key ON public.organizations (slug);
 
+ALTER TABLE public.organizations
+  ADD COLUMN IF NOT EXISTS onboarding jsonb NOT NULL DEFAULT '{}'::jsonb;
+
 CREATE TABLE IF NOT EXISTS public.organization_members (
   organization_id uuid NOT NULL REFERENCES public.organizations (id) ON DELETE CASCADE,
   user_id uuid NOT NULL REFERENCES auth.users (id) ON DELETE CASCADE,
@@ -83,13 +86,13 @@ DROP FUNCTION IF EXISTS public.my_organizations();
 DROP FUNCTION IF EXISTS public.organization_public_by_slug(text);
 
 CREATE FUNCTION public.organization_public_by_slug(sl text)
-RETURNS TABLE (id uuid, slug text, name text, onboarding_completed boolean)
+RETURNS TABLE (id uuid, slug text, name text, onboarding_completed boolean, onboarding jsonb)
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT o.id, o.slug, o.name, o.onboarding_completed
+  SELECT o.id, o.slug, o.name, o.onboarding_completed, coalesce(o.onboarding, '{}'::jsonb)
   FROM public.organizations o
   WHERE o.slug = lower(trim(sl))
   LIMIT 1;
@@ -99,13 +102,13 @@ GRANT EXECUTE ON FUNCTION public.organization_public_by_slug(text) TO anon, auth
 
 -- Signed-in user's org memberships (for redirect / picker)
 CREATE FUNCTION public.my_organizations()
-RETURNS TABLE (id uuid, slug text, name text, role text, onboarding_completed boolean)
+RETURNS TABLE (id uuid, slug text, name text, role text, onboarding_completed boolean, onboarding jsonb)
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT o.id, o.slug, o.name, m.role, o.onboarding_completed
+  SELECT o.id, o.slug, o.name, m.role, o.onboarding_completed, coalesce(o.onboarding, '{}'::jsonb)
   FROM public.organization_members m
   JOIN public.organizations o ON o.id = m.organization_id
   WHERE m.user_id = auth.uid()

@@ -8,26 +8,26 @@ DROP FUNCTION IF EXISTS public.my_organizations();
 DROP FUNCTION IF EXISTS public.organization_public_by_slug(text);
 
 CREATE FUNCTION public.organization_public_by_slug(sl text)
-RETURNS TABLE (id uuid, slug text, name text, onboarding_completed boolean)
+RETURNS TABLE (id uuid, slug text, name text, onboarding_completed boolean, onboarding jsonb)
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT o.id, o.slug, o.name, o.onboarding_completed
+  SELECT o.id, o.slug, o.name, o.onboarding_completed, coalesce(o.onboarding, '{}'::jsonb)
   FROM public.organizations o
   WHERE o.slug = lower(trim(sl))
   LIMIT 1;
 $$;
 
 CREATE FUNCTION public.my_organizations()
-RETURNS TABLE (id uuid, slug text, name text, role text, onboarding_completed boolean)
+RETURNS TABLE (id uuid, slug text, name text, role text, onboarding_completed boolean, onboarding jsonb)
 LANGUAGE sql
 STABLE
 SECURITY DEFINER
 SET search_path = public
 AS $$
-  SELECT o.id, o.slug, o.name, m.role, o.onboarding_completed
+  SELECT o.id, o.slug, o.name, m.role, o.onboarding_completed, coalesce(o.onboarding, '{}'::jsonb)
   FROM public.organization_members m
   JOIN public.organizations o ON o.id = m.organization_id
   WHERE m.user_id = auth.uid()

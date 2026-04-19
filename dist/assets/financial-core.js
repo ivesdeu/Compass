@@ -5400,6 +5400,23 @@ var incomePowerState = {
       var path = window.location.pathname || '/';
       window.history.replaceState(null, '', path + (qs ? '?' + qs : '') + (window.location.hash || ''));
 
+      var fromOnboarding = false;
+      try {
+        fromOnboarding = sessionStorage.getItem('bizdash_oauth_from_onboarding') === '1';
+        if (fromOnboarding) sessionStorage.removeItem('bizdash_oauth_from_onboarding');
+      } catch (_) {}
+
+      if (fromOnboarding) {
+        try {
+          sessionStorage.setItem('bizdash_post_oauth_onboard_resume', '1');
+        } catch (_) {}
+      }
+
+      if (fromOnboarding && typeof window.bizdashOnboardingOAuthDone === 'function') {
+        window.bizdashOnboardingOAuthDone(oauth === 'ok', provider);
+        return;
+      }
+
       var bar = document.getElementById('app-invite-flash');
       var msg = '';
       if (oauth === 'ok') {

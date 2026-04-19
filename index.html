@@ -1902,6 +1902,165 @@
     max-height: 72px;
     object-fit: contain;
   }
+  #onboardModal .onboard-back-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    margin: -8px 0 12px -6px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--onb-muted);
+    cursor: pointer;
+    font-size: 18px;
+    line-height: 1;
+  }
+  #onboardModal .onboard-back-btn:hover {
+    background: #f1f5f9;
+    color: #0f172a;
+  }
+  #onboardModal .onboard-muted-body {
+    font-size: 14px;
+    color: var(--onb-muted);
+    line-height: 1.55;
+    margin: 0 0 18px;
+  }
+  #onboardModal .onboard-chip-label {
+    font-size: 13px;
+    font-weight: 600;
+    color: #334155;
+    margin: 0 0 10px;
+  }
+  #onboardModal .onboard-chip-wrap {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-bottom: 18px;
+  }
+  #onboardModal .onboard-chip {
+    border: 1px solid #e2e8f0;
+    background: #fff;
+    border-radius: 999px;
+    padding: 8px 14px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #0f172a;
+    cursor: pointer;
+    transition: border-color 0.15s, background 0.15s;
+  }
+  #onboardModal .onboard-chip:hover {
+    border-color: #cbd5e1;
+  }
+  #onboardModal .onboard-chip.on {
+    border-color: var(--onb-primary);
+    background: var(--onb-primary-soft);
+    color: var(--onb-primary);
+  }
+  #onboardModal .onboard-slug-row {
+    display: flex;
+    align-items: stretch;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    overflow: hidden;
+    background: #fff;
+  }
+  #onboardModal .onboard-slug-row:focus-within {
+    border-color: var(--onb-primary);
+    box-shadow: 0 0 0 3px var(--onb-primary-soft);
+  }
+  #onboardModal .onboard-slug-prefix {
+    flex-shrink: 0;
+    padding: 10px 12px;
+    font-size: 13px;
+    color: var(--onb-muted);
+    background: #f8fafc;
+    border-right: 1px solid var(--onb-border);
+    display: flex;
+    align-items: center;
+    white-space: nowrap;
+  }
+  #onboardModal .onboard-slug-row .fi {
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+  }
+  #onboardModal .oauth-onboard-btn {
+    width: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    padding: 12px 16px;
+    margin-bottom: 10px;
+    border-radius: 10px;
+    font-weight: 600;
+    font-size: 14px;
+    border: 1px solid var(--onb-primary);
+    background: var(--onb-primary);
+    color: #fff;
+    cursor: pointer;
+  }
+  #onboardModal .oauth-onboard-btn:hover {
+    background: var(--onb-primary-hover);
+    border-color: var(--onb-primary-hover);
+  }
+  #onboardModal .oauth-onboard-btn.ms {
+    background: #fff;
+    color: #0f172a;
+    border-color: #e2e8f0;
+  }
+  #onboardModal .oauth-onboard-btn.ms:hover {
+    background: #f8fafc;
+  }
+  #onboardModal .onboard-trust {
+    font-size: 12px;
+    color: var(--onb-muted);
+    margin: 16px 0 8px;
+    line-height: 1.45;
+  }
+  #onboardModal .onboard-skip-link {
+    display: block;
+    width: 100%;
+    text-align: center;
+    margin-top: 12px;
+    padding: 0;
+    border: none;
+    background: none;
+    color: var(--onb-primary);
+    font-size: 14px;
+    font-weight: 500;
+    cursor: pointer;
+  }
+  #onboardModal .onboard-skip-link:hover {
+    text-decoration: underline;
+  }
+  #onboardModal .onboard-invite-row {
+    display: grid;
+    grid-template-columns: 1fr minmax(100px, 120px);
+    gap: 10px;
+    margin-bottom: 10px;
+  }
+  #onboardModal .onboard-invite-row .fi,
+  #onboardModal .onboard-invite-row select.fi {
+    margin: 0;
+  }
+  #onboardModal .onboard-invite-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 12px;
+    margin: 8px 0 16px;
+  }
+  #onboardModal .onboard-invite-actions button {
+    font-size: 13px;
+  }
+  #onboardModal .onboard-legal {
+    font-size: 11px;
+    color: var(--onb-muted);
+    line-height: 1.45;
+    margin-top: 16px;
+  }
 
   /* Sidebar Lists (collapsible + dashed New list) */
   .lists-sb-wrap {
@@ -4698,23 +4857,116 @@
           </div>
         </div>
         <div id="onboard-step-2" class="onboard-step">
-          <h2 class="onboard-h2">Your company</h2>
-          <p class="onboard-hint" style="margin:-8px 0 16px;font-size:13px;">Company name sets your public workspace URL. You can fine-tune the slug if needed.</p>
+          <button type="button" class="onboard-back-btn" id="onboard-step2-back-top" aria-label="Back">&#8592;</button>
+          <h2 class="onboard-h2">Create your workspace</h2>
+          <p class="onboard-hint" style="margin:-8px 0 16px;font-size:13px;">We support PNG, JPEG, and WebP under 10MB. Recommended logo size 400×400px.</p>
           <div class="fg" style="margin-bottom:12px;">
-            <div class="fgp" style="grid-column:1/-1;"><label class="fl" for="ob-company-name">Company name *</label><input class="fi" id="ob-company-name" placeholder="e.g. Acme Agency" autocomplete="organization" /></div>
-            <div class="fgp" style="grid-column:1/-1;"><label class="fl" for="ob-slug">Workspace URL slug *</label><input class="fi" id="ob-slug" placeholder="e.g. acme-agency" autocomplete="off" /></div>
             <div class="fgp" style="grid-column:1/-1;">
               <label class="fl" for="ob-company-logo-input">Company logo (optional)</label>
               <button type="button" class="btn" id="ob-company-logo-btn" style="margin-top:4px;">Upload logo</button>
               <input type="file" id="ob-company-logo-input" accept="image/png,image/jpeg,image/webp" style="display:none;" />
               <div class="onboard-logo-preview" id="ob-company-logo-preview-wrap" style="display:none;"><img id="ob-company-logo-preview" alt="" /></div>
             </div>
+            <div class="fgp" style="grid-column:1/-1;"><label class="fl" for="ob-company-name">Company name *</label><input class="fi" id="ob-company-name" placeholder="Enter your company name…" autocomplete="organization" /></div>
+            <div class="fgp" style="grid-column:1/-1;">
+              <label class="fl" for="ob-slug">Workspace URL</label>
+              <div class="onboard-slug-row">
+                <span class="onboard-slug-prefix" id="ob-slug-prefix-host">/</span>
+                <input class="fi" id="ob-slug" placeholder="my-workspace" autocomplete="off" style="flex:1;min-width:0;" />
+              </div>
+            </div>
+            <div class="fgp" style="grid-column:1/-1;">
+              <label class="fl" for="ob-billing-country">Billing country</label>
+              <select class="fi" id="ob-billing-country">
+                <option value="US">United States</option>
+                <option value="CA">Canada</option>
+                <option value="GB">United Kingdom</option>
+                <option value="AU">Australia</option>
+                <option value="NZ">New Zealand</option>
+                <option value="DE">Germany</option>
+                <option value="FR">France</option>
+                <option value="IE">Ireland</option>
+                <option value="NL">Netherlands</option>
+                <option value="IN">India</option>
+                <option value="SG">Singapore</option>
+                <option value="OTHER">Other</option>
+              </select>
+            </div>
           </div>
           <div id="onboard-error-2" style="font-size:13px;color:var(--red);margin-bottom:12px;min-height:1.2em;"></div>
           <div class="onboard-footer" style="display:flex;gap:10px;flex-wrap:wrap;">
             <button type="button" class="btn" id="onboard-step2-back">Back</button>
-            <button type="button" class="btn btn-p" id="onboard-step2-finish" style="flex:1;min-width:140px;">Finish setup</button>
+            <button type="button" class="btn btn-p" id="onboard-step2-continue" style="flex:1;min-width:140px;">Continue</button>
           </div>
+        </div>
+        <div id="onboard-step-3" class="onboard-step">
+          <button type="button" class="onboard-back-btn" id="onboard-step3-back-top" aria-label="Back">&#8592;</button>
+          <h2 class="onboard-h2">How did you hear about us?</h2>
+          <p class="onboard-muted-body">This step is optional. Pick what fits best, or skip.</p>
+          <p class="onboard-chip-label">Where did you find us?</p>
+          <div class="onboard-chip-wrap" id="ob-referral-chips" role="group" aria-label="Referral source">
+            <button type="button" class="onboard-chip" data-referral="newsletter">Newsletter</button>
+            <button type="button" class="onboard-chip" data-referral="instagram">Instagram</button>
+            <button type="button" class="onboard-chip" data-referral="facebook">Facebook</button>
+            <button type="button" class="onboard-chip" data-referral="linkedin">LinkedIn</button>
+            <button type="button" class="onboard-chip" data-referral="x">X / Twitter</button>
+            <button type="button" class="onboard-chip" data-referral="google">Google</button>
+            <button type="button" class="onboard-chip" data-referral="friend">Friend / coworker</button>
+            <button type="button" class="onboard-chip" data-referral="reddit">Reddit</button>
+            <button type="button" class="onboard-chip" data-referral="podcast">Podcast</button>
+            <button type="button" class="onboard-chip" data-referral="youtube">YouTube</button>
+            <button type="button" class="onboard-chip" data-referral="other">Other</button>
+          </div>
+          <div id="onboard-error-3" style="font-size:13px;color:var(--red);margin-bottom:12px;min-height:1.2em;"></div>
+          <div class="onboard-footer">
+            <button type="button" class="btn btn-p" id="onboard-step3-continue">Continue</button>
+            <button type="button" class="onboard-skip-link" id="onboard-step3-skip">Skip</button>
+          </div>
+        </div>
+        <div id="onboard-step-4" class="onboard-step">
+          <button type="button" class="onboard-back-btn" id="onboard-step4-back-top" aria-label="Back">&#8592;</button>
+          <h2 class="onboard-h2">Bring your relationships in</h2>
+          <p class="onboard-muted-body">Connect your email account to sync contacts and activity for this workspace. You can also add data manually later.</p>
+          <button type="button" class="oauth-onboard-btn" id="onboard-oauth-google">Continue with Google</button>
+          <button type="button" class="oauth-onboard-btn ms" id="onboard-oauth-microsoft">Continue with Microsoft</button>
+          <p class="onboard-trust">We request only the permissions needed for sync. You can review or disconnect anytime in Settings.</p>
+          <div id="onboard-error-4" style="font-size:13px;color:var(--red);margin-bottom:12px;min-height:1.2em;"></div>
+          <div class="onboard-footer">
+            <button type="button" class="btn btn-p" id="onboard-step4-continue">Continue</button>
+            <button type="button" class="onboard-skip-link" id="onboard-step4-manual">I&rsquo;ll add contacts manually</button>
+          </div>
+        </div>
+        <div id="onboard-step-5" class="onboard-step">
+          <button type="button" class="onboard-back-btn" id="onboard-step5-back-top" aria-label="Back">&#8592;</button>
+          <h2 class="onboard-h2">Help us customize your workspace</h2>
+          <p class="onboard-muted-body">Tell us how you plan to use the dashboard so we can tailor defaults. You can change everything later in Settings.</p>
+          <p class="onboard-chip-label">What will you use this workspace for?</p>
+          <div class="onboard-chip-wrap" id="ob-primary-use-case" role="group" aria-label="Primary use case"></div>
+          <div id="ob-secondary-wrap" style="display:none;">
+            <p class="onboard-chip-label" id="ob-secondary-label">Tell us more</p>
+            <div class="onboard-chip-wrap" id="ob-secondary-use-case" role="group" aria-label="Secondary use case"></div>
+          </div>
+          <div id="onboard-error-5" style="font-size:13px;color:var(--red);margin-bottom:12px;min-height:1.2em;"></div>
+          <div class="onboard-footer">
+            <button type="button" class="btn btn-p" id="onboard-step5-continue">Continue</button>
+          </div>
+        </div>
+        <div id="onboard-step-6" class="onboard-step">
+          <button type="button" class="onboard-back-btn" id="onboard-step6-back-top" aria-label="Back">&#8592;</button>
+          <h2 class="onboard-h2">Collaborate with your team</h2>
+          <p class="onboard-muted-body">Invite teammates by email. They will receive a link to join this workspace.</p>
+          <p class="onboard-chip-label">Invite your team</p>
+          <div id="ob-invite-rows"></div>
+          <div class="onboard-invite-actions">
+            <button type="button" class="btn" id="ob-invite-add-row">+ Add another</button>
+            <button type="button" class="btn" id="ob-invite-copy-link">Copy invite link</button>
+          </div>
+          <div id="onboard-error-6" style="font-size:13px;color:var(--red);margin-bottom:12px;min-height:1.2em;"></div>
+          <div class="onboard-footer">
+            <button type="button" class="btn btn-p" id="onboard-step6-send">Send invites</button>
+            <button type="button" class="onboard-skip-link" id="onboard-step6-skip">Skip for now</button>
+          </div>
+          <p class="onboard-legal">By continuing you agree to your organization&rsquo;s use of this workspace in line with your company policies.</p>
         </div>
       </div>
       <div class="onboard-preview" aria-hidden="true">
