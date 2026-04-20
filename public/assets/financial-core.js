@@ -1644,6 +1644,213 @@
     }
   }
 
+  // ---------- Workspace preferences (theme, locale, calendar; dashboard_settings.preferences) ----------
+  var __bizdashThemeMediaCleanup = null;
+
+  function getDefaultPreferences() {
+    return {
+      theme: 'system',
+      language: 'en-US',
+      numberFormat: 'default',
+      weekStartsMonday: false,
+      dateMentionFormat: 'relative',
+      timezoneAuto: true,
+      timezone: 'America/Chicago',
+    };
+  }
+
+  function isValidTimeZone(z) {
+    if (!z || typeof z !== 'string') return false;
+    try {
+      new Intl.DateTimeFormat('en-US', { timeZone: z }).format(new Date());
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function normalizePreferences(inP) {
+    var d = getDefaultPreferences();
+    var p = inP && typeof inP === 'object' ? inP : {};
+    var theme = String(p.theme || '').toLowerCase();
+    if (theme !== 'light' && theme !== 'dark' && theme !== 'system') theme = d.theme;
+    var language = String(p.language || d.language).trim() || d.language;
+    var numberFormat = String(p.numberFormat != null ? p.numberFormat : d.numberFormat).trim() || d.numberFormat;
+    if (numberFormat !== 'default' && numberFormat.length < 2) numberFormat = d.numberFormat;
+    var weekStartsMonday = !!p.weekStartsMonday;
+    var df = String(p.dateMentionFormat || '').toLowerCase();
+    if (df !== 'absolute') df = 'relative';
+    var timezoneAuto = d.timezoneAuto;
+    if (p.timezoneAuto === false || p.timezoneAuto === 0 || String(p.timezoneAuto).toLowerCase() === 'false') {
+      timezoneAuto = false;
+    } else if (p.timezoneAuto === true || p.timezoneAuto === 1 || String(p.timezoneAuto).toLowerCase() === 'true') {
+      timezoneAuto = true;
+    }
+    var timezone = String(p.timezone || d.timezone).trim() || d.timezone;
+    if (!isValidTimeZone(timezone)) timezone = d.timezone;
+    return {
+      theme: theme,
+      language: language,
+      numberFormat: numberFormat,
+      weekStartsMonday: weekStartsMonday,
+      dateMentionFormat: df,
+      timezoneAuto: timezoneAuto,
+      timezone: timezone,
+    };
+  }
+
+  function readPreferencesFromDom() {
+    function gid(id) {
+      return document.getElementById(id);
+    }
+    function val(id, def) {
+      var el = gid(id);
+      if (!el) return def;
+      var s = String(el.value || '').trim();
+      return s || def;
+    }
+    function chk(id) {
+      var el = gid(id);
+      return !!(el && el.checked);
+    }
+    return normalizePreferences({
+      theme: val('pref-theme', 'system'),
+      language: val('pref-language', 'en-US'),
+      numberFormat: val('pref-number-format', 'default'),
+      weekStartsMonday: chk('pref-week-starts-mon'),
+      dateMentionFormat: val('pref-date-mention-format', 'relative'),
+      timezoneAuto: chk('pref-timezone-auto'),
+      timezone: val('pref-timezone', getDefaultPreferences().timezone),
+    });
+  }
+
+  function applyPreferencesToForm(prefs) {
+    prefs = normalizePreferences(prefs);
+    function gid(id) {
+      return document.getElementById(id);
+    }
+    function setv(id, value) {
+      var el = gid(id);
+      if (!el) return;
+      el.value = String(value);
+    }
+    ensurePreferenceTimezoneOptionsBuilt();
+    setv('pref-theme', prefs.theme);
+    setv('pref-language', prefs.language);
+    setv('pref-number-format', prefs.numberFormat);
+    setv('pref-date-mention-format', prefs.dateMentionFormat);
+    var wk = gid('pref-week-starts-mon');
+    if (wk) wk.checked = !!prefs.weekStartsMonday;
+    var auto = gid('pref-timezone-auto');
+    if (auto) auto.checked = !!prefs.timezoneAuto;
+    var tz = gid('pref-timezone');
+    if (tz) {
+      if (prefs.timezone && !Array.prototype.some.call(tz.options || [], function (o) { return o.value === prefs.timezone; })) {
+        var op = document.createElement('option');
+        op.value = prefs.timezone;
+        op.textContent = prefs.timezone;
+        tz.appendChild(op);
+      }
+      tz.value = prefs.timezone;
+      tz.disabled = !!prefs.timezoneAuto;
+    }
+  }
+
+  function applyPreferencesRuntime(prefs) {
+    prefs = normalizePreferences(prefs);
+    window.__bizdashPreferences = prefs;
+    var root = document.documentElement;
+    if (__bizdashThemeMediaCleanup) {
+      try {
+        __bizdashThemeMediaCleanup();
+      } catch (_) {}
+      __bizdashThemeMediaCleanup = null;
+    }
+    root.dataset.theme = prefs.theme;
+    function setEffective(isDark) {
+      root.dataset.colorScheme = isDark ? 'dark' : 'light';
+    }
+    if (prefs.theme === 'dark') {
+      setEffective(true);
+    } else if (prefs.theme === 'light') {
+      setEffective(false);
+    } else {
+      var mq = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)');
+      if (mq && mq.matches != null) {
+        var fn = function () {
+          setEffective(!!mq.matches);
+        };
+        fn();
+        if (mq.addEventListener) {
+          mq.addEventListener('change', fn);
+          __bizdashThemeMediaCleanup = function () {
+            mq.removeEventListener('change', fn);
+          };
+        } else if (mq.addListener) {
+          mq.addListener(fn);
+          __bizdashThemeMediaCleanup = function () {
+            mq.removeListener(fn);
+          };
+        }
+      } else {
+        setEffective(false);
+      }
+    }
+    if (prefs.language) {
+      root.lang = prefs.language;
+    }
+    var tzEl = document.getElementById('pref-timezone');
+    if (tzEl) tzEl.disabled = !!prefs.timezoneAuto;
+  }
+
+  function getFallbackTimeZones() {
+    return [
+      'UTC',
+      'America/New_York',
+      'America/Chicago',
+      'America/Denver',
+      'America/Los_Angeles',
+      'America/Toronto',
+      'America/Vancouver',
+      'America/Sao_Paulo',
+      'Europe/London',
+      'Europe/Paris',
+      'Europe/Berlin',
+      'Europe/Madrid',
+      'Europe/Amsterdam',
+      'Europe/Warsaw',
+      'Asia/Tokyo',
+      'Asia/Shanghai',
+      'Asia/Hong_Kong',
+      'Asia/Singapore',
+      'Asia/Kolkata',
+      'Australia/Sydney',
+      'Pacific/Auckland',
+    ];
+  }
+
+  function ensurePreferenceTimezoneOptionsBuilt() {
+    var sel = document.getElementById('pref-timezone');
+    if (!sel || sel.getAttribute('data-tz-built') === '1') return;
+    sel.setAttribute('data-tz-built', '1');
+    var list = [];
+    try {
+      if (typeof Intl !== 'undefined' && typeof Intl.supportedValuesOf === 'function') {
+        list = Intl.supportedValuesOf('timeZone');
+      }
+    } catch (_) {}
+    if (!list || !list.length) list = getFallbackTimeZones();
+    var frag = document.createDocumentFragment();
+    list.forEach(function (z) {
+      if (!z) return;
+      var op = document.createElement('option');
+      op.value = z;
+      op.textContent = z;
+      frag.appendChild(op);
+    });
+    sel.appendChild(frag);
+  }
+
   // ---------- App settings (custom project status labels) ----------
   async function fetchAppSettingsFromSupabase() {
     supabase = window.supabaseClient || supabase;
@@ -1703,7 +1910,148 @@
         oth: Math.max(0, Number(budgets.oth) || 0),
       },
       budgetMonths: loadBudgetMonthSnapshots(),
+      workspace: readWorkspacePrefsFromDom(),
+      preferences: document.getElementById('pref-theme') ? readPreferencesFromDom() : undefined,
     };
+  }
+
+  function defaultWorkspacePrefs() {
+    return {
+      allowedEmailDomains: '',
+      pageViewAnalytics: true,
+      peopleDirectory: true,
+      peopleRecentActivity: true,
+      peopleHoverCards: true,
+      workspaceIconEmoji: '',
+      workspaceIconUrl: '',
+    };
+  }
+
+  function mergeWorkspacePrefs(prev, next) {
+    var d = defaultWorkspacePrefs();
+    var p = prev && typeof prev === 'object' ? prev : {};
+    var n = next && typeof next === 'object' ? next : {};
+    var out = Object.assign({}, d, p);
+    Object.keys(n).forEach(function (k) {
+      if (n[k] !== undefined) out[k] = n[k];
+    });
+    return out;
+  }
+
+  function readWorkspacePrefsFromDom() {
+    if (!document.getElementById('setting-ws-toggle-analytics')) return defaultWorkspacePrefs();
+    function hid(id) {
+      var el = document.getElementById(id);
+      return el ? String(el.value || '').trim() : '';
+    }
+    function chk(id) {
+      var el = document.getElementById(id);
+      return el ? !!el.checked : false;
+    }
+    return {
+      allowedEmailDomains: (function () {
+        var el = document.getElementById('setting-ws-domains');
+        return el ? String(el.value || '').trim() : '';
+      })(),
+      pageViewAnalytics: chk('setting-ws-toggle-analytics'),
+      peopleDirectory: chk('setting-ws-toggle-people-dir'),
+      peopleRecentActivity: chk('setting-ws-toggle-people-activity'),
+      peopleHoverCards: chk('setting-ws-toggle-hover-cards'),
+      workspaceIconEmoji: hid('setting-ws-icon-emoji-value'),
+      workspaceIconUrl: hid('setting-ws-icon-url-value'),
+    };
+  }
+
+  function applyWorkspacePrefsToDom(ws) {
+    ws = mergeWorkspacePrefs({}, ws || {});
+    window.bizdashWorkspacePrefs = ws;
+    function setChk(id, v) {
+      var el = document.getElementById(id);
+      if (el) el.checked = !!v;
+    }
+    var dom = document.getElementById('setting-ws-domains');
+    if (dom) dom.value = ws.allowedEmailDomains != null ? String(ws.allowedEmailDomains) : '';
+    setChk('setting-ws-toggle-analytics', ws.pageViewAnalytics);
+    setChk('setting-ws-toggle-people-dir', ws.peopleDirectory);
+    setChk('setting-ws-toggle-people-activity', ws.peopleRecentActivity);
+    setChk('setting-ws-toggle-hover-cards', ws.peopleHoverCards);
+    var em = document.getElementById('setting-ws-icon-emoji-value');
+    var ur = document.getElementById('setting-ws-icon-url-value');
+    if (em) em.value = ws.workspaceIconEmoji != null ? String(ws.workspaceIconEmoji) : '';
+    if (ur) ur.value = ws.workspaceIconUrl != null ? String(ws.workspaceIconUrl) : '';
+    renderWorkspaceIconPreview();
+  }
+
+  async function renderWorkspaceIconPreview() {
+    var emojiH = document.getElementById('setting-ws-icon-emoji-value');
+    var urlH = document.getElementById('setting-ws-icon-url-value');
+    var prev = document.getElementById('setting-ws-icon-preview');
+    if (!prev) return;
+    var url = urlH ? String(urlH.value || '').trim() : '';
+    var emo = emojiH ? String(emojiH.value || '').trim() : '';
+    prev.innerHTML = '';
+    if (url) {
+      var resolved = await resolveBrandLogoStorageUrl(url);
+      var img = document.createElement('img');
+      img.alt = '';
+      img.src = resolved || url;
+      prev.appendChild(img);
+    } else if (emo) {
+      prev.textContent = emo.slice(0, 10);
+    } else {
+      prev.textContent = '🏢';
+    }
+  }
+
+  async function hydrateWorkspaceSettingsFields() {
+    var oidEl = document.getElementById('setting-ws-org-id');
+    var oid = getCurrentOrgId();
+    if (oidEl) oidEl.textContent = oid ? String(oid) : '—';
+    var nameEl = document.getElementById('setting-ws-name');
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (supabase && oid && currentUser && !isDemoDashboardUser()) {
+      try {
+        var r = await supabase.from('organizations').select('name').eq('id', oid).maybeSingle();
+        if (r.data && r.data.name != null && nameEl) nameEl.value = String(r.data.name);
+        if (r.data && r.data.name) window.currentOrganizationDisplayName = String(r.data.name);
+      } catch (_) {}
+    }
+    var exportDesc = document.getElementById('setting-ws-export-content-desc');
+    if (exportDesc) {
+      var nm =
+        nameEl && nameEl.value.trim()
+          ? nameEl.value.trim()
+          : window.currentOrganizationDisplayName || '';
+      exportDesc.textContent =
+        'Export clients, transactions, projects, invoices, campaigns, and timesheet entries for ' +
+        (nm || 'this workspace') +
+        ' as JSON.';
+    }
+    if (typeof window.refreshSidebarWorkspaceChrome === 'function') window.refreshSidebarWorkspaceChrome();
+  }
+
+  async function persistWorkspaceOrganizationName() {
+    var el = document.getElementById('setting-ws-name');
+    var nm = el ? String(el.value || '').trim() : '';
+    if (!nm || nm.length > 65) return;
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    var oid = getCurrentOrgId();
+    if (!supabase || !currentUser || !oid || isDemoDashboardUser()) return;
+    var role = window.currentOrganizationRole || '';
+    if (role !== 'owner' && role !== 'admin') return;
+    try {
+      var res = await supabase
+        .from('organizations')
+        .update({ name: nm, updated_at: new Date().toISOString() })
+        .eq('id', oid);
+      if (res.error) console.error('update organization name', res.error);
+      else window.currentOrganizationDisplayName = nm;
+      if (typeof window.refreshSidebarWorkspaceChrome === 'function') window.refreshSidebarWorkspaceChrome();
+    } catch (err) {
+      console.error('persistWorkspaceOrganizationName', err);
+    }
   }
 
   function refreshSettingsBudgetInputsFromState() {
@@ -1724,16 +2072,27 @@
     });
     mergedBusiness.terms = nb.terms != null ? nb.terms : pb.terms != null ? pb.terms : 30;
     mergedBusiness.tax = nb.tax != null ? nb.tax : pb.tax != null ? pb.tax : 0;
+    var pw = prevDash.workspace && typeof prevDash.workspace === 'object' ? prevDash.workspace : {};
+    var nw = nextDash.workspace && typeof nextDash.workspace === 'object' ? nextDash.workspace : {};
+    var mergedWorkspace = mergeWorkspacePrefs(pw, nw);
+    var mergedPrefs;
+    if (nextDash.preferences && typeof nextDash.preferences === 'object') {
+      mergedPrefs = normalizePreferences(Object.assign({}, prevDash.preferences || {}, nextDash.preferences));
+    } else {
+      mergedPrefs = normalizePreferences(prevDash.preferences || {});
+    }
     return {
       business: mergedBusiness,
       budgets: nextDash.budgets && typeof nextDash.budgets === 'object' ? nextDash.budgets : { lab: 0, sw: 0, ads: 0, oth: 0 },
       budgetMonths: Object.assign({}, prevDash.budgetMonths || {}, nextDash.budgetMonths || {}),
+      workspace: mergedWorkspace,
+      preferences: mergedPrefs,
     };
   }
 
   async function applyDashboardSettingsFromCloud(raw) {
     if (raw == null || typeof raw !== 'object') return;
-    if (!raw.business && !raw.budgets && !raw.budgetMonths) return;
+    if (!raw.business && !raw.budgets && !raw.budgetMonths && !raw.workspace && !raw.preferences) return;
     var biz = raw.business;
     if (biz && typeof biz === 'object') {
       function gid(id) {
@@ -1800,7 +2159,13 @@
     if (raw.budgetMonths && typeof raw.budgetMonths === 'object') {
       saveBudgetMonthSnapshotsToStorage(raw.budgetMonths);
     }
+    if (raw.workspace && typeof raw.workspace === 'object') {
+      applyWorkspacePrefsToDom(raw.workspace);
+    }
+    applyPreferencesToForm(normalizePreferences(raw.preferences));
+    applyPreferencesRuntime(normalizePreferences(raw.preferences));
     refreshSettingsBudgetInputsFromState();
+    await hydrateWorkspaceSettingsFields();
   }
 
   function normalizeHexColor(hex, fallback) {
@@ -1916,10 +2281,21 @@
       if (label === 'Other') return CHART_EXPENSE_GRAY;
       return CHART_PALETTE_REST[0];
     }
+    /** Full update (not 'none') so Chart.js reapplies dataset colors; rev/exp chart uses animation:false. */
+    function chartUpdateBranding(ch) {
+      if (!ch || typeof ch.update !== 'function') return;
+      try {
+        ch.update();
+      } catch (e) {
+        try {
+          ch.update('none');
+        } catch (_) {}
+      }
+    }
     if (revExpChart && revExpChart.data && revExpChart.data.datasets) {
       if (revExpChart.data.datasets[0]) syncBrandedRevenueBarDataset(revExpChart.data.datasets[0]);
       if (revExpChart.data.datasets[1]) syncMutedExpenseBarDataset(revExpChart.data.datasets[1]);
-      revExpChart.update('none');
+      chartUpdateBranding(revExpChart);
     }
     if (expenseChart && expenseChart.data && expenseChart.data.datasets && expenseChart.data.datasets[0]) {
       var expLabels = expenseChart.data.labels || [];
@@ -1928,33 +2304,33 @@
       } else {
         expenseChart.data.datasets[0].backgroundColor = expLabels.map(expenseColorForLabel);
       }
-      expenseChart.update('none');
+      chartUpdateBranding(expenseChart);
     }
     if (revTrendChart && revTrendChart.data && revTrendChart.data.datasets && revTrendChart.data.datasets[0]) {
       syncBrandedRevenueLineDataset(revTrendChart.data.datasets[0]);
-      revTrendChart.update('none');
+      chartUpdateBranding(revTrendChart);
     }
     if (insTrendChart && insTrendChart.data && insTrendChart.data.datasets && insTrendChart.data.datasets[0]) {
       syncBrandedRevenueLineDataset(insTrendChart.data.datasets[0]);
-      insTrendChart.update('none');
+      chartUpdateBranding(insTrendChart);
     }
     if (retTrendChart && retTrendChart.data && retTrendChart.data.datasets && retTrendChart.data.datasets[0]) {
       syncBrandedRevenueLineDataset(retTrendChart.data.datasets[0]);
-      retTrendChart.update('none');
+      chartUpdateBranding(retTrendChart);
     }
     if (projMonthlyChart && projMonthlyChart.data && projMonthlyChart.data.datasets && projMonthlyChart.data.datasets[0]) {
       projMonthlyChart.data.datasets[0].backgroundColor = CHART_ORANGE;
-      projMonthlyChart.update('none');
+      chartUpdateBranding(projMonthlyChart);
     }
     if (verticalChart && verticalChart.data && verticalChart.data.datasets && verticalChart.data.datasets[0]) {
       var vLabels = verticalChart.data.labels || [];
       verticalChart.data.datasets[0].backgroundColor = vLabels.length && vLabels[0] !== 'No data' ? chartMultiColors(vLabels.length) : [CHART_EMPTY];
-      verticalChart.update('none');
+      chartUpdateBranding(verticalChart);
     }
     if (leadSourceChart && leadSourceChart.data && leadSourceChart.data.datasets && leadSourceChart.data.datasets[0]) {
       var lLabels = leadSourceChart.data.labels || [];
       leadSourceChart.data.datasets[0].backgroundColor = lLabels.length ? chartMultiColors(lLabels.length) : [CHART_EMPTY];
-      leadSourceChart.update('none');
+      chartUpdateBranding(leadSourceChart);
     }
   }
 
@@ -3209,6 +3585,180 @@
     }
   }
 
+  function wireEmailsPage() {
+    var root = document.getElementById('page-emails');
+    if (!root || root.getAttribute('data-emails-wired') === '1') return;
+    root.setAttribute('data-emails-wired', '1');
+
+    var modal = document.getElementById('eml-compose-modal');
+    var inpTo = document.getElementById('eml-compose-to');
+    var inpSub = document.getElementById('eml-compose-subject');
+    var inpBody = document.getElementById('eml-compose-body');
+    var errEl = document.getElementById('eml-compose-err');
+    var btnSend = document.getElementById('eml-compose-send');
+    var btnCancel = document.getElementById('eml-compose-cancel');
+
+    function showComposeErr(msg) {
+      if (!errEl) return;
+      if (msg) {
+        errEl.textContent = msg;
+        errEl.style.display = 'block';
+      } else {
+        errEl.textContent = '';
+        errEl.style.display = 'none';
+      }
+    }
+
+    function closeComposeModal() {
+      if (modal) modal.classList.remove('on');
+      showComposeErr('');
+    }
+
+    function openComposeModal() {
+      if (!modal) return;
+      if (inpTo) inpTo.value = '';
+      if (inpSub) inpSub.value = '';
+      if (inpBody) inpBody.value = '';
+      showComposeErr('');
+      if (btnSend) {
+        btnSend.disabled = false;
+        btnSend.textContent = 'Send';
+      }
+      modal.classList.add('on');
+      if (inpTo) inpTo.focus();
+    }
+
+    root.querySelectorAll('[data-eml-compose]').forEach(function (btn) {
+      btn.addEventListener('click', openComposeModal);
+    });
+
+    if (btnCancel) {
+      btnCancel.addEventListener('click', closeComposeModal);
+    }
+
+    if (btnSend && btnSend.getAttribute('data-eml-compose-send-wired') !== '1') {
+      btnSend.setAttribute('data-eml-compose-send-wired', '1');
+      btnSend.addEventListener('click', async function () {
+        var supa = window.supabaseClient;
+        var sessRes = supa ? await supa.auth.getSession() : null;
+        var sess = sessRes && sessRes.data ? sessRes.data.session : null;
+        if (!sess || !sess.access_token) {
+          alert('Sign in first.');
+          return;
+        }
+        var base = typeof window.__bizdashSupabaseUrl === 'string' ? window.__bizdashSupabaseUrl.trim().replace(/\/$/, '') : '';
+        var anon = typeof window.__bizdashSupabaseAnonKey === 'string' ? window.__bizdashSupabaseAnonKey.trim() : '';
+        if (!base || !anon) {
+          alert('Supabase URL or anon key is not configured in this app.');
+          return;
+        }
+        var orgId = getCurrentOrgId();
+        if (!orgId || !String(orgId).trim()) {
+          alert('Open a workspace first.');
+          return;
+        }
+        var to = inpTo ? String(inpTo.value || '').trim() : '';
+        var subject = inpSub ? String(inpSub.value || '').trim() : '';
+        var body = inpBody ? String(inpBody.value || '').trim() : '';
+        if (!to || !subject || !body) {
+          showComposeErr('Fill in To, Subject, and Message.');
+          return;
+        }
+        showComposeErr('');
+        btnSend.disabled = true;
+        var origLabel = btnSend.textContent;
+        btnSend.textContent = 'Sending…';
+        try {
+          var res = await fetch(base + '/functions/v1/gmail-send', {
+            method: 'POST',
+            headers: {
+              'Content-Type': 'application/json',
+              Authorization: 'Bearer ' + sess.access_token,
+              apikey: anon,
+            },
+            body: JSON.stringify({
+              organization_id: orgId,
+              to: to,
+              subject: subject,
+              body: body,
+            }),
+          });
+          var j = {};
+          try {
+            j = await res.json();
+          } catch (_) {}
+          if (!res.ok) {
+            var err = j.error ? String(j.error) : 'send_failed';
+            var det = j.detail ? String(j.detail) : '';
+            if (err === 'not_connected') {
+              showComposeErr('Connect Gmail first: open Settings → Mail & Calendar, then use Get started.');
+            } else {
+              showComposeErr(det || err || 'Could not send. Try again or reconnect Google.');
+            }
+            btnSend.disabled = false;
+            btnSend.textContent = origLabel;
+            return;
+          }
+          var tid = j.threadId ? String(j.threadId) : '';
+          var gurl = tid
+            ? 'https://mail.google.com/mail/u/0/#all/' + encodeURIComponent(tid)
+            : 'https://mail.google.com/mail/u/0/#sent';
+          closeComposeModal();
+          var bar = document.getElementById('app-invite-flash');
+          if (bar) {
+            bar.innerHTML =
+              'Message sent. <a href="' +
+              gurl +
+              '" target="_blank" rel="noopener noreferrer" style="color:inherit;font-weight:600;text-decoration:underline;">Open in Gmail</a>';
+            bar.style.display = 'block';
+            window.setTimeout(function () {
+              bar.style.display = 'none';
+              bar.textContent = '';
+            }, 14000);
+          } else {
+            alert('Message sent.');
+          }
+        } catch (e) {
+          console.warn('gmail-send', e);
+          showComposeErr('Network error. Check your connection and try again.');
+        }
+        btnSend.disabled = false;
+        btnSend.textContent = origLabel;
+      });
+    }
+
+    root.querySelectorAll('[data-eml-tab]').forEach(function (tab) {
+      tab.addEventListener('click', function () {
+        var id = tab.getAttribute('data-eml-tab');
+        if (!id) return;
+        root.querySelectorAll('[data-eml-tab]').forEach(function (x) {
+          var on = x.getAttribute('data-eml-tab') === id;
+          x.classList.toggle('on', on);
+          x.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        root.querySelectorAll('[data-eml-panel]').forEach(function (p) {
+          var on = p.getAttribute('data-eml-panel') === id;
+          p.classList.toggle('on', on);
+          p.setAttribute('aria-hidden', on ? 'false' : 'true');
+        });
+      });
+    });
+
+    root.querySelectorAll('[data-eml-panel]').forEach(function (p) {
+      var on = p.classList.contains('on');
+      p.setAttribute('aria-hidden', on ? 'false' : 'true');
+    });
+
+    var help = root.querySelector('[data-eml-help]');
+    if (help) {
+      help.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        var learn = root.querySelector('.eml-learn');
+        if (learn) learn.scrollIntoView({ behavior: 'smooth', block: 'start' });
+      });
+    }
+  }
+
   function wireWorkflowAutomation() {
     var dyn = $('wf-automation-dynamic');
     if (dyn && dyn.getAttribute('data-wf-wired') !== '1') {
@@ -3924,7 +4474,13 @@ var incomePowerState = {
         revExpChart.data.labels = [];
         revExpChart.data.datasets[0].data = [];
         revExpChart.data.datasets[1].data = [];
-        revExpChart.update('none');
+        try {
+          revExpChart.update();
+        } catch (e) {
+          try {
+            revExpChart.update('none');
+          } catch (_) {}
+        }
       }
       return;
     }
@@ -3959,7 +4515,9 @@ var incomePowerState = {
         options: {
           responsive: true,
           maintainAspectRatio: false,
+          animation: false,
           plugins: {
+            colors: { enabled: false },
             legend: { display: true, position: 'bottom' },
           },
           datasets: {
@@ -3990,7 +4548,13 @@ var incomePowerState = {
       revExpChart.data.datasets[1].data = expData; // Expenses
       syncBrandedRevenueBarDataset(revExpChart.data.datasets[0]);
       syncMutedExpenseBarDataset(revExpChart.data.datasets[1]);
-      revExpChart.update('none');
+      try {
+        revExpChart.update();
+      } catch (e) {
+        try {
+          revExpChart.update('none');
+        } catch (_) {}
+      }
     }
   }
 
@@ -5241,6 +5805,9 @@ var incomePowerState = {
           alert('Logo upload failed. Check brand-assets storage bucket and policies, then try again.');
         }
         applyBrandLogo(lightUrl, darkUrl);
+        syncProfilePanelToPrefs();
+        await persistProfileUserMetadata();
+        await persistWorkspaceOrganizationName();
         await syncBudgetsNow();
         // Brief visual confirmation
         var orig = saveBtn.textContent;
@@ -5248,6 +5815,30 @@ var incomePowerState = {
         setTimeout(function () { saveBtn.textContent = orig; }, 1400);
       });
     }
+
+    function wirePreferencesPanel() {
+      var root = document.getElementById('page-settings');
+      if (!root || root.getAttribute('data-pref-wired') === '1') return;
+      if (!document.getElementById('pref-theme')) return;
+      root.setAttribute('data-pref-wired', '1');
+      ensurePreferenceTimezoneOptionsBuilt();
+      function bumpRuntime() {
+        applyPreferencesRuntime(readPreferencesFromDom());
+      }
+      ['pref-theme', 'pref-language', 'pref-number-format', 'pref-date-mention-format', 'pref-week-starts-mon', 'pref-timezone-auto', 'pref-timezone'].forEach(function (id) {
+        var el = document.getElementById(id);
+        if (!el) return;
+        el.addEventListener('change', function () {
+          if (id === 'pref-timezone-auto') {
+            var tz = document.getElementById('pref-timezone');
+            if (tz) tz.disabled = !!document.getElementById('pref-timezone-auto').checked;
+          }
+          bumpRuntime();
+        });
+      });
+      bumpRuntime();
+    }
+    wirePreferencesPanel();
   }
 
   function wireSettingsShell() {
@@ -5304,8 +5895,34 @@ var incomePowerState = {
         openerBtn || root.querySelector('.settings-nav-item[data-settings-panel="' + panelId + '"]');
       if (!opener) return;
       if (activeTitle) activeTitle.textContent = opener.getAttribute('data-settings-title') || '';
-      if (activeDesc) activeDesc.textContent = opener.getAttribute('data-settings-desc') || '';
+      if (activeDesc) {
+        if (panelId === 'people') {
+          activeDesc.innerHTML =
+            'Manage people in your workspace and their roles. <a href="#" id="settings-people-learn-inline" style="color:var(--coral);font-weight:500;text-decoration:none;">Learn more</a>';
+        } else if (panelId === 'refer-earn') {
+          activeDesc.innerHTML =
+            'Earn rewards by referring teams to Compass. <a href="#" id="settings-refer-learn" style="color:var(--coral);font-weight:500;text-decoration:none;">Learn more</a>';
+        } else {
+          activeDesc.textContent = opener.getAttribute('data-settings-desc') || '';
+        }
+      }
       if (activeKicker) activeKicker.textContent = opener.getAttribute('data-settings-kicker') || '';
+      var saveBtn = document.getElementById('btn-save-settings');
+      var dirLink = document.getElementById('settings-people-directory-link');
+      if (saveBtn) saveBtn.style.display = panelId === 'people' || panelId === 'refer-earn' ? 'none' : '';
+      if (dirLink) dirLink.style.display = panelId === 'people' ? 'inline-flex' : 'none';
+      if (panelId === 'account') refreshAccountSecurityUiFromServer();
+      if (panelId === 'workspace') hydrateWorkspaceSettingsFields();
+      if (panelId === 'people' && typeof window.refreshTeamPage === 'function') {
+        window.refreshTeamPage();
+      }
+      if (panelId === 'refer-earn' && typeof window.refreshReferEarnPanel === 'function') {
+        window.refreshReferEarnPanel();
+      }
+      if (panelId === 'profile') {
+        syncPrefsToProfilePanel();
+        refreshAccountSecurityUiFromServer();
+      }
     }
 
     navItems.forEach(function (btn) {
@@ -5338,50 +5955,62 @@ var incomePowerState = {
         if (typeof window.nav === 'function') window.nav('dashboard', dash || null);
       });
     }
+
+    var jumpMc = document.getElementById('settings-jump-mail-calendar');
+    if (jumpMc && jumpMc.getAttribute('data-settings-jump-mc-wired') !== '1') {
+      jumpMc.setAttribute('data-settings-jump-mc-wired', '1');
+      jumpMc.addEventListener('click', function () {
+        var t = document.getElementById('settings-nav-mail-calendar');
+        if (t) t.click();
+      });
+    }
   }
 
   function wireGoogleOAuthInSettings() {
-    var btn = document.getElementById('settings-btn-google-oauth');
-    if (!btn || btn.getAttribute('data-wired-google-oauth') === '1') return;
-    btn.setAttribute('data-wired-google-oauth', '1');
-    btn.addEventListener('click', async function () {
-      var supa = window.supabaseClient;
-      var sessRes = supa ? await supa.auth.getSession() : null;
-      var sess = sessRes && sessRes.data ? sessRes.data.session : null;
-      if (!sess || !sess.access_token) {
-        alert('Sign in first.');
-        return;
-      }
-      var base = typeof window.__bizdashSupabaseUrl === 'string' ? window.__bizdashSupabaseUrl.trim().replace(/\/$/, '') : '';
-      var anon = typeof window.__bizdashSupabaseAnonKey === 'string' ? window.__bizdashSupabaseAnonKey.trim() : '';
-      if (!base || !anon) {
-        alert('Supabase URL or anon key is not configured in this app.');
-        return;
-      }
-      var orgId = getCurrentOrgId();
-      if (!orgId || !String(orgId).trim()) {
-        alert('Open a workspace before connecting Google.');
-        return;
-      }
-      var returnPath = window.location.pathname || '/';
-      var res = await fetch(base + '/functions/v1/oauth-google-start', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer ' + sess.access_token,
-          apikey: anon,
-        },
-        body: JSON.stringify({ organization_id: orgId, return_path: returnPath }),
+    var nodes = document.querySelectorAll('[data-google-oauth-start]');
+    if (!nodes.length) return;
+    nodes.forEach(function (btn) {
+      if (btn.getAttribute('data-wired-google-oauth') === '1') return;
+      btn.setAttribute('data-wired-google-oauth', '1');
+      btn.addEventListener('click', async function () {
+        var supa = window.supabaseClient;
+        var sessRes = supa ? await supa.auth.getSession() : null;
+        var sess = sessRes && sessRes.data ? sessRes.data.session : null;
+        if (!sess || !sess.access_token) {
+          alert('Sign in first.');
+          return;
+        }
+        var base = typeof window.__bizdashSupabaseUrl === 'string' ? window.__bizdashSupabaseUrl.trim().replace(/\/$/, '') : '';
+        var anon = typeof window.__bizdashSupabaseAnonKey === 'string' ? window.__bizdashSupabaseAnonKey.trim() : '';
+        if (!base || !anon) {
+          alert('Supabase URL or anon key is not configured in this app.');
+          return;
+        }
+        var orgId = getCurrentOrgId();
+        if (!orgId || !String(orgId).trim()) {
+          alert('Open a workspace before connecting Google.');
+          return;
+        }
+        var returnPath = window.location.pathname || '/';
+        var res = await fetch(base + '/functions/v1/oauth-google-start', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + sess.access_token,
+            apikey: anon,
+          },
+          body: JSON.stringify({ organization_id: orgId, return_path: returnPath }),
+        });
+        var j = {};
+        try {
+          j = await res.json();
+        } catch (_) {}
+        if (!res.ok || !j.url) {
+          alert(j.error ? String(j.error) : 'Could not start Google sign-in. Deploy oauth-google-start and set GOOGLE_CLIENT_ID, OAUTH_STATE_SECRET, etc.');
+          return;
+        }
+        window.location.href = String(j.url);
       });
-      var j = {};
-      try {
-        j = await res.json();
-      } catch (_) {}
-      if (!res.ok || !j.url) {
-        alert(j.error ? String(j.error) : 'Could not start Google sign-in. Deploy oauth-google-start and set GOOGLE_CLIENT_ID, OAUTH_STATE_SECRET, etc.');
-        return;
-      }
-      window.location.href = String(j.url);
     });
   }
 
@@ -5437,8 +6066,12 @@ var incomePowerState = {
       }
       if (typeof window.nav === 'function') {
         window.nav('settings', document.querySelector('.ni[data-nav="settings"]'));
-        var syncTab = document.getElementById('settings-nav-sync');
-        if (syncTab) syncTab.click();
+        var mcTab = document.getElementById('settings-nav-mail-calendar');
+        if (mcTab) mcTab.click();
+        else {
+        var acctTab = document.getElementById('settings-nav-account');
+        if (acctTab) acctTab.click();
+        }
       }
     } catch (_) {}
   }
@@ -10913,33 +11546,327 @@ var incomePowerState = {
     }
   }
 
+  function userHasEmailPasswordIdentity(user) {
+    if (!user || !Array.isArray(user.identities)) return false;
+    return user.identities.some(function (id) {
+      return id && id.provider === 'email';
+    });
+  }
+
+  var PROFILE_AVATAR_STORAGE_KEY = 'bizdash.profileAvatarDataUrl';
+
+  function syncProfileTimezoneOptionsFromMain() {
+    ensurePreferenceTimezoneOptionsBuilt();
+    var main = document.getElementById('pref-timezone');
+    var prof = document.getElementById('profile-pref-timezone');
+    if (!main || !prof) return;
+    prof.innerHTML = main.innerHTML;
+    prof.value = main.value;
+  }
+
+  function syncPrefsToProfilePanel() {
+    var prefs = window.__bizdashPreferences || readPreferencesFromDom();
+    applyPreferencesToForm(prefs);
+    applyPreferencesRuntime(prefs);
+    syncProfileTimezoneOptionsFromMain();
+    var profTz = document.getElementById('profile-pref-timezone');
+    var mainTz = document.getElementById('pref-timezone');
+    if (profTz && mainTz) profTz.value = mainTz.value || prefs.timezone;
+    var wk = document.getElementById('profile-pref-week-start');
+    if (wk) wk.value = prefs.weekStartsMonday ? 'monday' : 'sunday';
+    updateProfileAvatarFallbackLetter();
+  }
+
+  function syncProfilePanelToPrefs() {
+    var pt = document.getElementById('profile-pref-timezone');
+    var pw = document.getElementById('profile-pref-week-start');
+    var auto = document.getElementById('pref-timezone-auto');
+    var wk = document.getElementById('pref-week-starts-mon');
+    var tz = document.getElementById('pref-timezone');
+    if (auto) auto.checked = false;
+    if (tz && pt) tz.value = pt.value;
+    if (wk && pw) wk.checked = pw.value === 'monday';
+  }
+
+  function updateProfileAvatarFallbackLetter() {
+    var fn = document.getElementById('profile-first-name');
+    var em = document.getElementById('profile-primary-email');
+    var fb = document.getElementById('profile-avatar-fallback');
+    var img = document.getElementById('profile-avatar-img');
+    if (img && img.style.display !== 'none' && img.getAttribute('src')) return;
+    var ch = (fn && fn.value && String(fn.value).trim()[0]) || (em && em.value && String(em.value)[0]) || '?';
+    if (fb) fb.textContent = String(ch).toUpperCase();
+  }
+
+  function applyProfileAvatarFromStorage() {
+    var raw = '';
+    try {
+      raw = localStorage.getItem(PROFILE_AVATAR_STORAGE_KEY) || '';
+    } catch (_) {}
+    var img = document.getElementById('profile-avatar-img');
+    var fb = document.getElementById('profile-avatar-fallback');
+    if (img && raw && raw.indexOf('data:image') === 0 && raw.length < 3500000) {
+      img.src = raw;
+      img.style.display = 'block';
+      if (fb) fb.style.display = 'none';
+    } else {
+      if (img) {
+        img.removeAttribute('src');
+        img.style.display = 'none';
+      }
+      if (fb) {
+        fb.style.display = '';
+        updateProfileAvatarFallbackLetter();
+      }
+    }
+  }
+
+  function hydrateProfileFieldsFromUser(user) {
+    var fn = document.getElementById('profile-first-name');
+    var ln = document.getElementById('profile-last-name');
+    var em = document.getElementById('profile-primary-email');
+    if (!fn || !ln) return;
+    if (!user) {
+      fn.value = '';
+      ln.value = '';
+      if (em) em.value = '';
+      applyProfileAvatarFromStorage();
+      updateProfileAvatarFallbackLetter();
+      return;
+    }
+    var meta = user.user_metadata && typeof user.user_metadata === 'object' ? user.user_metadata : {};
+    var first = meta.first_name != null ? String(meta.first_name).trim() : '';
+    var last = meta.last_name != null ? String(meta.last_name).trim() : '';
+    if (!first && !last && meta.full_name) {
+      var parts = String(meta.full_name).trim().split(/\s+/);
+      first = parts[0] || '';
+      last = parts.length > 1 ? parts.slice(1).join(' ') : '';
+    }
+    fn.value = first;
+    ln.value = last;
+    if (em) em.value = user.email ? String(user.email) : '';
+    applyProfileAvatarFromStorage();
+    updateProfileAvatarFallbackLetter();
+  }
+
+  async function persistProfileUserMetadata() {
+    var fnEl = document.getElementById('profile-first-name');
+    var lnEl = document.getElementById('profile-last-name');
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || isDemoDashboardUser()) return;
+    var fn = fnEl ? String(fnEl.value || '').trim() : '';
+    var ln = lnEl ? String(lnEl.value || '').trim() : '';
+    try {
+      var prev = currentUser.user_metadata && typeof currentUser.user_metadata === 'object' ? currentUser.user_metadata : {};
+      var meta = Object.assign({}, prev, { first_name: fn, last_name: ln });
+      var upd = await supabase.auth.updateUser({ data: meta });
+      if (upd && upd.data && upd.data.user) {
+        window.currentUser = upd.data.user;
+        currentUser = upd.data.user;
+      } else {
+        var ref = await supabase.auth.getUser();
+        if (ref && ref.data && ref.data.user) {
+          window.currentUser = ref.data.user;
+          currentUser = ref.data.user;
+        }
+      }
+    } catch (e) {
+      console.warn('persistProfileUserMetadata', e);
+    }
+  }
+
+  function wireProfileSettings() {
+    var root = document.getElementById('page-settings');
+    if (!root || root.getAttribute('data-profile-wired') === '1') return;
+    if (!document.getElementById('profile-first-name')) return;
+    root.setAttribute('data-profile-wired', '1');
+    ensurePreferenceTimezoneOptionsBuilt();
+    syncProfileTimezoneOptionsFromMain();
+
+    var fnInp = document.getElementById('profile-first-name');
+    if (fnInp) fnInp.addEventListener('input', updateProfileAvatarFallbackLetter);
+
+    var uploadBtn = document.getElementById('profile-avatar-upload');
+    var fileInp = document.getElementById('profile-avatar-input');
+    if (uploadBtn && fileInp) {
+      uploadBtn.addEventListener('click', function () {
+        fileInp.click();
+      });
+      fileInp.addEventListener('change', function () {
+        var f = fileInp.files && fileInp.files[0];
+        if (!f) return;
+        if (f.size > 10 * 1024 * 1024) {
+          alert('Please choose an image under 10MB.');
+          fileInp.value = '';
+          return;
+        }
+        var t = String(f.type || '');
+        if (t.indexOf('image/png') !== 0 && t.indexOf('image/jpeg') !== 0 && t.indexOf('image/gif') !== 0) {
+          alert('We only support PNG, JPEG, and GIF images.');
+          fileInp.value = '';
+          return;
+        }
+        var r = new FileReader();
+        r.onload = function () {
+          var data = r.result ? String(r.result) : '';
+          if (data.length > 3200000) {
+            alert('That image is too large to store in the browser. Try a smaller file.');
+            fileInp.value = '';
+            return;
+          }
+          try {
+            localStorage.setItem(PROFILE_AVATAR_STORAGE_KEY, data);
+          } catch (e) {
+            alert('Could not save the image (storage full). Try a smaller file.');
+            fileInp.value = '';
+            return;
+          }
+          applyProfileAvatarFromStorage();
+          fileInp.value = '';
+        };
+        r.onerror = function () {
+          alert('Could not read that file.');
+          fileInp.value = '';
+        };
+        r.readAsDataURL(f);
+      });
+    }
+
+    var editEm = document.getElementById('profile-email-edit');
+    var manageEm = document.getElementById('settings-btn-account-manage-email');
+    if (editEm && manageEm) {
+      editEm.addEventListener('click', function () {
+        manageEm.click();
+      });
+    }
+
+    function bumpPrefsFromProfile() {
+      syncProfilePanelToPrefs();
+      applyPreferencesRuntime(readPreferencesFromDom());
+    }
+    var ptz = document.getElementById('profile-pref-timezone');
+    var pws = document.getElementById('profile-pref-week-start');
+    if (ptz) {
+      ptz.addEventListener('change', bumpPrefsFromProfile);
+    }
+    if (pws) {
+      pws.addEventListener('change', bumpPrefsFromProfile);
+    }
+  }
+
+  function syncUpdateAccountSecurityUi(user) {
+    var emailEl = $('settings-account-email');
+    var emailBtn = $('settings-btn-account-manage-email');
+    var passDesc = $('settings-account-password-desc');
+    var passBtn = $('settings-btn-account-password');
+    var delBtn = $('settings-btn-account-delete');
+    if (!emailEl) return;
+
+    if (!window.supabaseClient) {
+      emailEl.textContent = 'Cloud sign-in is not available in this build.';
+      if (emailBtn) emailBtn.disabled = true;
+      if (passDesc) passDesc.textContent = 'Set a password for your account';
+      if (passBtn) {
+        passBtn.disabled = true;
+        passBtn.textContent = 'Add password';
+      }
+      if (delBtn) delBtn.disabled = true;
+      hydrateProfileFieldsFromUser(window.currentUser || currentUser || null);
+      return;
+    }
+
+    if (!user) {
+      emailEl.textContent = 'Sign in to manage your account.';
+      if (emailBtn) emailBtn.disabled = true;
+      if (passDesc) passDesc.textContent = 'Set a password for your account';
+      if (passBtn) {
+        passBtn.disabled = true;
+        passBtn.textContent = 'Add password';
+      }
+      if (delBtn) delBtn.disabled = true;
+      hydrateProfileFieldsFromUser(null);
+      return;
+    }
+
+    if (isDemoDashboardUser()) {
+      emailEl.textContent = user.email || 'Demo account';
+      if (emailBtn) emailBtn.disabled = true;
+      if (passDesc) passDesc.textContent = 'Not available in demo preview.';
+      if (passBtn) {
+        passBtn.disabled = true;
+        passBtn.textContent = 'Add password';
+      }
+      if (delBtn) delBtn.disabled = true;
+      hydrateProfileFieldsFromUser(user);
+      return;
+    }
+
+    emailEl.textContent = user.email || '—';
+    if (emailBtn) emailBtn.disabled = false;
+    var hasPwd = userHasEmailPasswordIdentity(user);
+    if (passDesc) {
+      passDesc.textContent = hasPwd
+        ? 'Change the password you use with email sign-in.'
+        : 'Set a password for your account so you can sign in with email and password.';
+    }
+    if (passBtn) {
+      passBtn.disabled = false;
+      passBtn.textContent = hasPwd ? 'Change password' : 'Add password';
+    }
+    if (delBtn) delBtn.disabled = false;
+    hydrateProfileFieldsFromUser(user);
+  }
+
+  function refreshAccountSecurityUiFromServer() {
+    var baseUser = window.currentUser || currentUser;
+    var supa = window.supabaseClient || supabase;
+    if (!supa || !baseUser || isDemoDashboardUser()) {
+      syncUpdateAccountSecurityUi(baseUser);
+      return;
+    }
+    supa.auth
+      .getUser()
+      .then(function (res) {
+        var u = res && res.data && res.data.user ? res.data.user : baseUser;
+        syncUpdateAccountSecurityUi(u);
+      })
+      .catch(function () {
+        syncUpdateAccountSecurityUi(baseUser);
+      });
+  }
+
   function refreshCloudSyncStatus() {
     var el = $('settings-cloud-status');
     var syncBtn = $('settings-btn-cloud-sync');
     var authBtn = $('settings-btn-cloud-auth');
     supabase = window.supabaseClient || supabase;
     var user = window.currentUser || currentUser;
-    if (!el) return;
-    if (!window.supabaseClient) {
-      el.textContent = 'Cloud: Supabase not loaded';
-      if (syncBtn) syncBtn.disabled = true;
-      return;
+    try {
+      if (!el) return;
+      if (!window.supabaseClient) {
+        el.textContent = 'Cloud: Supabase not loaded';
+        if (syncBtn) syncBtn.disabled = true;
+        return;
+      }
+      if (!user) {
+        el.textContent = 'Cloud: sign in (gate or below) to sync clients and data across browsers.';
+        if (syncBtn) syncBtn.disabled = true;
+        if (authBtn) authBtn.textContent = 'Sign in';
+        return;
+      }
+      if (isDemoDashboardUser()) {
+        el.textContent = 'Demo mode: sample data only. Tap Exit demo to return to the login screen.';
+        if (syncBtn) syncBtn.disabled = true;
+        if (authBtn) authBtn.textContent = 'Exit demo';
+        return;
+      }
+      el.textContent = 'Cloud: ' + (user.email || 'Signed in') + ' · ' + (clients && clients.length) + ' client(s) in this workspace';
+      if (syncBtn) syncBtn.disabled = false;
+      if (authBtn) authBtn.textContent = 'Sign out';
+    } finally {
+      refreshAccountSecurityUiFromServer();
     }
-    if (!user) {
-      el.textContent = 'Cloud: sign in (gate or below) to sync clients and data across browsers.';
-      if (syncBtn) syncBtn.disabled = true;
-      if (authBtn) authBtn.textContent = 'Sign in';
-      return;
-    }
-    if (isDemoDashboardUser()) {
-      el.textContent = 'Demo mode: sample data only. Tap Exit demo to return to the login screen.';
-      if (syncBtn) syncBtn.disabled = true;
-      if (authBtn) authBtn.textContent = 'Exit demo';
-      return;
-    }
-    el.textContent = 'Cloud: ' + (user.email || 'Signed in') + ' · ' + (clients && clients.length) + ' client(s) in this workspace';
-    if (syncBtn) syncBtn.disabled = false;
-    if (authBtn) authBtn.textContent = 'Sign out';
   }
 
   function openCloudAuthModal() {
@@ -11090,6 +12017,256 @@ var incomePowerState = {
         } catch (err) {
           console.error('cloud modal github', err);
           alert('GitHub sign-in failed.');
+        }
+      });
+    }
+  }
+
+  function wireAccountSecuritySettings() {
+    if (window.__bizdashAccountSecurityWired) return;
+    window.__bizdashAccountSecurityWired = true;
+
+    function showInlineErr(id, msg) {
+      var e = $(id);
+      if (!e) return;
+      if (msg) {
+        e.style.display = 'block';
+        e.textContent = msg;
+      } else {
+        e.style.display = 'none';
+        e.textContent = '';
+      }
+    }
+
+    function openMo(id) {
+      var m = $(id);
+      if (m) m.classList.add('on');
+    }
+    function closeMo(id) {
+      var m = $(id);
+      if (m) m.classList.remove('on');
+    }
+
+    function wireModalBackdrop(modalId, closeFn) {
+      var m = $(modalId);
+      if (!m || m.getAttribute('data-acct-bd') === '1') return;
+      m.setAttribute('data-acct-bd', '1');
+      m.addEventListener('click', function (ev) {
+        if (ev.target === m) closeFn();
+      });
+    }
+
+    wireModalBackdrop('accountEmailModal', function () {
+      closeMo('accountEmailModal');
+    });
+    wireModalBackdrop('accountPasswordModal', function () {
+      closeMo('accountPasswordModal');
+    });
+    wireModalBackdrop('accountDeleteModal', function () {
+      closeMo('accountDeleteModal');
+    });
+
+    var manage = $('settings-btn-account-manage-email');
+    if (manage) {
+      manage.addEventListener('click', function () {
+        var user = window.currentUser || currentUser;
+        if (!user) {
+          openCloudAuthModal();
+          return;
+        }
+        if (isDemoDashboardUser()) return;
+        showInlineErr('account-email-modal-err', '');
+        var inp = $('account-email-new');
+        if (inp) inp.value = '';
+        openMo('accountEmailModal');
+      });
+    }
+
+    var btnEmailCancel = $('btn-account-email-cancel');
+    if (btnEmailCancel) {
+      btnEmailCancel.addEventListener('click', function () {
+        closeMo('accountEmailModal');
+      });
+    }
+    var btnEmailSave = $('btn-account-email-save');
+    if (btnEmailSave) {
+      btnEmailSave.addEventListener('click', async function () {
+        var supa = window.supabaseClient;
+        var inp = $('account-email-new');
+        var email = inp && String(inp.value || '').trim();
+        if (!supa) {
+          showInlineErr('account-email-modal-err', 'Sign-in is not configured.');
+          return;
+        }
+        if (!email) {
+          showInlineErr('account-email-modal-err', 'Enter an email address.');
+          return;
+        }
+        try {
+          var res = await supa.auth.updateUser({ email: email });
+          if (res.error) {
+            showInlineErr('account-email-modal-err', res.error.message || 'Could not update email.');
+            return;
+          }
+          closeMo('accountEmailModal');
+          alert('Check your inbox to confirm the new address if your project requires email verification.');
+          refreshAccountSecurityUiFromServer();
+        } catch (err) {
+          showInlineErr('account-email-modal-err', (err && err.message) || 'Could not update email.');
+        }
+      });
+    }
+
+    var passBtn = $('settings-btn-account-password');
+    if (passBtn) {
+      passBtn.addEventListener('click', function () {
+        var user = window.currentUser || currentUser;
+        if (!user) {
+          openCloudAuthModal();
+          return;
+        }
+        if (isDemoDashboardUser()) return;
+        var hasPwd = userHasEmailPasswordIdentity(user);
+        var title = $('account-password-modal-title');
+        var hint = $('account-password-modal-hint');
+        if (title) title.textContent = hasPwd ? 'Change password' : 'Set password';
+        if (hint) {
+          hint.textContent = hasPwd
+            ? 'Choose a new password for email sign-in.'
+            : 'Choose a strong password. You can still use Google or GitHub sign-in if you have those connected.';
+        }
+        showInlineErr('account-password-modal-err', '');
+        var p1 = $('account-password-new');
+        var p2 = $('account-password-confirm');
+        if (p1) p1.value = '';
+        if (p2) p2.value = '';
+        openMo('accountPasswordModal');
+      });
+    }
+
+    var btnPwCancel = $('btn-account-password-cancel');
+    if (btnPwCancel) {
+      btnPwCancel.addEventListener('click', function () {
+        closeMo('accountPasswordModal');
+      });
+    }
+    var btnPwSave = $('btn-account-password-save');
+    if (btnPwSave) {
+      btnPwSave.addEventListener('click', async function () {
+        var supa = window.supabaseClient;
+        var p1 = $('account-password-new');
+        var p2 = $('account-password-confirm');
+        var pw = p1 && String(p1.value || '');
+        var pw2 = p2 && String(p2.value || '');
+        if (!supa) {
+          showInlineErr('account-password-modal-err', 'Sign-in is not configured.');
+          return;
+        }
+        if (pw.length < 8) {
+          showInlineErr('account-password-modal-err', 'Use at least 8 characters.');
+          return;
+        }
+        if (pw !== pw2) {
+          showInlineErr('account-password-modal-err', 'Passwords do not match.');
+          return;
+        }
+        try {
+          var res = await supa.auth.updateUser({ password: pw });
+          if (res.error) {
+            showInlineErr('account-password-modal-err', res.error.message || 'Could not update password.');
+            return;
+          }
+          closeMo('accountPasswordModal');
+          alert('Your password was updated.');
+          refreshAccountSecurityUiFromServer();
+        } catch (err) {
+          showInlineErr('account-password-modal-err', (err && err.message) || 'Could not update password.');
+        }
+      });
+    }
+
+    var delOpen = $('settings-btn-account-delete');
+    if (delOpen) {
+      delOpen.addEventListener('click', function () {
+        var user = window.currentUser || currentUser;
+        if (!user) {
+          openCloudAuthModal();
+          return;
+        }
+        if (isDemoDashboardUser()) {
+          alert('Exit demo to manage a real account.');
+          return;
+        }
+        showInlineErr('account-delete-modal-err', '');
+        var inp = $('account-delete-confirm-input');
+        if (inp) inp.value = '';
+        openMo('accountDeleteModal');
+      });
+    }
+
+    var btnDelCancel = $('btn-account-delete-cancel');
+    if (btnDelCancel) {
+      btnDelCancel.addEventListener('click', function () {
+        closeMo('accountDeleteModal');
+      });
+    }
+
+    var btnDelGo = $('btn-account-delete-confirm');
+    if (btnDelGo) {
+      btnDelGo.addEventListener('click', async function () {
+        var phrase = String(($('account-delete-confirm-input') && $('account-delete-confirm-input').value) || '').trim();
+        if (phrase !== 'DELETE') {
+          showInlineErr('account-delete-modal-err', 'Type DELETE to confirm.');
+          return;
+        }
+        var base =
+          typeof window.__bizdashSupabaseUrl === 'string' ? window.__bizdashSupabaseUrl.trim().replace(/\/$/, '') : '';
+        var anon =
+          typeof window.__bizdashSupabaseAnonKey === 'string' ? String(window.__bizdashSupabaseAnonKey).trim() : '';
+        var supa = window.supabaseClient;
+        if (!base || !anon || !supa) {
+          showInlineErr('account-delete-modal-err', 'This build is not configured for account deletion.');
+          return;
+        }
+        var sessRes = await supa.auth.getSession();
+        var token = sessRes && sessRes.data && sessRes.data.session && sessRes.data.session.access_token;
+        if (!token) {
+          showInlineErr('account-delete-modal-err', 'Session expired. Sign in again.');
+          return;
+        }
+        btnDelGo.disabled = true;
+        try {
+          var r = await fetch(base + '/auth/v1/user', {
+            method: 'DELETE',
+            headers: {
+              'Content-Type': 'application/json',
+              apikey: anon,
+              Authorization: 'Bearer ' + token,
+            },
+          });
+          if (r.status !== 200 && r.status !== 204) {
+            var t = await r.text();
+            throw new Error(
+              t ||
+                'Could not delete this account from the browser (' +
+                  r.status +
+                  '). Ask your admin to enable user self-deletion or remove the user in Supabase.'
+            );
+          }
+          closeMo('accountDeleteModal');
+          try {
+            await supa.auth.signOut({ scope: 'local' });
+          } catch (_) {}
+          if (typeof window.clearRuntimeDataForAuthChange === 'function') {
+            window.clearRuntimeDataForAuthChange(null);
+          }
+          if (typeof window.__dashboardShowLogin === 'function') {
+            window.__dashboardShowLogin();
+          }
+        } catch (err) {
+          showInlineErr('account-delete-modal-err', (err && err.message) || 'Delete failed.');
+        } finally {
+          btnDelGo.disabled = false;
         }
       });
     }
@@ -12067,6 +13244,11 @@ var incomePowerState = {
     ['setting-name', 'setting-owner', 'setting-email', 'setting-phone', 'setting-address', 'setting-period'].forEach(function (id) {
       setEl(id, '');
     });
+    setEl('profile-first-name', '');
+    setEl('profile-last-name', '');
+    try {
+      localStorage.removeItem(PROFILE_AVATAR_STORAGE_KEY);
+    } catch (_) {}
     setEl('setting-terms', '30');
     setEl('setting-tax', '0');
     var cur = document.getElementById('setting-currency');
@@ -12078,6 +13260,8 @@ var incomePowerState = {
       var el = document.getElementById(id);
       if (el && el.type === 'file') el.value = '';
     });
+    applyPreferencesToForm(getDefaultPreferences());
+    applyPreferencesRuntime(getDefaultPreferences());
   }
 
   function destroyAllWorkspaceCharts() {
@@ -12117,6 +13301,7 @@ var incomePowerState = {
       window.currentOrganizationId = null;
       window.currentOrganizationSlug = null;
       window.currentOrganizationRole = null;
+      window.currentOrganizationDisplayName = null;
     }
     if (!nextUser || nextUser.id !== DEMO_DASHBOARD_USER_ID) {
       setScreenshotNoCloudUpload(false);
@@ -12152,6 +13337,7 @@ var incomePowerState = {
     if (listsFeatureWired) {
       renderListsSidebar();
       renderListsPageGrid();
+      renderChatsSidebar();
     }
     if (typeof window.refreshSidebarWorkspaceChrome === 'function') {
       window.refreshSidebarWorkspaceChrome();
@@ -12393,6 +13579,12 @@ var incomePowerState = {
   };
 
   // Expose so supabase-auth.js can reset state on auth transitions and trigger reload.
+  function reloadCustomersColumnPrefsForCurrentStorageScope() {
+    customersColumnPrefs = loadCustomersColumnPrefs();
+    renderCustomersColumnsPanel();
+    applyCustomersColumnVisibility();
+  }
+  window.bizDashReloadCustomersColumnPrefs = reloadCustomersColumnPrefsForCurrentStorageScope;
   window.clearRuntimeDataForAuthChange = clearRuntimeDataForAuthChange;
   window.initDataFromSupabase = initDataFromSupabase;
   window.loadScreenshotMockData = loadScreenshotMockData;
@@ -12464,6 +13656,47 @@ var incomePowerState = {
       if (r === 'viewer') return 'Viewer';
       if (!r) return '—';
       return String(r).charAt(0).toUpperCase() + String(r).slice(1);
+    }
+    function teamMemberRowsHtml(members, canManage, myRole) {
+      return (members || [])
+        .map(function (m) {
+          var email = m.email || m.user_id || '—';
+          var uid = m.user_id;
+          var isSelf = window.currentUser && window.currentUser.id === uid;
+          var row = '<tr><td>' + esc(email) + '</td><td>' + esc(roleLabel(m.role)) + '</td>';
+          if (canManage) {
+            var roleOpts = myRole === 'owner' ? ['owner', 'admin', 'member', 'viewer'] : ['admin', 'member', 'viewer'];
+            var sel = roleOpts
+              .map(function (r) {
+                return '<option value="' + esc(r) + '"' + (m.role === r ? ' selected' : '') + '>' + esc(roleLabel(r)) + '</option>';
+              })
+              .join('');
+            row +=
+              '<td><select class="fi team-role-select" data-user-id="' +
+              esc(uid) +
+              '" style="min-width:130px;font-size:12px;">' +
+              sel +
+              '</select> ';
+            row += isSelf
+              ? '<span style="color:var(--text3);font-size:11px;">You</span></td>'
+              : '<button type="button" class="btn team-remove-btn" data-user-id="' +
+                esc(uid) +
+                '" style="font-size:11px;padding:4px 8px;">Remove</button></td>';
+          }
+          row += '</tr>';
+          return row;
+        })
+        .join('');
+    }
+    function syncSettingsPeopleFromTeamState(members, canManage, myRole, hintLine) {
+      var cnt = document.getElementById('settings-people-members-count');
+      var stBody = document.getElementById('settings-people-members-tbody');
+      var sh = document.getElementById('settings-people-members-hint');
+      var tha = document.getElementById('settings-people-th-actions');
+      if (cnt) cnt.textContent = String((members && members.length) || 0);
+      if (stBody) stBody.innerHTML = teamMemberRowsHtml(members || [], canManage, myRole);
+      if (sh) sh.textContent = hintLine || '';
+      if (tha) tha.style.display = canManage ? '' : 'none';
     }
     /** Supabase FunctionsFetchError = fetch never completed (not a 4xx/5xx from the function). */
     function formatTeamInvokeError(err) {
@@ -12576,6 +13809,7 @@ var incomePowerState = {
       if (!orgId) {
         hint.textContent = 'Open a workspace URL (path starts with your org slug) to view the team.';
         tbody.innerHTML = '';
+        syncSettingsPeopleFromTeamState([], false, '', '');
         if (inviteCard) inviteCard.style.display = 'none';
         if (pendingCard) pendingCard.style.display = 'none';
         return;
@@ -12584,48 +13818,22 @@ var incomePowerState = {
       if (out.error) {
         hint.textContent = String(out.error);
         tbody.innerHTML = '';
+        syncSettingsPeopleFromTeamState([], false, '', String(out.error));
         if (inviteCard) inviteCard.style.display = 'none';
         if (pendingCard) pendingCard.style.display = 'none';
         return;
       }
       var canManage = !!out.canManage;
       var myRole = out.yourRole || '';
-      hint.textContent = canManage
+      var hintLine = canManage
         ? 'Change roles or remove people from this workspace. Only owners can assign the Owner role.'
         : 'Only workspace admins (Owner or Admin) can change roles or send invites.';
+      hint.textContent = hintLine;
       if (thActions) thActions.style.display = canManage ? '' : 'none';
       if (inviteCard) inviteCard.style.display = canManage ? 'block' : 'none';
       var members = out.members || [];
-      tbody.innerHTML = members
-        .map(function (m) {
-          var email = m.email || m.user_id || '—';
-          var uid = m.user_id;
-          var isSelf = window.currentUser && window.currentUser.id === uid;
-          var row =
-            '<tr><td>' + esc(email) + '</td><td>' + esc(roleLabel(m.role)) + '</td>';
-          if (canManage) {
-            var roleOpts = myRole === 'owner' ? ['owner', 'admin', 'member', 'viewer'] : ['admin', 'member', 'viewer'];
-            var sel = roleOpts
-              .map(function (r) {
-                return '<option value="' + esc(r) + '"' + (m.role === r ? ' selected' : '') + '>' + esc(roleLabel(r)) + '</option>';
-              })
-              .join('');
-            row +=
-              '<td><select class="fi team-role-select" data-user-id="' +
-              esc(uid) +
-              '" style="min-width:130px;font-size:12px;">' +
-              sel +
-              '</select> ';
-            row += isSelf
-              ? '<span style="color:var(--text3);font-size:11px;">You</span></td>'
-              : '<button type="button" class="btn team-remove-btn" data-user-id="' +
-                esc(uid) +
-                '" style="font-size:11px;padding:4px 8px;">Remove</button></td>';
-          }
-          row += '</tr>';
-          return row;
-        })
-        .join('');
+      tbody.innerHTML = teamMemberRowsHtml(members, canManage, myRole);
+      syncSettingsPeopleFromTeamState(members, canManage, myRole, hintLine);
 
       if (canManage && pendingCard) {
         var pi = await invokeTeam({ action: 'pending_invites' });
@@ -12679,6 +13887,7 @@ var incomePowerState = {
             }
             if (resEl) {
               var shareUrl = buildInviteShareUrl(r);
+              if (shareUrl) window.__bizdashLastInviteShareUrl = shareUrl;
               resEl.style.display = 'block';
               resEl.textContent = shareUrl ? 'Share this link: ' + shareUrl : 'Invite created.';
             }
@@ -12706,45 +13915,51 @@ var incomePowerState = {
             await refreshTeamPage();
           });
         }
-        tbody.addEventListener('change', async function (ev) {
-          var t = ev.target;
-          if (!t || !t.classList || !t.classList.contains('team-role-select')) return;
-          var uid = t.getAttribute('data-user-id');
-          var role = t.value;
-          var r = await invokeTeam({ action: 'update_role', userId: uid, role: role });
-          if (r.error) {
-            alert(r.error);
+        function wireTeamMemberTable(host) {
+          if (!host || host.getAttribute('data-team-table-wired') === '1') return;
+          host.setAttribute('data-team-table-wired', '1');
+          host.addEventListener('change', async function (ev) {
+            var t = ev.target;
+            if (!t || !t.classList || !t.classList.contains('team-role-select')) return;
+            var uid = t.getAttribute('data-user-id');
+            var role = t.value;
+            var r = await invokeTeam({ action: 'update_role', userId: uid, role: role });
+            if (r.error) {
+              alert(r.error);
+              await refreshTeamPage();
+              return;
+            }
+          });
+          host.addEventListener('click', async function (ev) {
+            var t = ev.target;
+            if (!t || !t.closest) return;
+            var removeBtn = t.closest('.team-remove-btn');
+            if (!removeBtn) return;
+            var uid = removeBtn.getAttribute('data-user-id');
+            if (!uid) return;
+            if (
+              !confirm(
+                'Are you sure you want to remove this person from the workspace? They will lose access immediately.'
+              )
+            ) {
+              return;
+            }
+            var r = await invokeTeam({ action: 'remove', userId: uid });
+            if (r.error) {
+              alert(r.error);
+              await refreshTeamPage();
+              return;
+            }
+            if (r.ok === false) {
+              alert(r.message || 'Could not remove this member.');
+              await refreshTeamPage();
+              return;
+            }
             await refreshTeamPage();
-            return;
-          }
-        });
-        tbody.addEventListener('click', async function (ev) {
-          var t = ev.target;
-          if (!t || !t.closest) return;
-          var removeBtn = t.closest('.team-remove-btn');
-          if (!removeBtn) return;
-          var uid = removeBtn.getAttribute('data-user-id');
-          if (!uid) return;
-          if (
-            !confirm(
-              'Are you sure you want to remove this person from the workspace? They will lose access immediately.'
-            )
-          ) {
-            return;
-          }
-          var r = await invokeTeam({ action: 'remove', userId: uid });
-          if (r.error) {
-            alert(r.error);
-            await refreshTeamPage();
-            return;
-          }
-          if (r.ok === false) {
-            alert(r.message || 'Could not remove this member.');
-            await refreshTeamPage();
-            return;
-          }
-          await refreshTeamPage();
-        });
+          });
+        }
+        wireTeamMemberTable(tbody);
+        wireTeamMemberTable(document.getElementById('settings-people-members-tbody'));
         var pendingHost = document.getElementById('team-pending-invites-body');
         if (pendingHost) {
           pendingHost.addEventListener('click', async function (ev) {
@@ -12762,7 +13977,226 @@ var incomePowerState = {
         }
       }
     }
+    window.bizdashInvokeTeam = invokeTeam;
     window.refreshTeamPage = refreshTeamPage;
+  }
+
+  function wireWorkspaceSettingsPanel() {
+    var root = document.getElementById('page-settings');
+    if (!root || root.getAttribute('data-workspace-settings-wired') === '1') return;
+    root.setAttribute('data-workspace-settings-wired', '1');
+
+    window.bizdashWorkspacePrefs = window.bizdashWorkspacePrefs || defaultWorkspacePrefs();
+
+    function downloadBlob(filename, blob) {
+      var a = document.createElement('a');
+      a.href = URL.createObjectURL(blob);
+      a.download = filename;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    }
+
+    function exportWorkspaceContentJson() {
+      var oid = getCurrentOrgId();
+      var payload = {
+        exportedAt: new Date().toISOString(),
+        organizationId: oid || null,
+        clients: clients || [],
+        transactions: state && state.transactions ? state.transactions : [],
+        projects: projects || [],
+        invoices: invoices || [],
+        campaigns: campaigns || [],
+        timesheetEntries: timesheetEntries || [],
+      };
+      var blob = new Blob([JSON.stringify(payload, null, 2)], { type: 'application/json;charset=utf-8' });
+      var slug = (window.currentOrganizationSlug || 'workspace').replace(/[^\w.-]+/g, '_');
+      downloadBlob('workspace-export-' + slug + '.json', blob);
+    }
+
+    async function exportMembersCsv() {
+      var fn = typeof window.bizdashInvokeTeam === 'function' ? window.bizdashInvokeTeam : null;
+      if (!fn) {
+        alert('Team features are still loading. Try again in a moment.');
+        return;
+      }
+      var out = await fn({ action: 'list' });
+      if (out.error) {
+        alert(out.error);
+        return;
+      }
+      var rows = out.members || [];
+      var lines = ['email,role,user_id'];
+      rows.forEach(function (m) {
+        var em = String(m.email || '').replace(/"/g, '""');
+        var role = String(m.role || '').replace(/"/g, '""');
+        var uid = String(m.user_id || '').replace(/"/g, '""');
+        lines.push('"' + em + '","' + role + '","' + uid + '"');
+      });
+      var blob = new Blob([lines.join('\n')], { type: 'text/csv;charset=utf-8' });
+      var slug = (window.currentOrganizationSlug || 'members').replace(/[^\w.-]+/g, '_');
+      downloadBlob('workspace-members-' + slug + '.csv', blob);
+    }
+
+    var iconHit = document.getElementById('setting-ws-icon-hit');
+    var iconFile = document.getElementById('setting-ws-icon-file');
+    if (iconHit && iconFile) {
+      iconHit.addEventListener('click', function () {
+        iconFile.click();
+      });
+      iconFile.addEventListener('change', async function () {
+        if (!iconFile.files || !iconFile.files.length) return;
+        var file = iconFile.files[0];
+        if (!file || String(file.type || '').indexOf('image/') !== 0) {
+          alert('Choose an image file.');
+          return;
+        }
+        try {
+          var seg = getCurrentOrgId() || (window.currentUser && window.currentUser.id);
+          var up =
+            typeof window.bizdashUploadBrandAssetFile === 'function'
+              ? await window.bizdashUploadBrandAssetFile(file, seg, 'workspace-icon')
+              : null;
+          var url = up && up.signedUrl ? String(up.signedUrl) : '';
+          if (!url) throw new Error('Upload failed');
+          var ur = document.getElementById('setting-ws-icon-url-value');
+          var em = document.getElementById('setting-ws-icon-emoji-value');
+          if (em) em.value = '';
+          if (ur) ur.value = url;
+          await renderWorkspaceIconPreview();
+          iconFile.value = '';
+        } catch (err) {
+          console.warn(err);
+          alert('Icon upload failed. Check brand-assets storage policies.');
+        }
+      });
+    }
+
+    var emojiBtn = document.getElementById('setting-ws-icon-emoji-btn');
+    if (emojiBtn) {
+      emojiBtn.addEventListener('click', async function () {
+        var raw = window.prompt('Paste an emoji for this workspace (one character recommended)', '🙂');
+        if (raw == null) return;
+        var t = String(raw || '').trim().slice(0, 10);
+        if (!t) return;
+        var ur = document.getElementById('setting-ws-icon-url-value');
+        var em = document.getElementById('setting-ws-icon-emoji-value');
+        if (ur) ur.value = '';
+        if (em) em.value = t;
+        await renderWorkspaceIconPreview();
+      });
+    }
+
+    var clearBtn = document.getElementById('setting-ws-icon-clear');
+    if (clearBtn) {
+      clearBtn.addEventListener('click', async function () {
+        var ur = document.getElementById('setting-ws-icon-url-value');
+        var em = document.getElementById('setting-ws-icon-emoji-value');
+        if (ur) ur.value = '';
+        if (em) em.value = '';
+        await renderWorkspaceIconPreview();
+      });
+    }
+
+    var exContent = document.getElementById('btn-ws-export-content');
+    if (exContent) {
+      exContent.addEventListener('click', function () {
+        if (!getCurrentOrgId()) {
+          alert('Open a workspace URL to export.');
+          return;
+        }
+        exportWorkspaceContentJson();
+      });
+    }
+
+    var exMembers = document.getElementById('btn-ws-export-members');
+    if (exMembers) {
+      exMembers.addEventListener('click', function () {
+        exportMembersCsv();
+      });
+    }
+
+    var copyBtn = document.getElementById('btn-ws-copy-org-id');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', async function () {
+        var oid = getCurrentOrgId();
+        if (!oid) {
+          alert('No workspace ID in this session.');
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(String(oid));
+          var orig = copyBtn.textContent;
+          copyBtn.textContent = 'Copied';
+          window.setTimeout(function () {
+            copyBtn.textContent = orig;
+          }, 1200);
+        } catch (_) {
+          window.prompt('Copy workspace ID:', String(oid));
+        }
+      });
+    }
+
+    var delBtn = document.getElementById('btn-ws-delete-workspace');
+    if (delBtn) {
+      delBtn.addEventListener('click', async function () {
+        if ((window.currentOrganizationRole || '') !== 'owner') {
+          alert('Only the workspace owner can delete this workspace.');
+          return;
+        }
+        var oid = getCurrentOrgId();
+        if (!oid) return;
+        var nm = document.getElementById('setting-ws-name');
+        var label = nm && nm.value ? String(nm.value).trim() : 'this workspace';
+        if (
+          !confirm(
+            'Permanently delete ' +
+              label +
+              '? This removes all workspace data for everyone. This cannot be undone.'
+          )
+        ) {
+          return;
+        }
+        supabase = window.supabaseClient || supabase;
+        if (!supabase) return;
+        try {
+          var rpc = await supabase.rpc('delete_workspace_as_owner', { p_org_id: oid });
+          if (rpc.error) {
+            console.error(rpc.error);
+            alert(
+              String(rpc.error.message || rpc.error).indexOf('schema cache') !== -1 ||
+                String(rpc.error.message || '').indexOf('function') !== -1
+                ? 'Delete is not available until the delete_workspace_as_owner RPC is deployed. See supabase/delete_workspace_organization.sql.'
+                : 'Could not delete workspace: ' + (rpc.error.message || rpc.error)
+            );
+            return;
+          }
+          var payload = rpc.data;
+          if (payload && typeof payload === 'object' && payload.ok === false) {
+            alert(payload.error ? String(payload.error) : 'Could not delete workspace.');
+            return;
+          }
+          alert('Workspace deleted. You will be redirected.');
+          window.location.href = '/';
+        } catch (err) {
+          console.error(err);
+          alert('Delete failed.');
+        }
+      });
+    }
+
+    var nameEl = document.getElementById('setting-ws-name');
+    if (nameEl) {
+      nameEl.addEventListener('input', function () {
+        var exportDesc = document.getElementById('setting-ws-export-content-desc');
+        if (exportDesc) {
+          var nm = String(nameEl.value || '').trim() || 'this workspace';
+          exportDesc.textContent =
+            'Export clients, transactions, projects, invoices, campaigns, and timesheet entries for ' +
+            nm +
+            ' as JSON.';
+        }
+      });
+    }
   }
 
   // ---------- Workspace lists (sidebar + templates modals; localStorage test) ----------
@@ -12968,6 +14402,159 @@ var incomePowerState = {
       });
     });
   }
+
+  var ADVISOR_CHAT_TURNS_CAP = 48;
+
+  function chatsStorageKey() {
+    var u = window.currentUser && window.currentUser.id ? String(window.currentUser.id) : 'guest';
+    var o = getCurrentOrgId() ? String(getCurrentOrgId()) : 'noorg';
+    return 'bizdash:' + u + ':' + o + ':advisor-chats:v1';
+  }
+
+  function loadWorkspaceChats() {
+    try {
+      var raw = localStorage.getItem(chatsStorageKey());
+      var arr = raw ? JSON.parse(raw) : [];
+      return Array.isArray(arr) ? arr : [];
+    } catch (_) {
+      return [];
+    }
+  }
+
+  function saveWorkspaceChats(arr) {
+    try {
+      localStorage.setItem(chatsStorageKey(), JSON.stringify(arr || []));
+    } catch (_) {}
+  }
+
+  function newAdvisorChatId() {
+    return typeof crypto !== 'undefined' && crypto.randomUUID
+      ? crypto.randomUUID()
+      : 'C' + Date.now() + Math.random().toString(36).slice(2, 9);
+  }
+
+  function findWorkspaceChatById(arr, id) {
+    var tid = String(id || '');
+    for (var i = 0; i < arr.length; i++) {
+      if (String(arr[i].id) === tid) return arr[i];
+    }
+    return null;
+  }
+
+  function trimAdvisorTurns(turns) {
+    var t = Array.isArray(turns) ? turns.slice() : [];
+    while (t.length > ADVISOR_CHAT_TURNS_CAP) t.shift();
+    return t;
+  }
+
+  function renderChatsSidebar() {
+    var host = document.getElementById('chats-sb-items');
+    if (!host) return;
+    var chats = loadWorkspaceChats();
+    if (!chats.length) {
+      host.innerHTML = '<div style="font-size:11px;color:var(--text3);padding:4px 10px;">No saved chats</div>';
+      return;
+    }
+    host.innerHTML = chats
+      .slice(0, 8)
+      .map(function (C) {
+        return (
+          '<button type="button" class="lists-sb-item" data-advisor-chat-id="' +
+          escList(C.id) +
+          '">' +
+          escList(C.title || 'Chat') +
+          '</button>'
+        );
+      })
+      .join('');
+    host.querySelectorAll('[data-advisor-chat-id]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var id = btn.getAttribute('data-advisor-chat-id');
+        openAdvisorThreadFromSidebar(id);
+      });
+    });
+  }
+
+  function openAdvisorThreadFromSidebar(threadId) {
+    var chats = loadWorkspaceChats();
+    var L = findWorkspaceChatById(chats, threadId);
+    if (!L || !Array.isArray(L.turns) || !L.turns.length) return;
+    try {
+      sessionStorage.setItem('advisor-active-thread', String(threadId));
+      sessionStorage.setItem('advisor-pending-replay', JSON.stringify(L.turns));
+    } catch (_) {}
+    window.nav('chat', document.querySelector('.ni[data-nav="chat"]'));
+    document.body.classList.remove('mobile-nav-open');
+  }
+
+  window.bizDashStartNewAdvisorSidebarThread = function () {
+    try {
+      sessionStorage.removeItem('advisor-active-thread');
+      sessionStorage.removeItem('advisor-pending-replay');
+    } catch (_) {}
+    if (typeof window.resetAdvisorChatForNewThread === 'function') {
+      window.resetAdvisorChatForNewThread();
+    }
+  };
+
+  window.bizDashAdvisorChatOnUserMessage = function (userLine) {
+    var line = String(userLine || '').trim();
+    if (!line) return;
+    var chats = loadWorkspaceChats();
+    var tid = null;
+    try {
+      tid = sessionStorage.getItem('advisor-active-thread');
+    } catch (_) {}
+    if (!tid) {
+      tid = newAdvisorChatId();
+      try {
+        sessionStorage.setItem('advisor-active-thread', tid);
+      } catch (_) {}
+      var title = line.length > 52 ? line.slice(0, 52) + '…' : line;
+      chats.unshift({
+        id: tid,
+        title: title,
+        updatedAt: new Date().toISOString(),
+        turns: [{ role: 'user', text: line }],
+      });
+    } else {
+      var row = findWorkspaceChatById(chats, tid);
+      if (!row) {
+        var t2 = line.length > 52 ? line.slice(0, 52) + '…' : line;
+        chats.unshift({
+          id: tid,
+          title: t2,
+          updatedAt: new Date().toISOString(),
+          turns: [{ role: 'user', text: line }],
+        });
+      } else {
+        row.turns = trimAdvisorTurns((row.turns || []).concat([{ role: 'user', text: line }]));
+        row.updatedAt = new Date().toISOString();
+        if (!row.title || row.title === 'New chat') {
+          row.title = line.length > 52 ? line.slice(0, 52) + '…' : line;
+        }
+      }
+    }
+    saveWorkspaceChats(chats);
+    renderChatsSidebar();
+  };
+
+  window.bizDashAdvisorChatOnAssistantMessage = function (plainText) {
+    var txt = String(plainText || '').trim();
+    if (!txt) return;
+    var tid = null;
+    try {
+      tid = sessionStorage.getItem('advisor-active-thread');
+    } catch (_) {}
+    if (!tid) return;
+    var chats = loadWorkspaceChats();
+    var row = findWorkspaceChatById(chats, tid);
+    if (!row) return;
+    row.turns = trimAdvisorTurns((row.turns || []).concat([{ role: 'asst', text: txt }]));
+    row.updatedAt = new Date().toISOString();
+    saveWorkspaceChats(chats);
+    renderChatsSidebar();
+  };
 
   function renderListsPageGrid() {
     var grid = document.getElementById('lists-grid');
@@ -13260,6 +14847,32 @@ var incomePowerState = {
       });
     }
 
+    var chatsWrap = document.getElementById('chats-sb-wrap');
+    var chatsToggle = document.getElementById('chats-sb-toggle');
+    if (chatsToggle && chatsWrap) {
+      chatsToggle.addEventListener('click', function () {
+        chatsWrap.classList.toggle('collapsed');
+        chatsToggle.setAttribute('aria-expanded', chatsWrap.classList.contains('collapsed') ? 'false' : 'true');
+      });
+    }
+    var chatsNew = document.getElementById('chats-btn-sidebar-new');
+    if (chatsNew) {
+      chatsNew.addEventListener('click', function () {
+        if (typeof window.bizDashStartNewAdvisorSidebarThread === 'function') {
+          window.bizDashStartNewAdvisorSidebarThread();
+        }
+        window.nav('chat', document.querySelector('.ni[data-nav="chat"]'));
+        document.body.classList.remove('mobile-nav-open');
+      });
+    }
+    var chatsBrowse = document.getElementById('chats-sb-browse');
+    if (chatsBrowse) {
+      chatsBrowse.addEventListener('click', function () {
+        window.nav('chat', document.querySelector('.ni[data-nav="chat"]'));
+        document.body.classList.remove('mobile-nav-open');
+      });
+    }
+
     var closeT = document.getElementById('list-tmpl-close');
     if (closeT) closeT.addEventListener('click', closeListTemplatesModal);
     var scratch = document.getElementById('list-tmpl-scratch');
@@ -13334,6 +14947,7 @@ var incomePowerState = {
 
     renderListsSidebar();
     renderListsPageGrid();
+    renderChatsSidebar();
   }
 
   // ---------- Sidebar top chrome (workspace label + quick actions / search pills) ----------
@@ -13357,8 +14971,10 @@ var incomePowerState = {
     var slug = window.currentOrganizationSlug || parseTenantSlugForChrome();
     var labelEl = document.getElementById('sb-ws-label');
     var monoEl = document.getElementById('sb-ws-mono');
-    var display = slug ? String(slug) : 'Workspace';
-    var letter = slug ? String(slug).trim().charAt(0).toUpperCase() : '?';
+    var dn = window.currentOrganizationDisplayName && String(window.currentOrganizationDisplayName).trim();
+    var display = dn || (slug ? String(slug) : 'Workspace');
+    var letterSource = dn || slug || '';
+    var letter = letterSource ? String(letterSource).trim().charAt(0).toUpperCase() : '?';
     if (labelEl) labelEl.textContent = display;
     if (monoEl) monoEl.textContent = letter;
     var menuMono = document.getElementById('sb-menu-ws-mono');
@@ -13411,6 +15027,7 @@ var incomePowerState = {
   }
 
   window.closeSidebarChromeMenu = closeSidebarChromeMenu;
+  window.openSidebarChromeMenu = openSidebarChromeMenu;
 
   function wireSidebarChrome() {
     if (sidebarChromeWired) return;
@@ -13440,8 +15057,9 @@ var incomePowerState = {
     if (chromeBtn) {
       chromeBtn.addEventListener('click', function (ev) {
         ev.stopPropagation();
-        if (sidebarChromeMenuOpen) closeSidebarChromeMenu();
-        else openSidebarChromeMenu();
+        if (typeof window.openQuickActionsModal === 'function') {
+          window.openQuickActionsModal();
+        }
       });
     }
     if (backdrop) {
@@ -13556,9 +15174,22 @@ var incomePowerState = {
           }, 100);
         },
       },
+      {
+        id: 'chrome-menu',
+        label: 'Workspace & account menu',
+        keys: '',
+        kw: 'sign out logout invite workspace settings new workspace team share link account',
+        run: function () {
+          closeQuickActionsModal();
+          window.setTimeout(function () {
+            if (typeof window.openSidebarChromeMenu === 'function') window.openSidebarChromeMenu();
+          }, 10);
+        },
+      },
       { id: 'go-dash', label: 'Go to Dashboard', keys: '', kw: 'home performance kpi', run: function () { qaGo('dashboard'); } },
       { id: 'go-cust', label: 'Go to Customers', keys: '', kw: 'clients pipeline', run: function () { qaGo('customers'); } },
       { id: 'go-tasks', label: 'Go to Tasks', keys: '', kw: 'todo workflow', run: function () { qaGo('tasks'); } },
+      { id: 'go-eml', label: 'Go to Emails', keys: '', kw: 'mail inbox drafts gmail compose', run: function () { qaGo('emails'); } },
       { id: 'go-inc', label: 'Go to Income', keys: '', kw: 'revenue invoices ar', run: function () { qaGo('revenue'); } },
       { id: 'go-exp', label: 'Go to Expenses', keys: '', kw: 'spend budget vendors', run: function () { qaGo('expenses'); } },
       { id: 'go-ts', label: 'Go to Timesheet', keys: '', kw: 'hours time', run: function () { qaGo('timesheet'); } },
@@ -13578,7 +15209,7 @@ var incomePowerState = {
       { id: 'go-ins', label: 'Go to Insights', keys: '', kw: 'analytics forecast', run: function () { qaGo('insights'); } },
       { id: 'go-adv', label: 'Open Advisor', keys: '', kw: 'ai chat copilot assistant', run: function () { qaGo('chat'); } },
       { id: 'go-team', label: 'Go to Your team', keys: '', kw: 'invite members', run: function () { qaGo('team'); } },
-      { id: 'go-set', label: 'Open Settings', keys: '', kw: 'preferences profile branding', run: function () { qaGo('settings'); } },
+      { id: 'go-set', label: 'Open Settings', keys: '', kw: 'preferences profile branding mail calendar gmail google', run: function () { qaGo('settings'); } },
       {
         id: 'workspaces',
         label: 'Switch workspace…',
@@ -13720,6 +15351,8 @@ var incomePowerState = {
       m.classList.remove('on');
       m.setAttribute('aria-hidden', 'true');
     }
+    var cb = document.getElementById('btn-sb-chrome-menu');
+    if (cb) cb.setAttribute('aria-expanded', 'false');
   }
 
   function renderQuickActionsList() {
@@ -13787,6 +15420,8 @@ var incomePowerState = {
     if (inp && opts.preserveQuery !== true) inp.value = '';
     m.classList.add('on');
     m.setAttribute('aria-hidden', 'false');
+    var cb = document.getElementById('btn-sb-chrome-menu');
+    if (cb) cb.setAttribute('aria-expanded', 'true');
     renderQuickActionsList();
     window.setTimeout(function () {
       if (inp) inp.focus();
@@ -13812,6 +15447,16 @@ var incomePowerState = {
 
     window.openQuickActionsModal = openQuickActionsModal;
     window.closeQuickActionsModal = closeQuickActionsModal;
+
+    var qaKbdMeta = document.getElementById('qa-search-meta-kbd');
+    if (qaKbdMeta) {
+      try {
+        var macQa =
+          /Mac|iPhone|iPad|iPod/i.test(navigator.platform || '') ||
+          (typeof navigator.userAgent === 'string' && navigator.userAgent.includes('Mac OS'));
+        qaKbdMeta.textContent = macQa ? '⌘K' : 'Ctrl+K';
+      } catch (_) {}
+    }
 
     var m = document.getElementById('quickActionsModal');
     if (m) {
@@ -13875,6 +15520,266 @@ var incomePowerState = {
     });
   }
 
+  function wireReferEarnSettingsUi() {
+    var root = document.getElementById('page-settings');
+    if (!root || root.getAttribute('data-refer-earn-wired') === '1') return;
+    if (!document.getElementById('settings-refer-url')) return;
+    root.setAttribute('data-refer-earn-wired', '1');
+
+    function compassReferralToken() {
+      var slug = typeof window.currentOrganizationSlug === 'string' ? window.currentOrganizationSlug.trim() : '';
+      var oid = typeof getCurrentOrgId === 'function' ? String(getCurrentOrgId() || '') : '';
+      var uid = window.currentUser && window.currentUser.id ? String(window.currentUser.id) : '';
+      var seed = slug + '|' + oid + '|' + uid;
+      var h = 2166136261;
+      for (var i = 0; i < seed.length; i++) {
+        h ^= seed.charCodeAt(i);
+        h += (h << 1) + (h << 4) + (h << 7) + (h << 8) + (h << 24);
+      }
+      var pos = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789';
+      var out = '';
+      var x = Math.abs(h | 0);
+      for (var j = 0; j < 22; j++) {
+        out += pos.charAt(x % 62);
+        x = Math.floor(x / 62) + j * 31;
+        if (x < 1) x = (h ^ j * 17) >>> 0;
+      }
+      return out.slice(0, 7) + '-' + out.slice(7, 15) + out.slice(15, 22);
+    }
+
+    function compassReferralUrl() {
+      return 'https://compass.com/?r=' + encodeURIComponent(compassReferralToken());
+    }
+
+    function compassReferralMessage(url) {
+      return (
+        "Hey, we've been using Compass for our team. If you want to check it out, here's my link to get 10% off your first year: " +
+        url
+      );
+    }
+
+    function refreshReferEarnPanel() {
+      var url = compassReferralUrl();
+      var inp = document.getElementById('settings-refer-url');
+      var msgEl = document.getElementById('settings-refer-message-text');
+      if (inp) inp.value = url;
+      if (msgEl) msgEl.textContent = compassReferralMessage(url);
+    }
+    window.refreshReferEarnPanel = refreshReferEarnPanel;
+
+    root.addEventListener('click', function (ev) {
+      var t = ev.target;
+      if (t && t.id === 'settings-refer-learn') {
+        ev.preventDefault();
+        alert(
+          'Compass rewards: when someone starts a paid workspace through your referral link, you can earn account credit. Program details will be published before billing goes live—share your link to give teams 10% off their first year.'
+        );
+      }
+    });
+
+    var terms = document.getElementById('settings-refer-terms-btn');
+    if (terms) {
+      terms.addEventListener('click', function () {
+        alert(
+          'Compass referral terms: the 10% first-year discount applies to new workspaces that sign up through a valid referral link and take a qualifying paid plan. Referrer rewards follow Compass program rules. Full Terms & Conditions will be posted before charges apply.'
+        );
+      });
+    }
+
+    var copyLink = document.getElementById('settings-refer-copy-link');
+    var copyMsg = document.getElementById('settings-refer-copy-message');
+    var copyLinkHtml = copyLink ? copyLink.innerHTML : '';
+    var copyMsgHtml = copyMsg ? copyMsg.innerHTML : '';
+
+    if (copyLink) {
+      copyLink.addEventListener('click', async function () {
+        var inp = document.getElementById('settings-refer-url');
+        var text = inp && inp.value ? String(inp.value).trim() : compassReferralUrl();
+        try {
+          await navigator.clipboard.writeText(text);
+          copyLink.textContent = 'Copied!';
+          setTimeout(function () {
+            copyLink.innerHTML = copyLinkHtml;
+          }, 1500);
+        } catch (_) {
+          prompt('Copy this link:', text);
+        }
+      });
+    }
+
+    if (copyMsg) {
+      copyMsg.addEventListener('click', async function () {
+        refreshReferEarnPanel();
+        var msgEl = document.getElementById('settings-refer-message-text');
+        var text = msgEl ? msgEl.textContent || '' : '';
+        if (!text) return;
+        try {
+          await navigator.clipboard.writeText(text);
+          copyMsg.textContent = 'Copied!';
+          setTimeout(function () {
+            copyMsg.innerHTML = copyMsgHtml;
+          }, 1500);
+        } catch (_) {
+          prompt('Copy this message:', text);
+        }
+      });
+    }
+
+    refreshReferEarnPanel();
+  }
+
+  function wirePeopleSettingsUi() {
+    var root = document.getElementById('page-settings');
+    if (!root || root.getAttribute('data-people-ui-wired') === '1') return;
+    if (!document.getElementById('settings-people-tab-guests')) return;
+    root.setAttribute('data-people-ui-wired', '1');
+
+    function goTeam() {
+      var t = document.querySelector('.ni[data-nav="team"]');
+      if (typeof window.nav === 'function') window.nav('team', t || null);
+    }
+
+    root.addEventListener('click', function (ev) {
+      var t = ev.target;
+      if (t && t.id === 'settings-people-learn-inline') {
+        ev.preventDefault();
+        goTeam();
+      }
+    });
+
+    var dir = document.getElementById('settings-people-directory-link');
+    if (dir) {
+      dir.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        goTeam();
+      });
+    }
+
+    var regen = document.getElementById('settings-people-regen-link');
+    if (regen) {
+      regen.addEventListener('click', function (ev) {
+        ev.preventDefault();
+        goTeam();
+      });
+    }
+
+    var invToggle = document.getElementById('settings-people-invite-enabled');
+    var LS_KEY = 'bizdash.settings.inviteLinkEnabled';
+    if (invToggle) {
+      var saved = localStorage.getItem(LS_KEY);
+      if (saved === '0') invToggle.checked = false;
+      invToggle.addEventListener('change', function () {
+        localStorage.setItem(LS_KEY, invToggle.checked ? '1' : '0');
+      });
+    }
+
+    var copyBtn = document.getElementById('settings-people-copy-link');
+    if (copyBtn) {
+      copyBtn.addEventListener('click', async function () {
+        if (invToggle && !invToggle.checked) {
+          alert('Turn on the invite link toggle to copy a shareable link.');
+          return;
+        }
+        var u = typeof window.__bizdashLastInviteShareUrl === 'string' ? window.__bizdashLastInviteShareUrl.trim() : '';
+        if (!u) {
+          alert(
+            'No invite link yet. On Your team, enter an email and choose Create invite link—then you can copy that URL here.'
+          );
+          return;
+        }
+        try {
+          await navigator.clipboard.writeText(u);
+          var orig = copyBtn.textContent;
+          copyBtn.textContent = 'Copied!';
+          setTimeout(function () {
+            copyBtn.textContent = orig;
+          }, 1500);
+        } catch (_) {
+          prompt('Copy this link:', u);
+        }
+      });
+    }
+
+    var pills = root.querySelectorAll('.settings-people-pill[data-people-sub]');
+    var subGuests = document.getElementById('settings-people-sub-guests');
+    var subMembers = document.getElementById('settings-people-sub-members');
+    var subGroups = document.getElementById('settings-people-sub-groups');
+    var subContacts = document.getElementById('settings-people-sub-contacts');
+    var subs = { guests: subGuests, members: subMembers, groups: subGroups, contacts: subContacts };
+    pills.forEach(function (p) {
+      p.addEventListener('click', function () {
+        var id = p.getAttribute('data-people-sub');
+        pills.forEach(function (x) {
+          var on = x === p;
+          x.classList.toggle('on', on);
+          x.setAttribute('aria-selected', on ? 'true' : 'false');
+        });
+        Object.keys(subs).forEach(function (k) {
+          var el = subs[k];
+          if (el) el.hidden = k !== id;
+        });
+      });
+    });
+
+    var searchBtn = document.getElementById('settings-people-search-trigger');
+    var searchWrap = document.getElementById('settings-people-search-wrap');
+    var searchInp = document.getElementById('settings-people-search-input');
+    if (searchBtn && searchWrap) {
+      searchBtn.addEventListener('click', function () {
+        var hidden =
+          searchWrap.style.display === 'none' ||
+          (searchWrap.style.display === '' && window.getComputedStyle(searchWrap).display === 'none');
+        searchWrap.style.display = hidden ? 'block' : 'none';
+        var memTab = document.getElementById('settings-people-tab-members');
+        if (memTab) memTab.click();
+        if (hidden && searchInp) searchInp.focus();
+      });
+    }
+    if (searchInp) {
+      searchInp.addEventListener('input', function () {
+        var q = (searchInp.value || '').trim().toLowerCase();
+        var stBody = document.getElementById('settings-people-members-tbody');
+        if (!stBody) return;
+        stBody.querySelectorAll('tr').forEach(function (tr) {
+          var txt = tr.textContent || '';
+          tr.style.display = !q || txt.toLowerCase().indexOf(q) !== -1 ? '' : 'none';
+        });
+      });
+    }
+
+    var addBtn = document.getElementById('settings-people-add-main');
+    var menu = document.getElementById('settings-people-add-menu');
+    if (addBtn && menu) {
+      addBtn.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        var next = menu.hasAttribute('hidden');
+        if (next) menu.removeAttribute('hidden');
+        else menu.setAttribute('hidden', '');
+        addBtn.setAttribute('aria-expanded', next ? 'true' : 'false');
+      });
+      menu.querySelectorAll('.settings-people-menu-item').forEach(function (item) {
+        item.addEventListener('click', function (ev) {
+          ev.preventDefault();
+          menu.setAttribute('hidden', '');
+          addBtn.setAttribute('aria-expanded', 'false');
+          goTeam();
+        });
+      });
+      document.addEventListener('click', function (ev) {
+        if (!menu.hasAttribute('hidden') && addBtn && !addBtn.contains(ev.target) && !menu.contains(ev.target)) {
+          menu.setAttribute('hidden', '');
+          addBtn.setAttribute('aria-expanded', 'false');
+        }
+      });
+    }
+
+    var imp = document.getElementById('settings-people-import-contacts');
+    if (imp) imp.addEventListener('click', function () { goTeam(); });
+
+    var openFromContacts = document.getElementById('settings-people-open-team-from-contacts');
+    if (openFromContacts) openFromContacts.addEventListener('click', function () { goTeam(); });
+  }
+
   function init() {
     state.filter = { mode: 'all', start: null, end: null };
     wireTransactionForm();
@@ -13892,6 +15797,10 @@ var incomePowerState = {
     wireSpendingReport();
     wireSettingsSave();
     wireSettingsShell();
+    wireReferEarnSettingsUi();
+    wirePeopleSettingsUi();
+    wireProfileSettings();
+    wireAccountSecuritySettings();
     wireGoogleOAuthInSettings();
     wirePersonableActions();
     wireCloudSyncPanel();
@@ -13901,7 +15810,9 @@ var incomePowerState = {
       window.wireDashboardAssistant();
     }
     wireTeamPage();
+    wireWorkspaceSettingsPanel();
     wireTasksTab();
+    wireEmailsPage();
     wireListsFeature();
     wireQuickActionsPalette();
     wireSidebarChrome();
@@ -13926,8 +15837,24 @@ var incomePowerState = {
         var chatPg = document.getElementById('page-chat');
         if (chatPg) chatPg.classList.remove('chat-compose-docked');
       }
-      if (pageId === 'chat' && typeof window.seedDashboardChatWelcome === 'function') {
-        window.seedDashboardChatWelcome();
+      if (pageId === 'chat') {
+        var didReplay = false;
+        try {
+          var rawReplay = sessionStorage.getItem('advisor-pending-replay');
+          if (rawReplay) {
+            sessionStorage.removeItem('advisor-pending-replay');
+            var turns = JSON.parse(rawReplay);
+            if (Array.isArray(turns) && turns.length && typeof window.replayAdvisorChatTurns === 'function') {
+              didReplay = true;
+              window.setTimeout(function () {
+                window.replayAdvisorChatTurns(turns);
+              }, 60);
+            }
+          }
+        } catch (_) {}
+        if (!didReplay && typeof window.seedDashboardChatWelcome === 'function') {
+          window.seedDashboardChatWelcome();
+        }
       }
 
       // Sidebar active state
@@ -13946,6 +15873,7 @@ var incomePowerState = {
           dashboard: 'Business Performance',
           customers: 'Customers',
           tasks: 'Tasks',
+          emails: 'Emails',
           revenue: 'Income',
           expenses: 'Expenses',
           timesheet: 'Timesheet',

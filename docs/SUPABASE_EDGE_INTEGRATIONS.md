@@ -1,8 +1,10 @@
-# Supabase Edge Functions: Gmail (Google) integration
+# Supabase Edge Functions: Gmail & Google Calendar (Google) integration
 
-This project stores Google OAuth tokens for **Gmail** in `public.integration_credentials` (see `supabase/integration_credentials.sql`). Only Edge Functions using the **service role** key should read or write that table.
+> **This file is documentation, not SQL.** Do not paste this whole page into the Supabase SQL Editor — lines starting with `#` are Markdown headings and produce `ERROR: 42601: syntax error at or near "#"`. For database setup, run only the **`.sql` files** listed under [Database](#database) (open each file in the repo, copy its contents, run in the SQL editor).
 
-If you later add Microsoft (Graph, Outlook, etc.), use the `oauth-microsoft-*` functions and Azure redirect URIs documented in git history or re-add a short “Microsoft” section; this doc assumes **Gmail only**.
+This project stores Google OAuth tokens for **Gmail and Google Calendar** in `public.integration_credentials` (see `supabase/integration_credentials.sql`). Only Edge Functions using the **service role** key should read or write that table.
+
+If you later add Microsoft (Graph, Outlook, etc.), use the `oauth-microsoft-*` functions and Azure redirect URIs documented in git history or re-add a short “Microsoft” section; this doc assumes **Google only**.
 
 ## Google Cloud: redirect URI
 
@@ -22,15 +24,16 @@ http://127.0.0.1:54321/functions/v1/oauth-google-callback
 
 If you set **`GOOGLE_REDIRECT_URI`** in Supabase secrets, it must match one of these entries **exactly**.
 
-## Google Cloud: Gmail API and scopes
+## Google Cloud: Gmail API, Calendar API, and scopes
 
-1. **APIs & services** → **Library** → enable **Gmail API** (and keep **Google+** / People if you rely on `userinfo`; OpenID userinfo is standard).
+1. **APIs & services** → **Library** → enable **Gmail API** and **Google Calendar API** (OpenID `userinfo.email` is standard).
 2. **OAuth consent screen**: add the scopes your app requests. Defaults in `oauth-google-start` are:
    - `openid`
    - `https://www.googleapis.com/auth/userinfo.email`
    - `https://www.googleapis.com/auth/gmail.readonly`
-   - `https://www.googleapis.com/auth/gmail.send`  
-   Narrow or widen with secret **`GOOGLE_OAUTH_SCOPES`** (space-separated). If you only send mail and never read threads, you can drop `gmail.readonly` via that env var.
+   - `https://www.googleapis.com/auth/gmail.send`
+   - `https://www.googleapis.com/auth/calendar.readonly`  
+   Narrow or widen with secret **`GOOGLE_OAUTH_SCOPES`** (space-separated). For example, you can drop `gmail.readonly` or `calendar.readonly` if your deployment does not need them.
 
 ## Supabase invoke URL pattern
 
@@ -42,7 +45,7 @@ https://<PROJECT_REF>.supabase.co/functions/v1/<function-name>
 
 **Usually auto-provided on hosted Edge:** `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`.
 
-**Required for Gmail OAuth**
+**Required for Google OAuth (Gmail / Calendar)**
 
 | Secret | Purpose |
 |--------|--------|
@@ -55,13 +58,13 @@ https://<PROJECT_REF>.supabase.co/functions/v1/<function-name>
 
 | Secret | Purpose |
 |--------|--------|
-| `GOOGLE_OAUTH_SCOPES` | Overrides default Gmail scopes (space-separated). |
+| `GOOGLE_OAUTH_SCOPES` | Overrides default Gmail + Calendar scopes (space-separated). |
 | `GOOGLE_REDIRECT_URI` | Overrides derived callback URL (must match Google Console). |
 | `DASHBOARD_ALLOWED_ORIGINS` | CORS for browser calls to `oauth-google-start` (see `_shared/cors.ts`). |
 | `INTEGRATION_TOKEN_ENCRYPTION_KEY` | AES-256-GCM on refresh tokens before DB write (`_shared/tokenCrypto.ts`). |
 | `INTEGRATION_WORKER_SECRET` | Protects `integration-worker` (cron / server callers). |
 
-Example (Gmail only):
+Example:
 
 ```bash
 supabase secrets set \
@@ -72,13 +75,13 @@ supabase secrets set \
   INTEGRATION_WORKER_SECRET="$(openssl rand -base64 32)"
 ```
 
-## Deploy (Gmail path)
+## Deploy (Google OAuth + Gmail send)
 
 ```bash
-supabase functions deploy oauth-google-start oauth-google-callback integration-worker
+supabase functions deploy oauth-google-start oauth-google-callback gmail-send integration-worker
 ```
 
-`supabase/config.toml` sets `verify_jwt = false` on **`oauth-google-callback`** and **`integration-worker`** so the provider and cron do not send a Supabase JWT. **`oauth-google-start`** keeps JWT verification (user must be signed in).
+`supabase/config.toml` sets `verify_jwt = false` on **`oauth-google-callback`** and **`integration-worker`** so the provider and cron do not send a Supabase JWT. **`oauth-google-start`** and **`gmail-send`** use JWT verification (caller must be a signed-in Supabase user).
 
 ## Dashboard flow
 
@@ -87,14 +90,22 @@ supabase functions deploy oauth-google-start oauth-google-callback integration-w
 3. Google redirects to **`oauth-google-callback`** with `code` and `state`.
 4. Callback stores tokens and redirects to `APP_SITE_URL` + `return_path` (default `/settings/integrations`) with query `oauth=ok` or `oauth=error`.
 
+## Send email (Emails tab)
+
+After Google is connected for the workspace, the dashboard calls **`gmail-send`** with the same `Authorization` + `apikey` headers as other Edge invokes. POST JSON body: `organization_id` (UUID), `to` (single recipient email), `subject`, `body` (plain text). The function loads `integration_credentials` with the **service role**, refreshes the Google access token if needed, and calls Gmail **`users.messages.send`**. No extra secrets beyond **`GOOGLE_CLIENT_ID`** / **`GOOGLE_CLIENT_SECRET`** (already required for OAuth). Deploy **`gmail-send`** whenever you change its code.
+
 ## Cron / schedules
 
 Invoke **`integration-worker`** on a schedule with header `x-integration-worker-secret: <INTEGRATION_WORKER_SECRET>` or `Authorization: Bearer <same>`. See `supabase/cron_integration_worker.sql` for a commented `pg_cron` example.
 
 ## Database
 
-1. `supabase/organizations_multitenancy.sql`
-2. `supabase/integration_credentials.sql`
+In the Supabase dashboard, use **SQL → New query**. Paste and run **one file at a time** from your repo (not this `.md` file):
+
+1. **`supabase/organizations_multitenancy.sql`** — open the file, copy all, run once.  
+2. **`supabase/integration_credentials.sql`** — copy all, run once (depends on `organizations` from step 1).
+
+If a file errors because objects already exist, read the message: you may have partially applied migrations already; fix forward or adjust only the failing statements with help from your team.
 
 ## Vault (optional)
 

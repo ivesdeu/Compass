@@ -423,3 +423,7 @@ verify_jwt = false
 # Cron / external scheduler; authenticates with INTEGRATION_WORKER_SECRET header or Bearer.
 [functions.integration-worker]
 verify_jwt = false
+
+# Send email via stored Google tokens; caller must present Supabase user JWT.
+[functions.gmail-send]
+verify_jwt = true

@@ -433,6 +433,20 @@
     return ADVISOR_TASKS.general;
   }
 
+  function advisorPayloadToPlainText(payload) {
+    var p = payload || {};
+    var parts = [];
+    if (p.title) parts.push(String(p.title));
+    if (Array.isArray(p.bullets) && p.bullets.length) {
+      p.bullets.forEach(function (b) {
+        parts.push('• ' + String(b));
+      });
+    }
+    if (p.draft) parts.push(String(p.draft));
+    if (!parts.length && p.text) parts.push(String(p.text));
+    return parts.join('\n').trim();
+  }
+
   function renderAdvisorPayload(el, payload) {
     if (!el) return;
     while (el.firstChild) el.removeChild(el.firstChild);
@@ -1027,6 +1041,13 @@
 
       var userLine = t || '(Image attached)';
       appendBubble(logEl, 'user', userLine);
+      if (typeof window.bizDashAdvisorChatOnUserMessage === 'function') {
+        try {
+          window.bizDashAdvisorChatOnUserMessage(userLine);
+        } catch (e0) {
+          if (typeof console !== 'undefined' && console.warn) console.warn('bizDashAdvisorChatOnUserMessage', e0);
+        }
+      }
 
       ta.value = '';
       autoResizeTa();
@@ -1107,6 +1128,18 @@
       if (usageMeta) appendFeedbackControls(thinkingEl, usageMeta);
       pendingTask = null;
 
+      var plainAsst = '';
+      try {
+        plainAsst = advisorPayloadToPlainText(out && out.response ? out.response : {});
+      } catch (_) {}
+      if (plainAsst && typeof window.bizDashAdvisorChatOnAssistantMessage === 'function') {
+        try {
+          window.bizDashAdvisorChatOnAssistantMessage(plainAsst);
+        } catch (e1) {
+          if (typeof console !== 'undefined' && console.warn) console.warn('bizDashAdvisorChatOnAssistantMessage', e1);
+        }
+      }
+
       logEl.scrollTop = logEl.scrollHeight;
       isThinking = false;
       syncSendDisabled();
@@ -1165,5 +1198,38 @@
     };
 
     window.seedDashboardChatWelcome = seedWelcome;
+
+    window.resetAdvisorChatForNewThread = function () {
+      if (!logEl) return;
+      logEl.innerHTML = '';
+      seeded = false;
+      isThinking = false;
+      pendingTask = null;
+      if (ta) {
+        ta.value = '';
+        autoResizeTa();
+      }
+      setImagePreview(null);
+      setSelectedTool(null);
+      setToolsOpen(false);
+      syncSendDisabled();
+      seedWelcome();
+    };
+
+    window.replayAdvisorChatTurns = function (turns) {
+      if (!logEl) return;
+      logEl.innerHTML = '';
+      seeded = true;
+      isThinking = false;
+      pendingTask = null;
+      (Array.isArray(turns) ? turns : []).forEach(function (row) {
+        if (!row) return;
+        var r = row.role;
+        var txt = row.text != null ? String(row.text) : '';
+        if (r === 'user' || r === 'asst') appendBubble(logEl, r, txt);
+      });
+      logEl.scrollTop = logEl.scrollHeight;
+      syncSendDisabled();
+    };
   };
 })();
