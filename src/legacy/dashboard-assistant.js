@@ -578,16 +578,23 @@
 
     var imagePreview = null;
     var selectedTool = null;
-    var docked = true;
-    if (pageChat) pageChat.classList.add('chat-compose-docked');
 
-    function setComposeDocked(on) {
-      if (!pageChat || !composerStack) return;
-      var next = true;
-      if (next === docked) return;
-      docked = next;
-      pageChat.classList.toggle('chat-compose-docked', next);
+    function advisorHasUserMessages() {
+      return !!(logEl && logEl.querySelector('.chat-msg.user'));
     }
+
+    function syncAdvisorComposerLayout() {
+      if (!pageChat) return;
+      if (advisorHasUserMessages()) {
+        pageChat.classList.remove('chat-advisor-centered');
+        pageChat.classList.add('chat-compose-docked');
+      } else {
+        pageChat.classList.add('chat-advisor-centered');
+        pageChat.classList.remove('chat-compose-docked');
+      }
+    }
+
+    window.bizDashSyncAdvisorComposerLayout = syncAdvisorComposerLayout;
 
     function syncSendDisabled() {
       var has = ta.value.trim().length > 0 || !!imagePreview;
@@ -632,14 +639,10 @@
     }
 
     ta.addEventListener('input', function () {
-      if ((ta.value || '').trim()) setComposeDocked(true);
       syncSendDisabled();
       autoResizeTa();
     });
 
-    ta.addEventListener('focus', function () {
-      setComposeDocked(true);
-    });
     ta.addEventListener('blur', function () {});
 
     if (promptBox) {
@@ -736,7 +739,6 @@
         if (lightbox && !lightbox.hidden) closeLightbox();
         if (document.activeElement === ta) {
           ta.blur();
-          if (!(ta.value || '').trim()) setComposeDocked(false);
         }
       }
     });
@@ -1041,6 +1043,7 @@
 
       var userLine = t || '(Image attached)';
       appendBubble(logEl, 'user', userLine);
+      syncAdvisorComposerLayout();
       if (typeof window.bizDashAdvisorChatOnUserMessage === 'function') {
         try {
           window.bizDashAdvisorChatOnUserMessage(userLine);
@@ -1185,6 +1188,7 @@
       }
       if (typeof window.nav === 'function') window.nav('chat', null);
       seedWelcome();
+      syncAdvisorComposerLayout();
       var c = contactRequest && typeof contactRequest === 'object' ? contactRequest : {};
       var company = String(c.companyName || '').trim();
       var contact = String(c.contactName || '').trim();
@@ -1214,6 +1218,7 @@
       setToolsOpen(false);
       syncSendDisabled();
       seedWelcome();
+      syncAdvisorComposerLayout();
     };
 
     window.replayAdvisorChatTurns = function (turns) {
@@ -1230,6 +1235,8 @@
       });
       logEl.scrollTop = logEl.scrollHeight;
       syncSendDisabled();
+      syncAdvisorComposerLayout();
     };
+    syncAdvisorComposerLayout();
   };
 })();

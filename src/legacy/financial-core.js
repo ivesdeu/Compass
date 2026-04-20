@@ -4987,6 +4987,21 @@
 
   function stagePageMotion(container) {
     if (!container || prefersReducedMotion()) return;
+    /** Advisor: stagger header → transcript → composer (same motion tokens as other pages). */
+    if (container.id === 'page-chat') {
+      var chatParts = container.querySelectorAll(
+        '.chat-shell-header, .chat-transcript, .chat-composer-stack'
+      );
+      for (var c = 0; c < chatParts.length; c += 1) {
+        var ch = chatParts[c];
+        ch.classList.remove('motion-in');
+        ch.classList.add('motion-item');
+        ch.style.setProperty('--motion-delay', String(Math.min(c * 42, 220)) + 'ms');
+        void ch.offsetWidth;
+        ch.classList.add('motion-in');
+      }
+      return;
+    }
     var selectors =
       '.ph, .kg .kc, .card, .ts-kpi, .bva-row, .dt tbody tr, ' +
       '.tasks-attio-hdr, .tasks-attio-toolbar, .tasks-learn, #tasks-tab-empty.on, ' +
@@ -5302,6 +5317,24 @@ var incomePowerState = {
     renderSettingsPagesPanel();
   }
 
+  /** SVG markup for each sidebar page (matches `.sb .ni[data-nav]` in index.html). */
+  function getSidebarNavPageIconSvg(navId) {
+    try {
+      var id = String(navId || '').trim();
+      if (!id) return '';
+      var ni = document.querySelector('#app-shell .sb .ni[data-nav="' + id + '"]');
+      if (!ni) return '';
+      var first = ni.firstElementChild;
+      var svg =
+        first && first.tagName && String(first.tagName).toLowerCase() === 'svg'
+          ? first
+          : ni.querySelector('svg');
+      return svg ? svg.outerHTML : '';
+    } catch (_) {
+      return '';
+    }
+  }
+
   function renderSettingsPagesPanel() {
     var listEl = document.getElementById('settings-pages-visible-list');
     var sel = document.getElementById('settings-pages-add-select');
@@ -5315,10 +5348,14 @@ var incomePowerState = {
     listEl.innerHTML = visibleRows.length
       ? visibleRows
           .map(function (def) {
+            var ic = getSidebarNavPageIconSvg(def.id);
             return (
               '<div class="settings-pages-row">' +
-              '<span class="settings-pages-row-label">' +
+              '<span class="settings-pages-row-label settings-pages-row-label-with-ico">' +
+              (ic ? '<span class="settings-pages-row-ico" aria-hidden="true">' + ic + '</span>' : '') +
+              '<span class="settings-pages-row-txt">' +
               def.label +
+              '</span>' +
               '</span>' +
               '<button type="button" class="btn" data-settings-page-remove="' +
               def.id +
@@ -7293,6 +7330,45 @@ var incomePowerState = {
     } catch (_) {}
   }
 
+  /** Human-readable reason when Edge returns !ok or JSON without {url} (no secrets / tokens). */
+  function bizdashDescribeEdgeFnFailure(res, text, j) {
+    var status = res && typeof res.status === 'number' ? res.status : 0;
+    var body = typeof text === 'string' ? text : '';
+    var o = j && typeof j === 'object' ? j : {};
+    var direct = o.error || o.message || o.msg;
+    if (direct) return String(direct);
+    if (status === 404) {
+      return (
+        'This Supabase project does not expose this Edge Function (HTTP 404). Deploy it from the repo ' +
+        '(e.g. supabase functions deploy oauth-google-start stripe-connect-start) and confirm VITE_SUPABASE_URL matches that project.'
+      );
+    }
+    if (status === 401 || status === 403) {
+      return (
+        'Request was not authorized (HTTP ' +
+        status +
+        '). Try signing out and back in. For Stripe Connect you must be a workspace owner or admin.'
+      );
+    }
+    if (status >= 500) {
+      return (
+        'Server error (HTTP ' +
+        status +
+        '). Check Supabase Edge Function logs and secrets (docs/SUPABASE_EDGE_INTEGRATIONS.md or docs/STRIPE_CONNECT.md).'
+      );
+    }
+    var b0 = body.slice(0, 400).toLowerCase();
+    if (b0.indexOf('<!doctype') === 0 || b0.indexOf('<html') !== -1) {
+      return (
+        'Received HTML instead of JSON (HTTP ' +
+        status +
+        '). Usually the function is not deployed or the Supabase URL in the app does not match the project where functions run.'
+      );
+    }
+    if (body.trim()) return 'Unexpected response (HTTP ' + status + '): ' + body.slice(0, 220);
+    return 'Empty response (HTTP ' + status + '). Check deployment and Supabase project URL.';
+  }
+
   function wireStripeConnectInSettings() {
     var start = document.getElementById('btn-stripe-connect-start');
     var refBtn = document.getElementById('btn-stripe-connect-refresh');
@@ -7319,6 +7395,25 @@ var incomePowerState = {
           alert('Open a workspace before connecting Stripe.');
           return;
         }
+        // #region agent log
+        var _stripeBaseHost = '';
+        try {
+          _stripeBaseHost = base ? new URL(base).hostname : '';
+        } catch (_bh) {}
+        fetch('http://127.0.0.1:7914/ingest/507d12bf-babb-4204-8816-34a6e29c9b5b', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '85564a' },
+          body: JSON.stringify({
+            sessionId: '85564a',
+            runId: 'pre-fix',
+            hypothesisId: 'H5',
+            location: 'financial-core.js:stripe-connect-start:pre',
+            message: 'stripe-connect-start invoke',
+            data: { baseHost: _stripeBaseHost, hasOrgId: !!orgId },
+            timestamp: Date.now(),
+          }),
+        }).catch(function () {});
+        // #endregion
         var res = await fetch(base + '/functions/v1/stripe-connect-start', {
           method: 'POST',
           headers: {
@@ -7328,12 +7423,38 @@ var incomePowerState = {
           },
           body: JSON.stringify({ organizationId: orgId }),
         });
+        var _stripeText = '';
+        try {
+          _stripeText = await res.text();
+        } catch (_tx) {}
         var j = {};
         try {
-          j = await res.json();
+          j = _stripeText ? JSON.parse(_stripeText) : {};
         } catch (_) {}
+        // #region agent log
+        fetch('http://127.0.0.1:7914/ingest/507d12bf-babb-4204-8816-34a6e29c9b5b', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '85564a' },
+          body: JSON.stringify({
+            sessionId: '85564a',
+            runId: 'pre-fix',
+            hypothesisId: 'H1-H4',
+            location: 'financial-core.js:stripe-connect-start:response',
+            message: 'stripe-connect-start response',
+            data: {
+              status: res.status,
+              ok: res.ok,
+              hasUrl: !!j.url,
+              serverError: j.error ? String(j.error).slice(0, 200) : null,
+              bodyLen: _stripeText.length,
+              preview: _stripeText.slice(0, 160),
+            },
+            timestamp: Date.now(),
+          }),
+        }).catch(function () {});
+        // #endregion
         if (!res.ok || !j.url) {
-          alert(j.error ? String(j.error) : 'Could not start Stripe Connect. Deploy stripe-connect-start and check logs.');
+          alert(bizdashDescribeEdgeFnFailure(res, _stripeText, j));
           return;
         }
         window.location.href = String(j.url);
@@ -7409,6 +7530,25 @@ var incomePowerState = {
           return;
         }
         var returnPath = window.location.pathname || '/';
+        // #region agent log
+        var _gBaseHost = '';
+        try {
+          _gBaseHost = base ? new URL(base).hostname : '';
+        } catch (_gb) {}
+        fetch('http://127.0.0.1:7914/ingest/507d12bf-babb-4204-8816-34a6e29c9b5b', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '85564a' },
+          body: JSON.stringify({
+            sessionId: '85564a',
+            runId: 'pre-fix',
+            hypothesisId: 'H5',
+            location: 'financial-core.js:oauth-google-start:pre',
+            message: 'oauth-google-start invoke',
+            data: { baseHost: _gBaseHost, hasOrgId: !!orgId, returnPathLen: (returnPath || '').length },
+            timestamp: Date.now(),
+          }),
+        }).catch(function () {});
+        // #endregion
         var res = await fetch(base + '/functions/v1/oauth-google-start', {
           method: 'POST',
           headers: {
@@ -7418,12 +7558,38 @@ var incomePowerState = {
           },
           body: JSON.stringify({ organization_id: orgId, return_path: returnPath }),
         });
+        var _gText = '';
+        try {
+          _gText = await res.text();
+        } catch (_gt) {}
         var j = {};
         try {
-          j = await res.json();
+          j = _gText ? JSON.parse(_gText) : {};
         } catch (_) {}
+        // #region agent log
+        fetch('http://127.0.0.1:7914/ingest/507d12bf-babb-4204-8816-34a6e29c9b5b', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '85564a' },
+          body: JSON.stringify({
+            sessionId: '85564a',
+            runId: 'pre-fix',
+            hypothesisId: 'H1-H4',
+            location: 'financial-core.js:oauth-google-start:response',
+            message: 'oauth-google-start response',
+            data: {
+              status: res.status,
+              ok: res.ok,
+              hasUrl: !!j.url,
+              serverError: j.error ? String(j.error).slice(0, 200) : null,
+              bodyLen: _gText.length,
+              preview: _gText.slice(0, 160),
+            },
+            timestamp: Date.now(),
+          }),
+        }).catch(function () {});
+        // #endregion
         if (!res.ok || !j.url) {
-          alert(j.error ? String(j.error) : 'Could not start Google sign-in. Deploy oauth-google-start and set GOOGLE_CLIENT_ID, OAUTH_STATE_SECRET, etc.');
+          alert(bizdashDescribeEdgeFnFailure(res, _gText, j));
           return;
         }
         window.location.href = String(j.url);
@@ -13126,7 +13292,23 @@ var incomePowerState = {
 
   function syncAdvisorChatShellGreeting() {
     var leadEl = document.getElementById('chat-greeting-lead');
-    if (leadEl) leadEl.textContent = 'Welcome back';
+    if (!leadEl) return;
+    var first = '';
+    var fnInp = document.getElementById('profile-first-name');
+    if (fnInp && String(fnInp.value || '').trim()) {
+      first = String(fnInp.value || '').trim();
+    } else {
+      var user = window.currentUser;
+      if (user && user.user_metadata && typeof user.user_metadata === 'object') {
+        var m = user.user_metadata;
+        first = m.first_name != null ? String(m.first_name).trim() : '';
+        if (!first && m.full_name) {
+          var parts = String(m.full_name).trim().split(/\s+/);
+          first = parts[0] || '';
+        }
+      }
+    }
+    leadEl.textContent = first ? 'Welcome back, ' + first : 'Welcome back';
   }
 
   window.bizDashSyncAdvisorChatShellGreeting = syncAdvisorChatShellGreeting;
@@ -17598,7 +17780,10 @@ var incomePowerState = {
       stagePageMotion(target);
       if (pageId !== 'chat') {
         var chatPg = document.getElementById('page-chat');
-        if (chatPg) chatPg.classList.remove('chat-compose-docked');
+        if (chatPg) {
+          chatPg.classList.remove('chat-compose-docked');
+          chatPg.classList.remove('chat-advisor-centered');
+        }
       }
       if (pageId === 'chat') {
         if (typeof window.bizDashSyncAdvisorChatShellGreeting === 'function') {
@@ -17620,6 +17805,11 @@ var incomePowerState = {
         } catch (_) {}
         if (!didReplay && typeof window.seedDashboardChatWelcome === 'function') {
           window.seedDashboardChatWelcome();
+        }
+        if (typeof window.bizDashSyncAdvisorComposerLayout === 'function') {
+          window.setTimeout(function () {
+            window.bizDashSyncAdvisorComposerLayout();
+          }, didReplay ? 140 : 0);
         }
       }
 
