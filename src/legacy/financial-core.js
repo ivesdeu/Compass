@@ -2256,8 +2256,7 @@
             var st = document.getElementById('settings-nav-connections');
             if (st) st.click();
             window.setTimeout(function () {
-              var sec = document.getElementById('conn-section-stripe');
-              if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+              bizdashOpenConnDetailSubmodal('stripe');
             }, 80);
           }
           return;
@@ -2799,7 +2798,9 @@
   }
 
   function lucideIconifySvgImgSrc(iconName) {
-    return 'https://api.iconify.design/lucide.svg?icons=' + encodeURIComponent(iconName);
+    var n = String(iconName || '').trim().toLowerCase();
+    if (!n) return '';
+    return 'https://api.iconify.design/lucide/' + encodeURIComponent(n) + '.svg';
   }
 
   async function renderWorkspaceIconPreview() {
@@ -6876,6 +6877,57 @@ var incomePowerState = {
     wirePreferencesPanel();
   }
 
+  var connDetailEscHandler = null;
+
+  function bizdashCloseConnDetailSubmodal() {
+    var root = document.getElementById('conn-detail-submodal');
+    if (!root) return;
+    root.classList.remove('on');
+    root.setAttribute('aria-hidden', 'true');
+    var bd = document.getElementById('conn-detail-backdrop');
+    if (bd) bd.setAttribute('aria-hidden', 'true');
+    ['conn-detail-pane-gmail', 'conn-detail-pane-calendar', 'conn-detail-pane-stripe'].forEach(function (id) {
+      var p = document.getElementById(id);
+      if (p) p.hidden = true;
+    });
+    if (connDetailEscHandler) {
+      document.removeEventListener('keydown', connDetailEscHandler);
+      connDetailEscHandler = null;
+    }
+  }
+
+  function bizdashOpenConnDetailSubmodal(which) {
+    var root = document.getElementById('conn-detail-submodal');
+    if (!root) return;
+    if (which !== 'gmail' && which !== 'calendar' && which !== 'stripe') return;
+    var titleEl = document.getElementById('conn-detail-title');
+    var titles = { gmail: 'Gmail', calendar: 'Google Calendar', stripe: 'Stripe' };
+    if (titleEl) titleEl.textContent = titles[which] || which;
+    var pg = document.getElementById('conn-detail-pane-gmail');
+    var pc = document.getElementById('conn-detail-pane-calendar');
+    var ps = document.getElementById('conn-detail-pane-stripe');
+    if (pg) pg.hidden = which !== 'gmail';
+    if (pc) pc.hidden = which !== 'calendar';
+    if (ps) ps.hidden = which !== 'stripe';
+    root.classList.add('on');
+    root.setAttribute('aria-hidden', 'false');
+    var backdrop = document.getElementById('conn-detail-backdrop');
+    if (backdrop) backdrop.setAttribute('aria-hidden', 'false');
+    if (which === 'stripe') refreshStripeConnectPanel();
+    if (!connDetailEscHandler) {
+      connDetailEscHandler = function (e) {
+        if (e.key === 'Escape' && root.classList.contains('on')) {
+          e.preventDefault();
+          bizdashCloseConnDetailSubmodal();
+        }
+      };
+      document.addEventListener('keydown', connDetailEscHandler);
+    }
+  }
+
+  window.bizdashCloseConnDetailSubmodal = bizdashCloseConnDetailSubmodal;
+  window.bizdashOpenConnDetailSubmodal = bizdashOpenConnDetailSubmodal;
+
   function wireSettingsShell() {
     var root = document.getElementById('page-settings');
     if (!root || root.getAttribute('data-settings-shell-wired') === '1') return;
@@ -6970,6 +7022,9 @@ var incomePowerState = {
       if (panelId === 'pages') {
         renderSettingsPagesPanel();
       }
+      if (panelId !== 'connections') {
+        bizdashCloseConnDetailSubmodal();
+      }
     }
 
     navItems.forEach(function (btn) {
@@ -7009,6 +7064,18 @@ var incomePowerState = {
       if (!subSectionId) return;
       window.requestAnimationFrame(function () {
         window.setTimeout(function () {
+          if (subSectionId === 'conn-section-stripe') {
+            bizdashOpenConnDetailSubmodal('stripe');
+            return;
+          }
+          if (subSectionId === 'conn-section-google') {
+            bizdashOpenConnDetailSubmodal('gmail');
+            return;
+          }
+          if (subSectionId === 'gmail' || subSectionId === 'calendar' || subSectionId === 'stripe') {
+            bizdashOpenConnDetailSubmodal(subSectionId);
+            return;
+          }
           var el = document.getElementById(subSectionId);
           if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
         }, 60);
@@ -7037,23 +7104,32 @@ var incomePowerState = {
       });
     }
 
-    document.querySelectorAll('.conn-app-card[data-conn-target]').forEach(function (card) {
+    var connDetailBd = document.getElementById('conn-detail-backdrop');
+    if (connDetailBd && connDetailBd.getAttribute('data-conn-detail-bd-wired') !== '1') {
+      connDetailBd.setAttribute('data-conn-detail-bd-wired', '1');
+      connDetailBd.addEventListener('click', function () {
+        bizdashCloseConnDetailSubmodal();
+      });
+    }
+    var connDetailClose = document.getElementById('conn-detail-close');
+    if (connDetailClose && connDetailClose.getAttribute('data-conn-detail-close-wired') !== '1') {
+      connDetailClose.setAttribute('data-conn-detail-close-wired', '1');
+      connDetailClose.addEventListener('click', function () {
+        bizdashCloseConnDetailSubmodal();
+      });
+    }
+
+    document.querySelectorAll('.conn-app-card[data-conn-sub]').forEach(function (card) {
       if (card.getAttribute('data-conn-card-wired') === '1') return;
       card.setAttribute('data-conn-card-wired', '1');
       card.addEventListener('click', function () {
-        var tid = card.getAttribute('data-conn-target');
-        if (!tid) return;
-        var sub =
-          tid === 'stripe'
-            ? 'conn-section-stripe'
-            : tid === 'google' || tid === 'mail-calendar'
-              ? 'conn-section-google'
-              : null;
-        if (sub) {
-          openConnectionsScrollTo(sub);
+        var sub = (card.getAttribute('data-conn-sub') || '').trim();
+        if (!sub) return;
+        if (sub === 'gmail' || sub === 'calendar' || sub === 'stripe') {
+          bizdashOpenConnDetailSubmodal(sub);
           return;
         }
-        var nav = document.querySelector('.settings-nav-item[data-settings-panel="' + tid + '"]');
+        var nav = document.querySelector('.settings-nav-item[data-settings-panel="' + sub + '"]');
         if (nav) nav.click();
       });
     });
@@ -7207,8 +7283,7 @@ var incomePowerState = {
         var st = document.getElementById('settings-nav-connections');
         if (st) st.click();
         window.setTimeout(function () {
-          var sec = document.getElementById('conn-section-stripe');
-          if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          bizdashOpenConnDetailSubmodal('stripe');
         }, 80);
       }
       window.setTimeout(function () {
@@ -7412,8 +7487,7 @@ var incomePowerState = {
         if (connTab) {
           connTab.click();
           window.setTimeout(function () {
-            var sec = document.getElementById('conn-section-google');
-            if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            bizdashOpenConnDetailSubmodal('gmail');
           }, 80);
         } else {
           var acctTab = document.getElementById('settings-nav-account');
@@ -13050,42 +13124,9 @@ var incomePowerState = {
     }
   }
 
-  function getAdvisorGreetingFirstName(user) {
-    if (!user) return 'there';
-    var meta = user.user_metadata && typeof user.user_metadata === 'object' ? user.user_metadata : {};
-    var first = meta.first_name != null ? String(meta.first_name).trim() : '';
-    if (!first && meta.full_name) {
-      var parts = String(meta.full_name).trim().split(/\s+/);
-      first = parts[0] || '';
-    }
-    if (!first && user.email) {
-      var local = String(user.email).split('@')[0];
-      var seg = local.split(/[._-]/)[0] || local;
-      if (seg) {
-        first = seg.charAt(0).toUpperCase() + seg.slice(1).toLowerCase();
-      }
-    }
-    return first || 'there';
-  }
-
-  function advisorChatGreetingVisitKey(user) {
-    var uid = user && user.id ? String(user.id) : 'anon';
-    return 'bizdash-advisor-chat-visits:' + uid;
-  }
-
-  function syncAdvisorChatShellGreeting(opts) {
-    opts = opts || {};
+  function syncAdvisorChatShellGreeting() {
     var leadEl = document.getElementById('chat-greeting-lead');
-    var nameEl = document.getElementById('chat-greeting-name');
-    if (!leadEl || !nameEl) return;
-    var user = window.currentUser || currentUser;
-    nameEl.textContent = getAdvisorGreetingFirstName(user);
-    if (opts.fromNav) {
-      var k = advisorChatGreetingVisitKey(user);
-      var n = parseInt(sessionStorage.getItem(k) || '0', 10);
-      leadEl.textContent = n === 0 ? 'Hey there,' : 'Welcome back,';
-      sessionStorage.setItem(k, String(n + 1));
-    }
+    if (leadEl) leadEl.textContent = 'Welcome back';
   }
 
   window.bizDashSyncAdvisorChatShellGreeting = syncAdvisorChatShellGreeting;
@@ -17561,7 +17602,7 @@ var incomePowerState = {
       }
       if (pageId === 'chat') {
         if (typeof window.bizDashSyncAdvisorChatShellGreeting === 'function') {
-          window.bizDashSyncAdvisorChatShellGreeting({ fromNav: true });
+          window.bizDashSyncAdvisorChatShellGreeting();
         }
         var didReplay = false;
         try {
