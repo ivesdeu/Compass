@@ -158,8 +158,13 @@
   }
 
   function buildClientDbPayload(client, userId) {
+    // Postgres column clients.total_revenue must reflect Customers-tab revenue:
+    // manual "Custom revenue" (custTabRevenue) overrides; otherwise use stored total or 0.
     var rev = Number(client.totalRevenue);
     if (!isFinite(rev)) rev = 0;
+    if (client.custTabRevenue != null && isFinite(Number(client.custTabRevenue))) {
+      rev = Math.max(0, Number(client.custTabRevenue));
+    }
     var createdIso;
     try {
       var d = client.createdAt != null ? new Date(client.createdAt) : new Date();
@@ -2907,12 +2912,18 @@
     var pw = prevDash.workspace && typeof prevDash.workspace === 'object' ? prevDash.workspace : {};
     var nw = nextDash.workspace && typeof nextDash.workspace === 'object' ? nextDash.workspace : {};
     var mergedWorkspace = mergeWorkspacePrefs(pw, nw);
-    return {
+    var out = {
       business: mergedBusiness,
       budgets: nextDash.budgets && typeof nextDash.budgets === 'object' ? nextDash.budgets : { lab: 0, sw: 0, ads: 0, oth: 0 },
       budgetMonths: Object.assign({}, prevDash.budgetMonths || {}, nextDash.budgetMonths || {}),
       workspace: mergedWorkspace,
     };
+    if (Array.isArray(nextDash.email_templates)) {
+      out.email_templates = nextDash.email_templates;
+    } else if (Array.isArray(prevDash.email_templates)) {
+      out.email_templates = prevDash.email_templates;
+    }
+    return out;
   }
 
   async function applyDashboardSettingsFromCloud(raw) {
@@ -4427,6 +4438,9 @@
     var errEl = document.getElementById('eml-compose-err');
     var btnSend = document.getElementById('eml-compose-send');
     var btnCancel = document.getElementById('eml-compose-cancel');
+    var btnSaveTpl = document.getElementById('eml-compose-save-template');
+    var selTpl = document.getElementById('eml-compose-template');
+    var composeTemplateById = {};
 
     function showComposeErr(msg) {
       if (!errEl) return;
@@ -4445,6 +4459,36 @@
     }
     window.__bizdashCloseEmlComposeModal = closeComposeModal;
 
+    async function refreshComposeTemplateSelect() {
+      composeTemplateById = {};
+      if (!selTpl) return;
+      selTpl.innerHTML = '';
+      var opt0 = document.createElement('option');
+      opt0.value = '';
+      opt0.textContent = '— Load template —';
+      selTpl.appendChild(opt0);
+      supabase = window.supabaseClient || supabase;
+      if (!supabase || !getCurrentOrgId() || isDemoDashboardUser()) return;
+      try {
+        var row = await fetchAppSettingsFromSupabase();
+        var list =
+          row &&
+          row.dashboard_settings &&
+          Array.isArray(row.dashboard_settings.email_templates)
+            ? row.dashboard_settings.email_templates
+            : [];
+        list.forEach(function (t) {
+          if (!t || !t.id) return;
+          composeTemplateById[t.id] = t;
+          var o = document.createElement('option');
+          o.value = String(t.id);
+          o.textContent = String(t.name || t.subject || 'Template').slice(0, 120);
+          selTpl.appendChild(o);
+        });
+      } catch (_) {}
+      selTpl.value = '';
+    }
+
     function openComposeModal() {
       if (!modal) return;
       if (inpTo) inpTo.value = '';
@@ -4456,7 +4500,20 @@
         btnSend.textContent = 'Send';
       }
       modal.classList.add('on');
+      void refreshComposeTemplateSelect();
       if (inpTo) inpTo.focus();
+    }
+
+    if (selTpl && selTpl.getAttribute('data-eml-template-wired') !== '1') {
+      selTpl.setAttribute('data-eml-template-wired', '1');
+      selTpl.addEventListener('change', function () {
+        var id = String(selTpl.value || '').trim();
+        var t = composeTemplateById[id];
+        if (!t) return;
+        if (inpTo) inpTo.value = t.to != null ? String(t.to) : '';
+        if (inpSub) inpSub.value = t.subject != null ? String(t.subject) : '';
+        if (inpBody) inpBody.value = t.body != null ? String(t.body) : '';
+      });
     }
 
     root.querySelectorAll('[data-eml-compose]').forEach(function (btn) {
@@ -4465,6 +4522,89 @@
 
     if (btnCancel) {
       btnCancel.addEventListener('click', closeComposeModal);
+    }
+
+    if (btnSaveTpl && btnSaveTpl.getAttribute('data-eml-save-template-wired') !== '1') {
+      btnSaveTpl.setAttribute('data-eml-save-template-wired', '1');
+      btnSaveTpl.addEventListener('click', async function () {
+        var supa = window.supabaseClient;
+        var sessRes = supa ? await supa.auth.getSession() : null;
+        var sess = sessRes && sessRes.data ? sessRes.data.session : null;
+        if (!sess || !sess.access_token) {
+          alert('Sign in first.');
+          return;
+        }
+        if (!getCurrentOrgId() || isDemoDashboardUser()) {
+          alert('Open a workspace first.');
+          return;
+        }
+        var subject = inpSub ? String(inpSub.value || '').trim() : '';
+        var body = inpBody ? String(inpBody.value || '').trim() : '';
+        if (!subject && !body) {
+          showComposeErr('Add a subject or message before saving as a template.');
+          return;
+        }
+        showComposeErr('');
+        var defaultName = subject ? subject.slice(0, 80) : 'Template';
+        var name = window.prompt('Template name', defaultName);
+        if (name == null) return;
+        name = String(name).trim();
+        if (!name) {
+          alert('Name is required.');
+          return;
+        }
+        var toVal = inpTo ? String(inpTo.value || '').trim() : '';
+        supabase = window.supabaseClient || supabase;
+        try {
+          var row = await fetchAppSettingsFromSupabase();
+          var dash =
+            row && row.dashboard_settings && typeof row.dashboard_settings === 'object'
+              ? JSON.parse(JSON.stringify(row.dashboard_settings))
+              : {};
+          var list = Array.isArray(dash.email_templates) ? dash.email_templates.slice() : [];
+          var id = 'et_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 9);
+          list.push({
+            id: id,
+            name: name,
+            subject: subject,
+            body: body,
+            to: toVal,
+            updated_at: new Date().toISOString(),
+          });
+          while (list.length > 50) list.shift();
+          dash.email_templates = list;
+          var ps = row && row.project_statuses != null ? row.project_statuses : projectStatuses;
+          var up = await supabase.from('app_settings').upsert(
+            {
+              organization_id: getCurrentOrgId(),
+              project_statuses: ps,
+              dashboard_settings: dash,
+              updated_at: new Date().toISOString(),
+            },
+            { onConflict: 'organization_id' }
+          );
+          if (up.error) {
+            console.error('save email template', up.error);
+            alert('Could not save template. Try again.');
+            return;
+          }
+          await refreshComposeTemplateSelect();
+          if (selTpl) selTpl.value = id;
+          composeTemplateById[id] = list[list.length - 1];
+          var bar = document.getElementById('app-invite-flash');
+          if (bar) {
+            bar.textContent = 'Template saved for this workspace.';
+            bar.style.display = 'block';
+            window.setTimeout(function () {
+              bar.style.display = 'none';
+              bar.textContent = '';
+            }, 5000);
+          }
+        } catch (e) {
+          console.warn('save email template', e);
+          alert('Could not save template.');
+        }
+      });
     }
 
     if (btnSend && btnSend.getAttribute('data-eml-compose-send-wired') !== '1') {
@@ -7395,25 +7535,6 @@ var incomePowerState = {
           alert('Open a workspace before connecting Stripe.');
           return;
         }
-        // #region agent log
-        var _stripeBaseHost = '';
-        try {
-          _stripeBaseHost = base ? new URL(base).hostname : '';
-        } catch (_bh) {}
-        fetch('http://127.0.0.1:7914/ingest/507d12bf-babb-4204-8816-34a6e29c9b5b', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '85564a' },
-          body: JSON.stringify({
-            sessionId: '85564a',
-            runId: 'pre-fix',
-            hypothesisId: 'H5',
-            location: 'financial-core.js:stripe-connect-start:pre',
-            message: 'stripe-connect-start invoke',
-            data: { baseHost: _stripeBaseHost, hasOrgId: !!orgId },
-            timestamp: Date.now(),
-          }),
-        }).catch(function () {});
-        // #endregion
         var res = await fetch(base + '/functions/v1/stripe-connect-start', {
           method: 'POST',
           headers: {
@@ -7431,28 +7552,6 @@ var incomePowerState = {
         try {
           j = _stripeText ? JSON.parse(_stripeText) : {};
         } catch (_) {}
-        // #region agent log
-        fetch('http://127.0.0.1:7914/ingest/507d12bf-babb-4204-8816-34a6e29c9b5b', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '85564a' },
-          body: JSON.stringify({
-            sessionId: '85564a',
-            runId: 'pre-fix',
-            hypothesisId: 'H1-H4',
-            location: 'financial-core.js:stripe-connect-start:response',
-            message: 'stripe-connect-start response',
-            data: {
-              status: res.status,
-              ok: res.ok,
-              hasUrl: !!j.url,
-              serverError: j.error ? String(j.error).slice(0, 200) : null,
-              bodyLen: _stripeText.length,
-              preview: _stripeText.slice(0, 160),
-            },
-            timestamp: Date.now(),
-          }),
-        }).catch(function () {});
-        // #endregion
         if (!res.ok || !j.url) {
           alert(bizdashDescribeEdgeFnFailure(res, _stripeText, j));
           return;
@@ -7504,6 +7603,41 @@ var incomePowerState = {
     }
   }
 
+  // #region agent log
+  function __dbgOAuthIngest(payload) {
+    fetch('http://127.0.0.1:7914/ingest/507d12bf-babb-4204-8816-34a6e29c9b5b', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '1266cb' },
+      body: JSON.stringify({
+        sessionId: '1266cb',
+        location: payload.location,
+        message: payload.message,
+        data: payload.data,
+        timestamp: Date.now(),
+        hypothesisId: payload.hypothesisId,
+        runId: payload.runId || 'pre-fix',
+      }),
+    }).catch(function () {});
+  }
+  // #endregion
+
+  function updateGoogleOAuthRedirectHint() {
+    var line = document.getElementById('bizdash-google-oauth-redirect-line');
+    if (!line) return;
+    var base =
+      typeof window.__bizdashSupabaseUrl === 'string' ? window.__bizdashSupabaseUrl.trim().replace(/\/$/, '') : '';
+    if (!base) {
+      line.textContent =
+        'Set VITE_SUPABASE_URL in your build. Error 401 invalid_client is fixed in Google Cloud: Web OAuth client, correct Client ID/secret in Supabase Edge secrets, and Authorized redirect URIs — see docs/SUPABASE_EDGE_INTEGRATIONS.md.';
+      return;
+    }
+    var uri = base + '/functions/v1/oauth-google-callback';
+    line.innerHTML =
+      'In Google Cloud → Credentials → <strong>OAuth 2.0 Client ID</strong> (type <strong>Web application</strong>), under <strong>Authorized redirect URIs</strong>, add exactly: <code style="font-size:10px;word-break:break-all;">' +
+      uri +
+      '</code> Edge secrets <code style="font-size:11px;">GOOGLE_CLIENT_ID</code> and <code style="font-size:11px;">GOOGLE_CLIENT_SECRET</code> must be from <em>that same</em> client. <code style="font-size:11px;">invalid_client</code> means Google rejected the client ID or the redirect URI is not listed.';
+  }
+
   function wireGoogleOAuthInSettings() {
     var nodes = document.querySelectorAll('[data-google-oauth-start]');
     if (!nodes.length) return;
@@ -7530,25 +7664,6 @@ var incomePowerState = {
           return;
         }
         var returnPath = window.location.pathname || '/';
-        // #region agent log
-        var _gBaseHost = '';
-        try {
-          _gBaseHost = base ? new URL(base).hostname : '';
-        } catch (_gb) {}
-        fetch('http://127.0.0.1:7914/ingest/507d12bf-babb-4204-8816-34a6e29c9b5b', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '85564a' },
-          body: JSON.stringify({
-            sessionId: '85564a',
-            runId: 'pre-fix',
-            hypothesisId: 'H5',
-            location: 'financial-core.js:oauth-google-start:pre',
-            message: 'oauth-google-start invoke',
-            data: { baseHost: _gBaseHost, hasOrgId: !!orgId, returnPathLen: (returnPath || '').length },
-            timestamp: Date.now(),
-          }),
-        }).catch(function () {});
-        // #endregion
         var res = await fetch(base + '/functions/v1/oauth-google-start', {
           method: 'POST',
           headers: {
@@ -7566,32 +7681,48 @@ var incomePowerState = {
         try {
           j = _gText ? JSON.parse(_gText) : {};
         } catch (_) {}
-        // #region agent log
-        fetch('http://127.0.0.1:7914/ingest/507d12bf-babb-4204-8816-34a6e29c9b5b', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '85564a' },
-          body: JSON.stringify({
-            sessionId: '85564a',
-            runId: 'pre-fix',
-            hypothesisId: 'H1-H4',
-            location: 'financial-core.js:oauth-google-start:response',
-            message: 'oauth-google-start response',
-            data: {
-              status: res.status,
-              ok: res.ok,
-              hasUrl: !!j.url,
-              serverError: j.error ? String(j.error).slice(0, 200) : null,
-              bodyLen: _gText.length,
-              preview: _gText.slice(0, 160),
-            },
-            timestamp: Date.now(),
-          }),
-        }).catch(function () {});
-        // #endregion
         if (!res.ok || !j.url) {
+          // #region agent log
+          __dbgOAuthIngest({
+            location: 'financial-core.js:wireGoogleOAuthInSettings',
+            message: 'oauth-google-start failed before redirect',
+            hypothesisId: 'H4',
+            data: {
+              httpStatus: res.status,
+              supabaseHost: base ? new URL(base).hostname : '',
+              errSnippet: j && j.error ? String(j.error).slice(0, 120) : (_gText || '').slice(0, 120),
+            },
+          });
+          // #endregion
           alert(bizdashDescribeEdgeFnFailure(res, _gText, j));
           return;
         }
+        // #region agent log
+        try {
+          var authU = new URL(String(j.url));
+          var cid = authU.searchParams.get('client_id') || '';
+          var ruri = authU.searchParams.get('redirect_uri') || '';
+          __dbgOAuthIngest({
+            location: 'financial-core.js:wireGoogleOAuthInSettings',
+            message: 'oauth-google-start ok; auth URL params',
+            hypothesisId: 'H1',
+            data: {
+              supabaseHost: base ? new URL(base).hostname : '',
+              clientIdLen: cid.length,
+              clientIdLooksWeb: /\.apps\.googleusercontent\.com$/.test(cid),
+              redirectUriFromAuthUrl: ruri ? decodeURIComponent(ruri) : '',
+              redirectUriFromApi: j.redirect_uri ? String(j.redirect_uri) : null,
+            },
+          });
+        } catch (_e) {
+          __dbgOAuthIngest({
+            location: 'financial-core.js:wireGoogleOAuthInSettings',
+            message: 'parse auth URL failed',
+            hypothesisId: 'H1',
+            data: { err: String(_e && _e.message ? _e.message : _e) },
+          });
+        }
+        // #endregion
         window.location.href = String(j.url);
       });
     });
@@ -7605,9 +7736,19 @@ var incomePowerState = {
       if (!oauth) return;
       var provider = (params.get('provider') || '').trim();
       var detail = (params.get('detail') || '').trim();
+      var googleErr = (params.get('google_error') || '').trim();
+      // #region agent log
+      __dbgOAuthIngest({
+        location: 'financial-core.js:consumeOAuthReturnFromUrl',
+        message: 'oauth query params after redirect to app',
+        hypothesisId: 'H3',
+        data: { oauth: oauth, provider: provider, detail: detail, google_error: googleErr || undefined },
+      });
+      // #endregion
       params.delete('oauth');
       params.delete('provider');
       params.delete('detail');
+      params.delete('google_error');
       var qs = params.toString();
       var path = window.location.pathname || '/';
       window.history.replaceState(null, '', path + (qs ? '?' + qs : '') + (window.location.hash || ''));
@@ -7637,6 +7778,7 @@ var incomePowerState = {
           'Could not complete sign-in' +
           (provider ? ' (' + provider + ')' : '') +
           (detail ? ': ' + detail : '') +
+          (googleErr ? ' [' + googleErr + ']' : '') +
           '.';
       }
       if (bar && msg) {
@@ -13224,6 +13366,109 @@ var incomePowerState = {
 
   var PROFILE_AVATAR_STORAGE_KEY = 'bizdash.profileAvatarDataUrl';
 
+  function getStoredProfileAvatarDataUrl() {
+    try {
+      var raw = localStorage.getItem(PROFILE_AVATAR_STORAGE_KEY) || '';
+      if (raw && raw.indexOf('data:image') === 0 && raw.length < 3500000) return raw;
+    } catch (_) {}
+    return '';
+  }
+
+  /**
+   * Profile photo: signed URL for `user_metadata.profile_avatar_path` on brand-assets, else legacy localStorage data URL.
+   */
+  async function resolveProfileAvatarDisplayUrl(user) {
+    if (!user) return '';
+    if (
+      user.user_metadata &&
+      user.user_metadata.profile_avatar_path &&
+      window.supabaseClient &&
+      !isDemoDashboardUser()
+    ) {
+      var path = String(user.user_metadata.profile_avatar_path).trim();
+      if (path) {
+        try {
+          var res = await window.supabaseClient.storage
+            .from('brand-assets')
+            .createSignedUrl(path, 60 * 60 * 24);
+          if (res && res.data && res.data.signedUrl) return res.data.signedUrl;
+        } catch (_) {}
+      }
+    }
+    return getStoredProfileAvatarDataUrl();
+  }
+
+  /** Profile panel, workspace chip images, sidebar account circle — one consistent URL. */
+  async function applyProfileAvatarFromUser(user) {
+    var resolved =
+      arguments.length && user === null ? null : user || window.currentUser || currentUser;
+    var displayUrl = resolved ? await resolveProfileAvatarDisplayUrl(resolved) : '';
+    var img = document.getElementById('profile-avatar-img');
+    var fb = document.getElementById('profile-avatar-fallback');
+    if (displayUrl) {
+      if (img) {
+        img.src = displayUrl;
+        img.style.display = 'block';
+      }
+      if (fb) fb.style.display = 'none';
+    } else {
+      if (img) {
+        img.removeAttribute('src');
+        img.style.display = 'none';
+      }
+      if (fb) {
+        fb.style.display = '';
+        updateProfileAvatarFallbackLetter();
+      }
+    }
+    var pairs = [
+      ['sb-ws-avatar-img', 'sb-ws-mono-letter'],
+      ['sb-menu-ws-avatar-img', 'sb-menu-ws-mono-letter'],
+    ];
+    for (var i = 0; i < pairs.length; i += 1) {
+      var im = document.getElementById(pairs[i][0]);
+      var le = document.getElementById(pairs[i][1]);
+      if (!im || !le) continue;
+      if (displayUrl) {
+        im.src = displayUrl;
+        im.style.display = 'block';
+        le.style.display = 'none';
+      } else {
+        im.removeAttribute('src');
+        im.style.display = 'none';
+        le.style.display = '';
+      }
+    }
+    var userAv = document.getElementById('user-avatar');
+    if (userAv) {
+      if (displayUrl) {
+        userAv.innerHTML = '';
+        var imu = document.createElement('img');
+        imu.src = displayUrl;
+        imu.alt = '';
+        imu.width = 26;
+        imu.height = 26;
+        imu.style.borderRadius = '50%';
+        imu.style.objectFit = 'cover';
+        imu.style.display = 'block';
+        userAv.appendChild(imu);
+      } else {
+        userAv.innerHTML = '';
+        if (resolved && resolved.email) {
+          userAv.textContent = String(resolved.email).charAt(0).toUpperCase();
+        } else {
+          userAv.textContent = '?';
+        }
+      }
+    }
+  }
+
+  function applyWorkspaceChromeProfileAvatar() {
+    void applyProfileAvatarFromUser(window.currentUser || currentUser);
+  }
+  window.bizdashRefreshSidebarProfileAvatars = applyWorkspaceChromeProfileAvatar;
+  window.bizdashApplyProfileAvatarFromUser = applyProfileAvatarFromUser;
+
   function syncProfileTimezoneOptionsFromMain() {
     ensurePreferenceTimezoneOptionsBuilt();
     var main = document.getElementById('pref-timezone');
@@ -13268,26 +13513,7 @@ var incomePowerState = {
   }
 
   function applyProfileAvatarFromStorage() {
-    var raw = '';
-    try {
-      raw = localStorage.getItem(PROFILE_AVATAR_STORAGE_KEY) || '';
-    } catch (_) {}
-    var img = document.getElementById('profile-avatar-img');
-    var fb = document.getElementById('profile-avatar-fallback');
-    if (img && raw && raw.indexOf('data:image') === 0 && raw.length < 3500000) {
-      img.src = raw;
-      img.style.display = 'block';
-      if (fb) fb.style.display = 'none';
-    } else {
-      if (img) {
-        img.removeAttribute('src');
-        img.style.display = 'none';
-      }
-      if (fb) {
-        fb.style.display = '';
-        updateProfileAvatarFallbackLetter();
-      }
-    }
+    void applyProfileAvatarFromUser(window.currentUser || currentUser);
   }
 
   function syncAdvisorChatShellGreeting() {
@@ -13325,7 +13551,10 @@ var incomePowerState = {
       fn.value = '';
       ln.value = '';
       if (em) em.value = '';
-      applyProfileAvatarFromStorage();
+      try {
+        localStorage.removeItem(PROFILE_AVATAR_STORAGE_KEY);
+      } catch (_) {}
+      void applyProfileAvatarFromUser(null);
       updateProfileAvatarFallbackLetter();
       syncAdvisorChatShellGreeting();
       return;
@@ -13341,7 +13570,7 @@ var incomePowerState = {
     fn.value = first;
     ln.value = last;
     if (em) em.value = user.email ? String(user.email) : '';
-    applyProfileAvatarFromStorage();
+    void applyProfileAvatarFromUser(user);
     updateProfileAvatarFallbackLetter();
     syncAdvisorChatShellGreeting();
   }
@@ -13390,7 +13619,7 @@ var incomePowerState = {
       uploadBtn.addEventListener('click', function () {
         fileInp.click();
       });
-      fileInp.addEventListener('change', function () {
+      fileInp.addEventListener('change', async function () {
         var f = fileInp.files && fileInp.files[0];
         if (!f) return;
         if (f.size > 10 * 1024 * 1024) {
@@ -13404,29 +13633,70 @@ var incomePowerState = {
           fileInp.value = '';
           return;
         }
-        var r = new FileReader();
-        r.onload = function () {
-          var data = r.result ? String(r.result) : '';
-          if (data.length > 3200000) {
-            alert('That image is too large to store in the browser. Try a smaller file.');
+        supabase = window.supabaseClient || supabase;
+        currentUser = window.currentUser || currentUser;
+        if (isDemoDashboardUser()) {
+          var r0 = new FileReader();
+          r0.onload = function () {
+            var data = r0.result ? String(r0.result) : '';
+            if (data.length > 3200000) {
+              alert('That image is too large. Try a smaller file.');
+              fileInp.value = '';
+              return;
+            }
+            try {
+              localStorage.setItem(PROFILE_AVATAR_STORAGE_KEY, data);
+            } catch (e) {
+              alert('Could not save the image (storage full). Try a smaller file.');
+              fileInp.value = '';
+              return;
+            }
+            void applyProfileAvatarFromUser(currentUser);
             fileInp.value = '';
-            return;
+          };
+          r0.onerror = function () {
+            alert('Could not read that file.');
+            fileInp.value = '';
+          };
+          r0.readAsDataURL(f);
+          return;
+        }
+        if (!supabase || !currentUser || !currentUser.id) {
+          alert('Sign in to save your photo to your account.');
+          fileInp.value = '';
+          return;
+        }
+        try {
+          var ext = (String(f.name || '').split('.').pop() || 'png').toLowerCase();
+          if (!/^png|jpe?g|gif$/i.test(ext)) ext = 'png';
+          var path = String(currentUser.id) + '/profile-avatar.' + ext;
+          var up = await supabase.storage.from('brand-assets').upload(path, f, { upsert: true, cacheControl: '3600' });
+          if (up.error) throw up.error;
+          var prevMeta =
+            currentUser.user_metadata && typeof currentUser.user_metadata === 'object' ? currentUser.user_metadata : {};
+          var meta = Object.assign({}, prevMeta, { profile_avatar_path: path });
+          var upd = await supabase.auth.updateUser({ data: meta });
+          if (upd && upd.data && upd.data.user) {
+            window.currentUser = upd.data.user;
+            currentUser = upd.data.user;
+          } else {
+            var ref = await supabase.auth.getUser();
+            if (ref && ref.data && ref.data.user) {
+              window.currentUser = ref.data.user;
+              currentUser = ref.data.user;
+            }
           }
           try {
-            localStorage.setItem(PROFILE_AVATAR_STORAGE_KEY, data);
-          } catch (e) {
-            alert('Could not save the image (storage full). Try a smaller file.');
-            fileInp.value = '';
-            return;
-          }
-          applyProfileAvatarFromStorage();
-          fileInp.value = '';
-        };
-        r.onerror = function () {
-          alert('Could not read that file.');
-          fileInp.value = '';
-        };
-        r.readAsDataURL(f);
+            localStorage.removeItem(PROFILE_AVATAR_STORAGE_KEY);
+          } catch (_) {}
+          await applyProfileAvatarFromUser(window.currentUser);
+        } catch (e) {
+          console.warn('profile avatar upload', e);
+          alert(
+            'Could not save your photo to the cloud. Ensure the brand-assets bucket exists and policies allow your user folder, then try again.'
+          );
+        }
+        fileInp.value = '';
       });
     }
 
@@ -14128,8 +14398,16 @@ var incomePowerState = {
               createdAt: c.createdAt || Date.now(),
               retainer: !!retainerChecked,
             };
-            if (custRev != null) client.custTabRevenue = custRev;
+            if (custRev != null) {
+              client.custTabRevenue = custRev;
+              client.totalRevenue = custRev;
+            } else {
+              delete client.custTabRevenue;
+              var txRev = clientRevenueFromTransactions(client.id);
+              client.totalRevenue = txRev > 0 ? txRev : c.totalRevenue || 0;
+            }
             if (custCost != null) client.custTabAllocatedCost = custCost;
+            else delete client.custTabAllocatedCost;
             applyPipelineFieldsFromUi(client);
             return client;
           });
@@ -14184,12 +14462,13 @@ var incomePowerState = {
             mailingState: val('client-mailing-state'),
             mailingZip: val('client-mailing-zip'),
             emailOptOut: !!emailOptOut,
-            totalRevenue: 0,
+            totalRevenue: custRev != null ? custRev : 0,
             createdAt: Date.now(),
             retainer: !!retainerChecked,
           };
           if (custRev != null) client.custTabRevenue = custRev;
           if (custCost != null) client.custTabAllocatedCost = custCost;
+          else delete client.custTabAllocatedCost;
           applyPipelineFieldsFromUi(client);
           var addSync = await persistClientToSupabase(client, 'insert');
           if (addSync === 'skipped') {
@@ -14964,6 +15243,7 @@ var incomePowerState = {
     try {
       localStorage.removeItem(PROFILE_AVATAR_STORAGE_KEY);
     } catch (_) {}
+    applyWorkspaceChromeProfileAvatar();
     setEl('setting-terms', '30');
     setEl('setting-tax', '0');
     var cur = document.getElementById('setting-currency');
@@ -16876,17 +17156,18 @@ var incomePowerState = {
   function refreshSidebarWorkspaceChrome() {
     var slug = window.currentOrganizationSlug || parseTenantSlugForChrome();
     var labelEl = document.getElementById('sb-ws-label');
-    var monoEl = document.getElementById('sb-ws-mono');
+    var letterEl = document.getElementById('sb-ws-mono-letter');
     var dn = window.currentOrganizationDisplayName && String(window.currentOrganizationDisplayName).trim();
     var display = dn || (slug ? String(slug) : 'Workspace');
     var letterSource = dn || slug || '';
     var letter = letterSource ? String(letterSource).trim().charAt(0).toUpperCase() : '?';
     if (labelEl) labelEl.textContent = display;
-    if (monoEl) monoEl.textContent = letter;
-    var menuMono = document.getElementById('sb-menu-ws-mono');
+    if (letterEl) letterEl.textContent = letter;
+    var menuLetter = document.getElementById('sb-menu-ws-mono-letter');
     var menuLabel = document.getElementById('sb-menu-ws-label');
-    if (menuMono) menuMono.textContent = letter;
+    if (menuLetter) menuLetter.textContent = letter;
     if (menuLabel) menuLabel.textContent = display;
+    applyWorkspaceChromeProfileAvatar();
   }
 
   var sidebarChromeMenuOpen = false;
@@ -16941,6 +17222,20 @@ var incomePowerState = {
     window.refreshSidebarWorkspaceChrome = refreshSidebarWorkspaceChrome;
 
     refreshSidebarWorkspaceChrome();
+
+    var profileHit = document.getElementById('sb-user-go-profile');
+    if (profileHit && profileHit.getAttribute('data-wired-profile-hit') !== '1') {
+      profileHit.setAttribute('data-wired-profile-hit', '1');
+      profileHit.addEventListener('click', function () {
+        if (typeof window.nav !== 'function') return;
+        var ni = document.querySelector('.ni[data-nav="settings"]');
+        window.nav('settings', ni);
+        window.requestAnimationFrame(function () {
+          var tab = document.getElementById('settings-nav-profile');
+          if (tab) tab.click();
+        });
+      });
+    }
 
     var wsBtn = document.getElementById('btn-sb-workspace-switch');
     if (wsBtn) {
@@ -17745,6 +18040,7 @@ var incomePowerState = {
     wireProfileSettings();
     wireAccountSecuritySettings();
     wireGoogleOAuthInSettings();
+    updateGoogleOAuthRedirectHint();
     wireStripeConnectInSettings();
     wirePersonableActions();
     wireCloudSyncPanel();

@@ -1064,6 +1064,24 @@
       return { ok: true, inviteUrl: j.inviteUrl ? String(j.inviteUrl) : '' };
     }
 
+    // #region agent log
+    function __dbgOAuthIngestOnboard(payload) {
+      fetch('http://127.0.0.1:7914/ingest/507d12bf-babb-4204-8816-34a6e29c9b5b', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '1266cb' },
+        body: JSON.stringify({
+          sessionId: '1266cb',
+          location: payload.location,
+          message: payload.message,
+          data: payload.data,
+          timestamp: Date.now(),
+          hypothesisId: payload.hypothesisId,
+          runId: payload.runId || 'pre-fix',
+        }),
+      }).catch(function () {});
+    }
+    // #endregion
+
     async function startOAuthFromOnboarding(provider) {
       var err = $('onboard-error-4');
       if (err) err.textContent = '';
@@ -1099,11 +1117,52 @@
         j = await res.json();
       } catch (_) {}
       if (!res.ok || !j.url) {
+        // #region agent log
+        __dbgOAuthIngestOnboard({
+          location: 'supabase-auth.js:startOAuthFromOnboarding',
+          message: 'oauth start failed before redirect',
+          hypothesisId: 'H4',
+          data: {
+            provider: provider,
+            httpStatus: res.status,
+            supabaseHost: base ? new URL(base).hostname : '',
+            errSnippet: j.error ? String(j.error).slice(0, 120) : '',
+          },
+        });
+        // #endregion
         try {
           sessionStorage.removeItem('bizdash_oauth_from_onboarding');
         } catch (_) {}
         if (err) err.textContent = j.error ? String(j.error) : 'Could not start sign-in.';
         return;
+      }
+      if (provider === 'google') {
+        // #region agent log
+        try {
+          var authU2 = new URL(String(j.url));
+          var cid2 = authU2.searchParams.get('client_id') || '';
+          var ruri2 = authU2.searchParams.get('redirect_uri') || '';
+          __dbgOAuthIngestOnboard({
+            location: 'supabase-auth.js:startOAuthFromOnboarding',
+            message: 'oauth-google-start ok; auth URL params',
+            hypothesisId: 'H1',
+            data: {
+              supabaseHost: base ? new URL(base).hostname : '',
+              clientIdLen: cid2.length,
+              clientIdLooksWeb: /\.apps\.googleusercontent\.com$/.test(cid2),
+              redirectUriFromAuthUrl: ruri2 ? decodeURIComponent(ruri2) : '',
+              redirectUriFromApi: j.redirect_uri ? String(j.redirect_uri) : null,
+            },
+          });
+        } catch (_e2) {
+          __dbgOAuthIngestOnboard({
+            location: 'supabase-auth.js:startOAuthFromOnboarding',
+            message: 'parse google auth URL failed',
+            hypothesisId: 'H1',
+            data: { err: String(_e2 && _e2.message ? _e2.message : _e2) },
+          });
+        }
+        // #endregion
       }
       window.location.href = String(j.url);
     }
@@ -1766,6 +1825,45 @@
     }
   }
 
+  /**
+   * Sidebar account circle (#user-avatar): cloud path on brand-assets, else email initial.
+   * When Settings stores a data URL in localStorage, financial-core's applyWorkspaceChromeProfileAvatar overlays it.
+   */
+  function bizdashApplyAuthUserAvatarChrome(user) {
+    var avatarEl = document.getElementById('user-avatar');
+    if (!avatarEl || !user) return;
+    avatarEl.innerHTML = '';
+    var metaU = (user.user_metadata && typeof user.user_metadata === 'object' ? user.user_metadata : {}) || {};
+    var avPath = String(metaU.profile_avatar_path || '').trim();
+    var client = supabase || window.supabaseClient;
+    if (avPath && client) {
+      client.storage
+        .from('brand-assets')
+        .createSignedUrl(avPath, 60 * 60 * 24)
+        .then(function (res) {
+          if (!res.data || !res.data.signedUrl || !avatarEl) return;
+          avatarEl.innerHTML = '';
+          var im = document.createElement('img');
+          im.src = res.data.signedUrl;
+          im.alt = '';
+          im.width = 26;
+          im.height = 26;
+          im.style.borderRadius = '50%';
+          im.style.objectFit = 'cover';
+          im.style.display = 'block';
+          avatarEl.appendChild(im);
+        })
+        .catch(function () {
+          if (avatarEl && user.email) {
+            avatarEl.textContent = user.email.charAt(0).toUpperCase();
+          }
+        });
+    } else if (user.email) {
+      avatarEl.textContent = user.email.charAt(0).toUpperCase();
+    }
+  }
+  window.bizdashApplyAuthUserAvatarChrome = bizdashApplyAuthUserAvatarChrome;
+
   function showApp(user) {
     hideOnboardModal();
     var loading = $('auth-loading');
@@ -1779,7 +1877,6 @@
     if (user) {
       var nameEl = document.getElementById('user-name');
       var roleEl = document.getElementById('user-role');
-      var avatarEl = document.getElementById('user-avatar');
       var metaU = (user.user_metadata && typeof user.user_metadata === 'object' ? user.user_metadata : {}) || {};
       if (nameEl) {
         var dispN = [String(metaU.first_name || '').trim(), String(metaU.last_name || '').trim()].filter(Boolean).join(' ').trim();
@@ -1789,41 +1886,17 @@
         var rr = window.currentOrganizationRole;
         roleEl.textContent = rr ? String(rr).charAt(0).toUpperCase() + String(rr).slice(1) : 'Member';
       }
-      if (avatarEl) {
-        avatarEl.innerHTML = '';
-        var avPath = String(metaU.profile_avatar_path || '').trim();
-        if (avPath && supabase) {
-          supabase.storage
-            .from('brand-assets')
-            .createSignedUrl(avPath, 60 * 60 * 24)
-            .then(function (res) {
-              if (!res.data || !res.data.signedUrl || !avatarEl) return;
-              avatarEl.innerHTML = '';
-              var im = document.createElement('img');
-              im.src = res.data.signedUrl;
-              im.alt = '';
-              im.width = 28;
-              im.height = 28;
-              im.style.borderRadius = '50%';
-              im.style.objectFit = 'cover';
-              im.style.display = 'block';
-              avatarEl.appendChild(im);
-            })
-            .catch(function () {
-              if (avatarEl && user.email) {
-                avatarEl.textContent = user.email.charAt(0).toUpperCase();
-              }
-            });
-        } else if (user.email) {
-          avatarEl.textContent = user.email.charAt(0).toUpperCase();
-        }
-      }
     }
 
     drainInviteFlashIntoApp();
 
     if (window.initDataFromSupabase) {
       window.initDataFromSupabase();
+    }
+    if (typeof window.bizdashRefreshSidebarProfileAvatars === 'function') {
+      window.bizdashRefreshSidebarProfileAvatars();
+    } else if (user) {
+      bizdashApplyAuthUserAvatarChrome(user);
     }
   }
 

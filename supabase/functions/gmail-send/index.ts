@@ -53,8 +53,8 @@ serveWithEdgeRequestLogging("gmail-send", async (req, ctx) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
-  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
-  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  const clientId = Deno.env.get("GOOGLE_CLIENT_ID")?.trim();
+  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET")?.trim();
   if (!supabaseUrl || !anonKey || !serviceKey || !clientId || !clientSecret) {
     return json(req, 500, { error: "Server misconfiguration" });
   }

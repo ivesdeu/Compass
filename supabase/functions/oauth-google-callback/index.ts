@@ -26,8 +26,8 @@ serveWithEdgeRequestLogging("oauth-google-callback", async (req, _ctx) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const serviceKey = Deno.env.get("SUPABASE_SERVICE_ROLE_KEY");
   const stateSecret = Deno.env.get("OAUTH_STATE_SECRET");
-  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
-  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET");
+  const clientId = Deno.env.get("GOOGLE_CLIENT_ID")?.trim();
+  const clientSecret = Deno.env.get("GOOGLE_CLIENT_SECRET")?.trim();
   const appSiteUrl = Deno.env.get("APP_SITE_URL")?.trim();
   if (!supabaseUrl || !serviceKey || !stateSecret || !clientId || !clientSecret || !appSiteUrl) {
     return new Response("Server misconfiguration", { status: 500, headers: corsHeadersFor(req) });
@@ -73,10 +73,13 @@ serveWithEdgeRequestLogging("oauth-google-callback", async (req, _ctx) => {
   });
   const tokenJson = (await tokenRes.json()) as Record<string, unknown>;
   if (!tokenRes.ok) {
+    const googleErr =
+      typeof tokenJson.error === "string" ? tokenJson.error.slice(0, 120) : "";
     const loc = successRedirectUrl(appSiteUrl, payload.r ?? "/", {
       oauth: "error",
       provider: "google",
       detail: "token_exchange",
+      ...(googleErr ? { google_error: googleErr } : {}),
     });
     return redirect(req, loc);
   }

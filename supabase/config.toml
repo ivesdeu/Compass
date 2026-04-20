@@ -407,15 +407,16 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 [functions.organization-team]
 verify_jwt = false
 
-# Google / Microsoft workspace OAuth (browser redirects on callback — no Supabase JWT).
+# Google / Microsoft OAuth start: validate JWT inside the function (auth.getUser). Gateway verify_jwt
+# rejects valid ES256 (ECC) access tokens with "Unsupported JWT algorithm ES256" on some projects.
 [functions.oauth-google-start]
-verify_jwt = true
+verify_jwt = false
 
 [functions.oauth-google-callback]
 verify_jwt = false
 
 [functions.oauth-microsoft-start]
-verify_jwt = true
+verify_jwt = false
 
 [functions.oauth-microsoft-callback]
 verify_jwt = false
@@ -424,25 +425,25 @@ verify_jwt = false
 [functions.integration-worker]
 verify_jwt = false
 
-# Send email via stored Google tokens; caller must present Supabase user JWT.
+# Send email via stored Google tokens; caller JWT validated in handler (same ES256 gateway caveat).
 [functions.gmail-send]
-verify_jwt = true
+verify_jwt = false
 
 # Returns booleans for Gmail / Calendar / Stripe readiness (no secrets).
 [functions.integration-connection-status]
-verify_jwt = true
+verify_jwt = false
 
-# Stripe Checkout for workspace invoices (caller JWT); charges on the connected account when configured.
+# Stripe Checkout for workspace invoices (caller JWT validated in handler).
 [functions.create-stripe-checkout-session]
-verify_jwt = true
+verify_jwt = false
 
 # Stripe webhooks (signature verification only; no Supabase JWT).
 [functions.stripe-webhook]
 verify_jwt = false
 
-# Stripe Connect Express onboarding (owner/admin JWT).
+# Stripe Connect Express onboarding (owner/admin JWT validated in handler).
 [functions.stripe-connect-start]
-verify_jwt = true
+verify_jwt = false
 
 [functions.stripe-connect-disconnect]
-verify_jwt = true
+verify_jwt = false

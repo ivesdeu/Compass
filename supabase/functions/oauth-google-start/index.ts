@@ -33,7 +33,7 @@ serveWithEdgeRequestLogging("oauth-google-start", async (req, _ctx) => {
   const supabaseUrl = Deno.env.get("SUPABASE_URL");
   const anonKey = Deno.env.get("SUPABASE_ANON_KEY");
   const stateSecret = Deno.env.get("OAUTH_STATE_SECRET");
-  const clientId = Deno.env.get("GOOGLE_CLIENT_ID");
+  const clientId = Deno.env.get("GOOGLE_CLIENT_ID")?.trim();
   if (!supabaseUrl || !anonKey || !stateSecret || !clientId) {
     return json(req, 500, { error: "Missing Supabase or Google OAuth configuration" });
   }

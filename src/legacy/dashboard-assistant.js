@@ -1056,6 +1056,9 @@
       autoResizeTa();
       setImagePreview(null);
       ta.blur();
+      try {
+        window.dispatchEvent(new CustomEvent('advisor-composer-prefill', { detail: { value: '' } }));
+      } catch (_) {}
 
       isThinking = true;
       sendBtn.disabled = true;
@@ -1170,6 +1173,9 @@
           ta.value = q;
           autoResizeTa();
           syncSendDisabled();
+          try {
+            window.dispatchEvent(new CustomEvent('advisor-composer-prefill', { detail: { value: q } }));
+          } catch (_) {}
           handleSend(q);
         }
       });
@@ -1198,6 +1204,11 @@
         : 'Add this contact request to my CRM with Lead status and suggest any missing fields.';
       autoResizeTa();
       syncSendDisabled();
+      try {
+        window.dispatchEvent(
+          new CustomEvent('advisor-composer-prefill', { detail: { value: ta.value, focus: true } }),
+        );
+      } catch (_) {}
       ta.focus();
     };
 
@@ -1217,6 +1228,9 @@
       setSelectedTool(null);
       setToolsOpen(false);
       syncSendDisabled();
+      try {
+        window.dispatchEvent(new CustomEvent('advisor-composer-prefill', { detail: { value: '' } }));
+      } catch (_) {}
       seedWelcome();
       syncAdvisorComposerLayout();
     };
@@ -1238,5 +1252,25 @@
       syncAdvisorComposerLayout();
     };
     syncAdvisorComposerLayout();
+
+    window.bizDashAdvisorGetComposerApi = function () {
+      return {
+        send: function (text) {
+          var t = text != null ? String(text) : '';
+          ta.value = t;
+          syncSendDisabled();
+          autoResizeTa();
+          handleSend(t);
+        },
+        attach: function () {
+          if (fileInput) fileInput.click();
+        },
+        setTools: function (think, deep) {
+          if (deep) setSelectedTool('deepResearch');
+          else if (think) setSelectedTool('thinkLonger');
+          else setSelectedTool(null);
+        },
+      };
+    };
   };
 })();

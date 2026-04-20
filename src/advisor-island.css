@@ -1,0 +1,16 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* Advisor React island: tokens from the app shell (index.html) */
+#advisor-react-composer-root {
+  --advisor-surface: var(--bg, #fff);
+  --advisor-elevated: var(--bg2, #f8fafc);
+  --advisor-text: var(--text, #0f172a);
+  --advisor-muted: var(--text3, #94a3b8);
+  --advisor-border: var(--border, #e2e8f0);
+  --advisor-accent: var(--coral, #e8501a);
+  --advisor-accent-2: var(--coral2, #d14816);
+  --advisor-tint: color-mix(in srgb, var(--coral, #e8501a) 12%, transparent);
+  --advisor-tint-border: color-mix(in srgb, var(--coral, #e8501a) 45%, transparent);
+}

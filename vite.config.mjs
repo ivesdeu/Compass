@@ -1,4 +1,5 @@
 import { defineConfig, loadEnv } from 'vite';
+import react from '@vitejs/plugin-react';
 import browserslistToEsbuild from 'browserslist-to-esbuild';
 import { fileURLToPath } from 'node:url';
 import { dirname, resolve } from 'node:path';
@@ -18,6 +19,12 @@ export default defineConfig(({ mode }) => {
   return {
   root: __dirname,
   publicDir: 'public',
+  plugins: [react()],
+  resolve: {
+    alias: {
+      '@': resolve(__dirname, 'src'),
+    },
+  },
   define: {
     __BIZDASH_SUPABASE_URL__: JSON.stringify(supabaseUrl),
     __BIZDASH_SUPABASE_ANON_KEY__: JSON.stringify(supabaseAnon),
