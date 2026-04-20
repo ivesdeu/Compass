@@ -248,6 +248,225 @@
 
   var CLIENTS_KEY = 'clients:v1';
   var CUSTOMERS_COLUMNS_PREFS_KEY = 'customers-columns:v1';
+  var USER_UI_PREFS_DEBOUNCE_MS = 400;
+  var userUiPrefsCache = null;
+  var userUiPrefsPersistTimer = null;
+
+  function defaultUserUiPayload() {
+    return { v: 1, preferences: undefined, orgs: {}, sidebarHiddenPages: [] };
+  }
+
+  function ensureUserUiPrefsCache() {
+    if (!userUiPrefsCache || typeof userUiPrefsCache !== 'object') {
+      userUiPrefsCache = defaultUserUiPayload();
+    }
+    if (!userUiPrefsCache.orgs || typeof userUiPrefsCache.orgs !== 'object') {
+      userUiPrefsCache.orgs = {};
+    }
+    if (userUiPrefsCache.v == null) {
+      userUiPrefsCache.v = 1;
+    }
+    if (!Array.isArray(userUiPrefsCache.sidebarHiddenPages)) {
+      userUiPrefsCache.sidebarHiddenPages = [];
+    } else {
+      userUiPrefsCache.sidebarHiddenPages = sanitizeSidebarHiddenPages(userUiPrefsCache.sidebarHiddenPages);
+    }
+    return userUiPrefsCache;
+  }
+
+  function clearUserUiPrefsCache() {
+    userUiPrefsCache = null;
+    try {
+      if (userUiPrefsPersistTimer) {
+        clearTimeout(userUiPrefsPersistTimer);
+      }
+    } catch (_) {}
+    userUiPrefsPersistTimer = null;
+  }
+
+  function preferencesForUserUiCache() {
+    try {
+      if (window.__bizdashPreferences && typeof window.__bizdashPreferences === 'object') {
+        return normalizePreferences(window.__bizdashPreferences);
+      }
+      if (document.getElementById('pref-theme')) {
+        return normalizePreferences(readPreferencesFromDom());
+      }
+    } catch (_) {}
+    return normalizePreferences(getDefaultPreferences());
+  }
+
+  function mergeRuntimeIntoUserUiCacheForOrg(oid) {
+    if (!oid) return;
+    var c = ensureUserUiPrefsCache();
+    if (!c.orgs[oid]) {
+      c.orgs[oid] = {};
+    }
+    c.orgs[oid].customersColumns = JSON.parse(JSON.stringify(customersColumnPrefs || defaultCustomersColumnPrefs()));
+    c.orgs[oid].incomePower = {
+      search: incomePowerState.search || '',
+      filters: Array.isArray(incomePowerState.filters) ? incomePowerState.filters.slice(0, 20) : [],
+      visible: Object.assign({}, incomePowerState.visible || {}),
+    };
+    c.orgs[oid].incomeTrendRange = incomeTrendRange || '90d';
+  }
+
+  function updateUserUiPrefsCacheFromRuntime() {
+    var oid = getCurrentOrgId();
+    if (oid) {
+      mergeRuntimeIntoUserUiCacheForOrg(oid);
+    }
+    ensureUserUiPrefsCache().preferences = preferencesForUserUiCache();
+    return ensureUserUiPrefsCache();
+  }
+
+  function schedulePersistUserUiPreferences() {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !getCurrentOrgId()) {
+      return;
+    }
+    if (isDemoDashboardUser()) {
+      return;
+    }
+    try {
+      if (userUiPrefsPersistTimer) {
+        clearTimeout(userUiPrefsPersistTimer);
+      }
+    } catch (_) {}
+    userUiPrefsPersistTimer = setTimeout(function () {
+      userUiPrefsPersistTimer = null;
+      flushPersistUserUiPreferences();
+    }, USER_UI_PREFS_DEBOUNCE_MS);
+  }
+
+  async function persistUserUiPreferencesFromCache() {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || isDemoDashboardUser()) {
+      return;
+    }
+    try {
+      var payload = ensureUserUiPrefsCache();
+      var result = await supabase.from('user_ui_preferences').upsert(
+        {
+          user_id: currentUser.id,
+          payload: payload,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'user_id' }
+      );
+      if (result.error) {
+        console.error('user_ui_preferences upsert error', result.error);
+      }
+    } catch (err) {
+      console.error('persistUserUiPreferencesFromCache', err);
+    }
+  }
+
+  async function flushPersistUserUiPreferences() {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || isDemoDashboardUser()) {
+      return;
+    }
+    if (!getCurrentOrgId()) {
+      return;
+    }
+    try {
+      updateUserUiPrefsCacheFromRuntime();
+      await persistUserUiPreferencesFromCache();
+    } catch (err) {
+      console.error('flushPersistUserUiPreferences', err);
+    }
+  }
+
+  function persistUserUiPrefsForOrgLeaving(prevOid) {
+    try {
+      if (userUiPrefsPersistTimer) {
+        clearTimeout(userUiPrefsPersistTimer);
+      }
+    } catch (_) {}
+    userUiPrefsPersistTimer = null;
+    prevOid = prevOid && String(prevOid).trim() ? String(prevOid).trim() : null;
+    if (!prevOid) return;
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || isDemoDashboardUser()) return;
+    mergeRuntimeIntoUserUiCacheForOrg(prevOid);
+    ensureUserUiPrefsCache().preferences = preferencesForUserUiCache();
+    void persistUserUiPreferencesFromCache();
+  }
+
+  async function fetchUserUiPreferencesPayload() {
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || isDemoDashboardUser()) {
+      return null;
+    }
+    try {
+      var result = await supabase
+        .from('user_ui_preferences')
+        .select('payload')
+        .eq('user_id', currentUser.id)
+        .maybeSingle();
+      if (result.error) {
+        console.error('user_ui_preferences select error', result.error);
+        return null;
+      }
+      return result.data && result.data.payload != null ? result.data.payload : null;
+    } catch (err) {
+      console.error('fetchUserUiPreferencesPayload', err);
+      return null;
+    }
+  }
+
+  var SIDEBAR_NAV_PAGE_DEFS = [
+    { id: 'customers', label: 'Customers' },
+    { id: 'tasks', label: 'Tasks' },
+    { id: 'emails', label: 'Emails' },
+    { id: 'revenue', label: 'Income' },
+    { id: 'expenses', label: 'Expenses' },
+    { id: 'timesheet', label: 'Timesheet' },
+    { id: 'lists', label: 'Lists' },
+    { id: 'chat', label: 'Advisor' },
+    { id: 'performance', label: 'Performance' },
+    { id: 'retention', label: 'Retention' },
+    { id: 'insights', label: 'Insights' },
+    { id: 'marketing', label: 'Marketing' },
+    { id: 'team', label: 'Your team' },
+  ];
+  var SIDEBAR_PAGE_ID_SET = {};
+  SIDEBAR_NAV_PAGE_DEFS.forEach(function (d) {
+    SIDEBAR_PAGE_ID_SET[d.id] = true;
+  });
+
+  function sanitizeSidebarHiddenPages(arr) {
+    if (!Array.isArray(arr)) return [];
+    var out = [];
+    arr.forEach(function (id) {
+      id = String(id || '').trim();
+      if (id && SIDEBAR_PAGE_ID_SET[id] && out.indexOf(id) < 0) out.push(id);
+    });
+    return out;
+  }
+
+  function normalizeUserUiPayload(raw) {
+    var out = defaultUserUiPayload();
+    if (!raw || typeof raw !== 'object') {
+      return out;
+    }
+    out.v = typeof raw.v === 'number' ? raw.v : 1;
+    if (raw.preferences && typeof raw.preferences === 'object') {
+      out.preferences = normalizePreferences(raw.preferences);
+    }
+    if (raw.orgs && typeof raw.orgs === 'object') {
+      out.orgs = raw.orgs;
+    }
+    out.sidebarHiddenPages = sanitizeSidebarHiddenPages(raw.sidebarHiddenPages);
+    return out;
+  }
+
   var CUSTOMERS_COLUMN_DEFS = [
     { id: 'company', label: 'Company', index: 1 },
     { id: 'contact', label: 'Contact', index: 2 },
@@ -296,6 +515,8 @@
     try {
       localStorage.setItem(storageKey(CUSTOMERS_COLUMNS_PREFS_KEY), JSON.stringify(prefs || defaultCustomersColumnPrefs()));
     } catch (_) {}
+    ensureUserUiPrefsCache();
+    schedulePersistUserUiPreferences();
   }
 
   function loadClients() {
@@ -383,6 +604,8 @@
   }
 
   var invoices = [];
+  /** Unsaved activity lines for the full-screen invoice editor (cleared on save). */
+  var invFsActivityBuffer = [];
 
   // Marketing campaigns (local only)
   var CAMPAIGNS_KEY = 'campaigns:v1';
@@ -633,6 +856,501 @@
       if (!isNaN(n) && n > max) max = n;
     });
     return 'INV-' + String(max + 1).padStart(4, '0');
+  }
+
+  function invFsEnsureDetails(inv, tx) {
+    var base = inv && inv.invoiceDetails && typeof inv.invoiceDetails === 'object' ? Object.assign({}, inv.invoiceDetails) : {};
+    var amt = Number(inv && inv.amount != null ? inv.amount : (tx && tx.amount) || 0);
+    var lines = Array.isArray(base.lineItems) ? base.lineItems.slice() : [];
+    if (!lines.length) {
+      lines = [
+        {
+          id: uuid(),
+          description: (tx && tx.description) || 'Services',
+          qty: 1,
+          unitPrice: amt,
+        },
+      ];
+    } else {
+      lines = lines.map(function (li) {
+        return {
+          id: li && li.id ? li.id : uuid(),
+          description: li && li.description != null ? String(li.description) : '',
+          qty: Math.max(0.000001, Number(li && li.qty) || 1),
+          unitPrice: Number(li && li.unitPrice) || 0,
+        };
+      });
+    }
+    var meta =
+      base.metadata && typeof base.metadata === 'object' && !Array.isArray(base.metadata)
+        ? Object.assign({}, base.metadata)
+        : {};
+    var notes = Array.isArray(base.activityNotes) ? base.activityNotes.slice() : [];
+    var taxRate =
+      Object.prototype.hasOwnProperty.call(base, 'taxRate') && typeof base.taxRate === 'number' && isFinite(base.taxRate)
+        ? base.taxRate
+        : 10;
+    return {
+      memo: base.memo != null ? String(base.memo) : '',
+      billingMethod: base.billingMethod || 'send_invoice',
+      currency: base.currency || 'USD',
+      taxRate: taxRate,
+      lineItems: lines,
+      metadata: meta,
+      activityNotes: notes,
+    };
+  }
+
+  function openFullInvoiceEditor(txId) {
+    var modal = $('invoiceEditFullModal');
+    if (!modal) return;
+    var tx = state.transactions.find(function (t) {
+      return t.id === txId;
+    });
+    if (!tx) return;
+    var inv = getInvoiceByIncomeTxId(txId);
+    if (!inv) return;
+    invFsActivityBuffer = [];
+    var client = null;
+    if (tx.clientId) {
+      client = clients.find(function (c) {
+        return c.id === tx.clientId;
+      }) || null;
+    }
+    var hid = $('inv-fs-income-id');
+    if (hid) hid.value = txId;
+    var readOnly = inv.status === 'paid';
+    var pill = $('inv-fs-pill');
+    var numEl = $('inv-fs-num');
+    if (numEl) numEl.textContent = inv.number || 'Invoice';
+    if (pill) {
+      pill.textContent =
+        inv.status === 'paid' ? 'Paid' : inv.status === 'draft' ? 'Draft' : inv.status === 'sent' ? 'Sent' : inv.status || 'Open';
+      pill.className =
+        'inv-fs-pill' +
+        (inv.status === 'paid' ? ' inv-fs-pill--paid' : inv.status === 'draft' ? ' inv-fs-pill--draft' : '');
+    }
+    var toName = client && client.companyName ? client.companyName : tx.description || 'Client';
+    var lead = $('inv-fs-lead');
+    if (lead) lead.textContent = 'Billed to ' + toName + ' • ' + fmtCurrency(inv.amount || 0);
+    var cname = $('inv-fs-customer-name');
+    if (cname) cname.textContent = toName;
+    var em = $('inv-fs-customer-email');
+    if (em) em.textContent = client && client.email ? client.email : '—';
+    var ph = $('inv-fs-customer-phone');
+    if (ph) {
+      ph.textContent = client && client.phone ? client.phone : '';
+      ph.style.display = client && client.phone ? '' : 'none';
+    }
+    var fn = $('inv-fs-field-number');
+    if (fn) fn.value = inv.number || '';
+    var fi = $('inv-fs-field-issue');
+    if (fi) fi.value = inv.dateIssued || '';
+    var fd = $('inv-fs-field-due');
+    if (fd) fd.value = inv.dueDate || '';
+    var det = invFsEnsureDetails(inv, tx);
+    var fc = $('inv-fs-field-currency');
+    if (fc) fc.value = det.currency === 'EUR' ? 'EUR' : 'USD';
+    var fb = $('inv-fs-field-billing');
+    if (fb) fb.value = det.billingMethod === 'charge_automatically' ? 'charge_automatically' : 'send_invoice';
+    var fm = $('inv-fs-field-memo');
+    if (fm) fm.value = det.memo;
+    var ft = $('inv-fs-field-tax');
+    if (ft) ft.value = String(det.taxRate != null ? det.taxRate : 10);
+    var did = $('inv-fs-detail-id');
+    if (did) did.textContent = inv.id || '';
+    var cr = $('inv-fs-created');
+    if (cr) cr.textContent = inv.createdAt ? new Date(inv.createdAt).toLocaleString() : '—';
+    invFsRenderActivity(det.activityNotes, inv.createdAt);
+    invFsRenderLines(det.lineItems);
+    invFsRenderMetadata(det.metadata);
+    invFsRecalcTotals();
+    var ro = $('inv-fs-readonly');
+    if (ro) ro.style.display = readOnly ? 'block' : 'none';
+    [
+      'inv-fs-field-number',
+      'inv-fs-field-issue',
+      'inv-fs-field-due',
+      'inv-fs-field-currency',
+      'inv-fs-field-billing',
+      'inv-fs-field-memo',
+      'inv-fs-field-tax',
+      'inv-fs-add-line',
+      'inv-fs-add-note',
+      'inv-fs-metadata-add',
+      'inv-fs-save',
+    ].forEach(function (id) {
+      var el = $(id);
+      if (el) el.disabled = readOnly;
+    });
+    modal.classList.add('on');
+    modal.setAttribute('aria-hidden', 'false');
+  }
+
+  function closeFullInvoiceEditor() {
+    var modal = $('invoiceEditFullModal');
+    if (!modal) return;
+    modal.classList.remove('on');
+    modal.setAttribute('aria-hidden', 'true');
+  }
+
+  function invFsRenderActivity(notes, createdAt) {
+    var box = $('inv-fs-activity');
+    if (!box) return;
+    var rows = [];
+    if (createdAt) {
+      rows.push('Invoice was created on ' + new Date(createdAt).toLocaleString() + '.');
+    } else {
+      rows.push('Invoice activity will appear here.');
+    }
+    (notes || []).forEach(function (n) {
+      if (n && n.text) {
+        rows.push(esc(String(n.text)) + (n.at ? ' — ' + new Date(n.at).toLocaleString() : ''));
+      }
+    });
+    invFsActivityBuffer.forEach(function (t) {
+      rows.push(esc(String(t)) + ' — just now');
+    });
+    box.innerHTML = rows
+      .map(function (r) {
+        return '<div class="inv-fs-activity-row">' + r + '</div>';
+      })
+      .join('');
+  }
+
+  function invFsAppendLineRow(li) {
+    var tb = $('inv-fs-lines-body');
+    if (!tb) return;
+    var tr = document.createElement('tr');
+    tr.dataset.lineId = li && li.id ? li.id : uuid();
+    var desc = li && li.description != null ? String(li.description) : '';
+    var qty = li && li.qty != null ? li.qty : 1;
+    var price = li && li.unitPrice != null ? li.unitPrice : 0;
+    tr.innerHTML =
+      '<td><input class="fi inv-fs-li-desc" type="text" value="' +
+      esc(desc) +
+      '" /></td>' +
+      '<td><input class="fi inv-fs-li-qty" type="number" min="0" step="0.01" value="' +
+      esc(String(qty)) +
+      '" /></td>' +
+      '<td><input class="fi inv-fs-li-price" type="number" min="0" step="0.01" value="' +
+      esc(String(price)) +
+      '" /></td>' +
+      '<td style="text-align:right" class="inv-fs-li-amt"></td>' +
+      '<td><button type="button" class="inv-fs-iconbtn inv-fs-line-del" title="Remove">×</button></td>';
+    tr.querySelectorAll('.fi').forEach(function (inp) {
+      inp.addEventListener('input', invFsRecalcTotals);
+    });
+    var del = tr.querySelector('.inv-fs-line-del');
+    if (del) {
+      del.addEventListener('click', function () {
+        if (tb.querySelectorAll('tr').length <= 1) return;
+        tr.remove();
+        invFsRecalcTotals();
+      });
+    }
+    tb.appendChild(tr);
+    invFsRecalcTotals();
+  }
+
+  function invFsRenderLines(lines) {
+    var tb = $('inv-fs-lines-body');
+    if (!tb) return;
+    tb.innerHTML = '';
+    (lines || []).forEach(function (li) {
+      invFsAppendLineRow(li);
+    });
+    if (!tb.querySelector('tr')) {
+      invFsAppendLineRow({ id: uuid(), description: '', qty: 1, unitPrice: 0 });
+    }
+  }
+
+  function invFsCollectLines() {
+    var tb = $('inv-fs-lines-body');
+    if (!tb) return [];
+    var out = [];
+    tb.querySelectorAll('tr').forEach(function (tr) {
+      var id = tr.dataset.lineId || uuid();
+      var d = tr.querySelector('.inv-fs-li-desc');
+      var q = tr.querySelector('.inv-fs-li-qty');
+      var p = tr.querySelector('.inv-fs-li-price');
+      out.push({
+        id: id,
+        description: d ? d.value.trim() : '',
+        qty: Math.max(0, parseFloat(q && q.value ? q.value : '1') || 0),
+        unitPrice: parseFloat(p && p.value ? p.value : '0') || 0,
+      });
+    });
+    return out;
+  }
+
+  function invFsRecalcTotals() {
+    var lines = invFsCollectLines();
+    var sub = 0;
+    lines.forEach(function (li) {
+      var qty = Math.max(0, li.qty || 0);
+      var unit = li.unitPrice || 0;
+      sub += qty * unit;
+    });
+    var taxEl = $('inv-fs-field-tax');
+    var taxPct = parseFloat(taxEl && taxEl.value ? taxEl.value : '0') || 0;
+    var tax = sub * (taxPct / 100);
+    var total = sub + tax;
+    var tb = $('inv-fs-lines-body');
+    if (tb) {
+      tb.querySelectorAll('tr').forEach(function (tr) {
+        var q = parseFloat(tr.querySelector('.inv-fs-li-qty') && tr.querySelector('.inv-fs-li-qty').value) || 0;
+        var p = parseFloat(tr.querySelector('.inv-fs-li-price') && tr.querySelector('.inv-fs-li-price').value) || 0;
+        var cell = tr.querySelector('.inv-fs-li-amt');
+        if (cell) cell.textContent = fmtCurrency(q * p);
+      });
+    }
+    var su = $('inv-fs-subtotal');
+    var ta = $('inv-fs-taxamt');
+    var to = $('inv-fs-total');
+    if (su) su.textContent = fmtCurrency(sub);
+    if (ta) ta.textContent = fmtCurrency(tax);
+    if (to) to.textContent = fmtCurrency(total);
+    var lead = $('inv-fs-lead');
+    var txId = $('inv-fs-income-id') ? $('inv-fs-income-id').value : '';
+    var tx = state.transactions.find(function (t) {
+      return t.id === txId;
+    });
+    var client = tx && tx.clientId ? clients.find(function (c) { return c.id === tx.clientId; }) : null;
+    var toName = client && client.companyName ? client.companyName : tx && tx.description ? tx.description : 'Client';
+    if (lead) lead.textContent = 'Billed to ' + toName + ' • ' + fmtCurrency(total);
+  }
+
+  function invFsRenderMetadata(meta) {
+    var wrap = $('inv-fs-metadata-rows');
+    var empty = $('inv-fs-metadata-empty');
+    if (!wrap || !empty) return;
+    wrap.innerHTML = '';
+    var keys = Object.keys(meta || {});
+    empty.style.display = keys.length ? 'none' : 'block';
+    keys.forEach(function (k) {
+      invFsAppendMetaRow(k, meta[k]);
+    });
+  }
+
+  function invFsAppendMetaRow(k, v) {
+    var wrap = $('inv-fs-metadata-rows');
+    var empty = $('inv-fs-metadata-empty');
+    if (!wrap || !empty) return;
+    empty.style.display = 'none';
+    var row = document.createElement('div');
+    row.className = 'inv-fs-meta-row';
+    row.innerHTML =
+      '<input class="fi inv-fs-meta-k" type="text" value="' +
+      esc(k != null ? String(k) : '') +
+      '" placeholder="Key" />' +
+      '<input class="fi inv-fs-meta-v" type="text" value="' +
+      esc(v != null ? String(v) : '') +
+      '" placeholder="Value" />' +
+      '<button type="button" class="inv-fs-iconbtn inv-fs-meta-del" title="Remove">×</button>';
+    var del = row.querySelector('.inv-fs-meta-del');
+    if (del) {
+      del.addEventListener('click', function () {
+        row.remove();
+        if (!wrap.querySelector('.inv-fs-meta-row')) empty.style.display = 'block';
+      });
+    }
+    wrap.appendChild(row);
+  }
+
+  function invFsCollectMetadata() {
+    var wrap = $('inv-fs-metadata-rows');
+    if (!wrap) return {};
+    var o = {};
+    wrap.querySelectorAll('.inv-fs-meta-row').forEach(function (row) {
+      var k = row.querySelector('.inv-fs-meta-k');
+      var v = row.querySelector('.inv-fs-meta-v');
+      var key = k && k.value.trim();
+      if (!key) return;
+      o[key] = v && v.value != null ? String(v.value) : '';
+    });
+    return o;
+  }
+
+  function readFullInvoiceDraftForPreview(txId) {
+    var inv = getInvoiceByIncomeTxId(txId);
+    var tx = state.transactions.find(function (t) {
+      return t.id === txId;
+    });
+    if (!inv || !tx) return null;
+    var lines = invFsCollectLines();
+    var taxR = parseFloat($('inv-fs-field-tax') && $('inv-fs-field-tax').value ? $('inv-fs-field-tax').value : '0') || 0;
+    var sub = lines.reduce(function (s, li) {
+      return s + Math.max(0, li.qty || 0) * (li.unitPrice || 0);
+    }, 0);
+    var total = Math.round(sub * (1 + taxR / 100) * 100) / 100;
+    var prevNotes =
+      inv.invoiceDetails && Array.isArray(inv.invoiceDetails.activityNotes) ? inv.invoiceDetails.activityNotes.slice() : [];
+    var det = Object.assign({}, invFsEnsureDetails(inv, tx), {
+      memo: $('inv-fs-field-memo') ? String($('inv-fs-field-memo').value) : '',
+      billingMethod: $('inv-fs-field-billing') ? $('inv-fs-field-billing').value : 'send_invoice',
+      currency: $('inv-fs-field-currency') ? $('inv-fs-field-currency').value : 'USD',
+      taxRate: taxR,
+      lineItems: lines,
+      metadata: invFsCollectMetadata(),
+      activityNotes: prevNotes,
+    });
+    return {
+      id: inv.id,
+      incomeTxId: inv.incomeTxId,
+      number: $('inv-fs-field-number') ? $('inv-fs-field-number').value.trim() : inv.number,
+      dateIssued: $('inv-fs-field-issue') ? $('inv-fs-field-issue').value : inv.dateIssued,
+      dueDate: $('inv-fs-field-due') ? $('inv-fs-field-due').value : inv.dueDate,
+      amount: total,
+      status: inv.status,
+      paidAt: inv.paidAt,
+      stripeCheckoutSessionId: inv.stripeCheckoutSessionId,
+      stripePaymentIntentId: inv.stripePaymentIntentId,
+      stripeCustomerId: inv.stripeCustomerId,
+      stripeStatus: inv.stripeStatus,
+      invoiceDetails: det,
+      createdAt: inv.createdAt,
+    };
+  }
+
+  function saveFullInvoiceEditor() {
+    var txId = $('inv-fs-income-id') ? $('inv-fs-income-id').value : '';
+    if (!txId) return;
+    var inv = getInvoiceByIncomeTxId(txId);
+    var tx = state.transactions.find(function (t) {
+      return t.id === txId;
+    });
+    if (!inv || !tx) return;
+    if (inv.status === 'paid') return;
+    var num = $('inv-fs-field-number') ? $('inv-fs-field-number').value.trim() : '';
+    if (!num) {
+      alert('Invoice number is required.');
+      return;
+    }
+    var issue = $('inv-fs-field-issue') ? $('inv-fs-field-issue').value : '';
+    var due = $('inv-fs-field-due') ? $('inv-fs-field-due').value : '';
+    if (!issue || !due) {
+      alert('Issue and due dates are required.');
+      return;
+    }
+    var lines = invFsCollectLines().filter(function (li) {
+      return (li.description && li.description.trim()) || li.unitPrice;
+    });
+    if (!lines.length) {
+      alert('Add at least one line item.');
+      return;
+    }
+    lines.forEach(function (li) {
+      if (!li.description || !li.description.trim()) li.description = 'Line item';
+      if (!li.qty) li.qty = 1;
+    });
+    var taxR = parseFloat($('inv-fs-field-tax') && $('inv-fs-field-tax').value ? $('inv-fs-field-tax').value : '0') || 0;
+    var sub = lines.reduce(function (s, li) {
+      return s + li.qty * li.unitPrice;
+    }, 0);
+    var total = Math.round(sub * (1 + taxR / 100) * 100) / 100;
+    if (!total || total <= 0) {
+      alert('Invoice total must be greater than zero.');
+      return;
+    }
+    var prevDet = invFsEnsureDetails(inv, tx);
+    var newNotes = (prevDet.activityNotes || []).slice();
+    invFsActivityBuffer.forEach(function (t) {
+      newNotes.push({ at: new Date().toISOString(), text: t });
+    });
+    invFsActivityBuffer = [];
+    var nextDet = {
+      memo: $('inv-fs-field-memo') ? String($('inv-fs-field-memo').value) : '',
+      billingMethod: $('inv-fs-field-billing') ? $('inv-fs-field-billing').value : 'send_invoice',
+      currency: $('inv-fs-field-currency') ? $('inv-fs-field-currency').value : 'USD',
+      taxRate: taxR,
+      lineItems: lines,
+      metadata: invFsCollectMetadata(),
+      activityNotes: newNotes,
+    };
+    invoices = invoices.map(function (x) {
+      if (x.incomeTxId !== txId) return x;
+      return Object.assign({}, x, {
+        number: num,
+        dateIssued: issue,
+        dueDate: due,
+        amount: total,
+        invoiceDetails: nextDet,
+      });
+    });
+    saveInvoices(invoices);
+    recomputeAndRender();
+    var saved = getInvoiceByIncomeTxId(txId);
+    if (saved) persistInvoiceToSupabase(saved);
+    closeFullInvoiceEditor();
+  }
+
+  function wireInvoiceFullEditor() {
+    var modal = $('invoiceEditFullModal');
+    if (!modal || modal.getAttribute('data-inv-fs-wired') === '1') return;
+    if (!$('inv-fs-cancel') || !$('inv-fs-save')) return;
+    modal.setAttribute('data-inv-fs-wired', '1');
+    $('inv-fs-cancel').addEventListener('click', closeFullInvoiceEditor);
+    var bc = $('inv-fs-bc');
+    if (bc) bc.addEventListener('click', closeFullInvoiceEditor);
+    modal.addEventListener('click', function (ev) {
+      if (ev.target === modal) closeFullInvoiceEditor();
+    });
+    $('inv-fs-save').addEventListener('click', saveFullInvoiceEditor);
+    var taxEl = $('inv-fs-field-tax');
+    if (taxEl) taxEl.addEventListener('input', invFsRecalcTotals);
+    var addLine = $('inv-fs-add-line');
+    if (addLine) {
+      addLine.addEventListener('click', function () {
+        if ($('inv-fs-save') && $('inv-fs-save').disabled) return;
+        invFsAppendLineRow({ id: uuid(), description: '', qty: 1, unitPrice: 0 });
+      });
+    }
+    var addNote = $('inv-fs-add-note');
+    if (addNote) {
+      addNote.addEventListener('click', function () {
+        if ($('inv-fs-save') && $('inv-fs-save').disabled) return;
+        var t = window.prompt('Add a note to the activity log:');
+        if (t && String(t).trim()) invFsActivityBuffer.push(String(t).trim());
+        var txId0 = $('inv-fs-income-id') ? $('inv-fs-income-id').value : '';
+        var inv0 = getInvoiceByIncomeTxId(txId0);
+        var tx0 = state.transactions.find(function (x) {
+          return x.id === txId0;
+        });
+        var det0 = inv0 && tx0 ? invFsEnsureDetails(inv0, tx0) : { activityNotes: [] };
+        invFsRenderActivity(det0.activityNotes, inv0 && inv0.createdAt);
+      });
+    }
+    var addMeta = $('inv-fs-metadata-add');
+    if (addMeta) {
+      addMeta.addEventListener('click', function () {
+        if ($('inv-fs-save') && $('inv-fs-save').disabled) return;
+        invFsAppendMetaRow('', '');
+      });
+    }
+    var copyId = $('inv-fs-copy-id');
+    if (copyId) {
+      copyId.addEventListener('click', function () {
+        var id = $('inv-fs-detail-id') ? $('inv-fs-detail-id').textContent : '';
+        if (id && navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(id);
+      });
+    }
+    var prevBtn = $('inv-fs-preview');
+    if (prevBtn) {
+      prevBtn.addEventListener('click', function () {
+        var txId1 = $('inv-fs-income-id') ? $('inv-fs-income-id').value : '';
+        if (!txId1) return;
+        var draft = readFullInvoiceDraftForPreview(txId1);
+        var tx1 = state.transactions.find(function (t) {
+          return t.id === txId1;
+        });
+        var body = $('invoice-preview-body');
+        var prevM = $('invoicePreviewModal');
+        if (!body || !prevM || !tx1 || !draft) return;
+        body.innerHTML = buildInvoiceMarkup(tx1, draft);
+        prevM.classList.add('on');
+      });
+    }
   }
 
   // ---------- Shared helpers ----------
@@ -1426,6 +2144,15 @@
 
   // ---------- Invoices (Supabase) ----------
   function mapInvoiceRow(row) {
+    var det = row.invoice_details;
+    if (det && typeof det === 'string') {
+      try {
+        det = JSON.parse(det);
+      } catch (_) {
+        det = {};
+      }
+    }
+    if (!det || typeof det !== 'object') det = {};
     return {
       id: row.id,
       incomeTxId: row.income_tx_id,
@@ -1439,11 +2166,13 @@
       stripePaymentIntentId: row.stripe_payment_intent_id || null,
       stripeCustomerId: row.stripe_customer_id || null,
       stripeStatus: row.stripe_status || null,
+      invoiceDetails: det,
+      createdAt: row.created_at ? String(row.created_at) : null,
     };
   }
 
   function invoiceRowForDb(inv, userId) {
-    return {
+    var row = {
       id: inv.id,
       user_id: userId,
       organization_id: getCurrentOrgId(),
@@ -1459,6 +2188,10 @@
       stripe_customer_id: inv.stripeCustomerId || null,
       stripe_status: inv.stripeStatus || null,
     };
+    if (inv.invoiceDetails && typeof inv.invoiceDetails === 'object') {
+      row.invoice_details = inv.invoiceDetails;
+    }
+    return row;
   }
 
   async function startStripeCheckoutForInvoice(inv) {
@@ -1975,7 +2708,6 @@
       },
       budgetMonths: loadBudgetMonthSnapshots(),
       workspace: readWorkspacePrefsFromDom(),
-      preferences: document.getElementById('pref-theme') ? readPreferencesFromDom() : undefined,
     };
   }
 
@@ -2139,24 +2871,17 @@
     var pw = prevDash.workspace && typeof prevDash.workspace === 'object' ? prevDash.workspace : {};
     var nw = nextDash.workspace && typeof nextDash.workspace === 'object' ? nextDash.workspace : {};
     var mergedWorkspace = mergeWorkspacePrefs(pw, nw);
-    var mergedPrefs;
-    if (nextDash.preferences && typeof nextDash.preferences === 'object') {
-      mergedPrefs = normalizePreferences(Object.assign({}, prevDash.preferences || {}, nextDash.preferences));
-    } else {
-      mergedPrefs = normalizePreferences(prevDash.preferences || {});
-    }
     return {
       business: mergedBusiness,
       budgets: nextDash.budgets && typeof nextDash.budgets === 'object' ? nextDash.budgets : { lab: 0, sw: 0, ads: 0, oth: 0 },
       budgetMonths: Object.assign({}, prevDash.budgetMonths || {}, nextDash.budgetMonths || {}),
       workspace: mergedWorkspace,
-      preferences: mergedPrefs,
     };
   }
 
   async function applyDashboardSettingsFromCloud(raw) {
     if (raw == null || typeof raw !== 'object') return;
-    if (!raw.business && !raw.budgets && !raw.budgetMonths && !raw.workspace && !raw.preferences) return;
+    if (!raw.business && !raw.budgets && !raw.budgetMonths && !raw.workspace) return;
     var biz = raw.business;
     if (biz && typeof biz === 'object') {
       function gid(id) {
@@ -2226,8 +2951,6 @@
     if (raw.workspace && typeof raw.workspace === 'object') {
       applyWorkspacePrefsToDom(raw.workspace);
     }
-    applyPreferencesToForm(normalizePreferences(raw.preferences));
-    applyPreferencesRuntime(normalizePreferences(raw.preferences));
     refreshSettingsBudgetInputsFromState();
     await hydrateWorkspaceSettingsFields();
   }
@@ -2443,6 +3166,10 @@
       } catch (_) {}
       if (!includeDashboard) {
         dash = existingSettings && existingSettings.dashboard_settings ? existingSettings.dashboard_settings : {};
+      }
+      if (dash && typeof dash === 'object' && Object.prototype.hasOwnProperty.call(dash, 'preferences')) {
+        dash = Object.assign({}, dash);
+        delete dash.preferences;
       }
       var result = await supabase.from('app_settings').upsert(
         {
@@ -3461,6 +4188,9 @@
     });
 
     main.innerHTML = html || '<p style="font-size:13px;color:var(--text3);padding:12px;">No tasks match this filter.</p>';
+    if (html) {
+      stagePageMotion(main);
+    }
   }
 
   function wireTasksTab() {
@@ -3677,6 +4407,7 @@
       if (modal) modal.classList.remove('on');
       showComposeErr('');
     }
+    window.__bizdashCloseEmlComposeModal = closeComposeModal;
 
     function openComposeModal() {
       if (!modal) return;
@@ -3805,6 +4536,12 @@
           p.classList.toggle('on', on);
           p.setAttribute('aria-hidden', on ? 'false' : 'true');
         });
+        var activePanel = root.querySelector('.eml-panel.on');
+        if (activePanel) {
+          window.requestAnimationFrame(function () {
+            stagePageMotion(activePanel);
+          });
+        }
       });
     });
 
@@ -4214,7 +4951,11 @@
 
   function stagePageMotion(container) {
     if (!container || prefersReducedMotion()) return;
-    var selectors = '.ph, .kg .kc, .card, .ts-kpi, .bva-row, .dt tbody tr';
+    var selectors =
+      '.ph, .kg .kc, .card, .ts-kpi, .bva-row, .dt tbody tr, ' +
+      '.tasks-attio-hdr, .tasks-attio-toolbar, .tasks-learn, #tasks-tab-empty.on, ' +
+      '.tasks-group-hdr, .tasks-table tbody tr, ' +
+      '.eml-topbar, .eml-panel.on, .eml-learn';
     var nodes = container.querySelectorAll(selectors);
     var cap = Math.min(nodes.length, 22);
     for (var i = 0; i < cap; i += 1) {
@@ -4399,6 +5140,8 @@ var incomePowerState = {
     try {
       localStorage.setItem(storageKey(INCOME_TREND_RANGE_KEY), incomeTrendRange);
     } catch (_) {}
+    ensureUserUiPrefsCache();
+    schedulePersistUserUiPreferences();
   }
 
   function saveIncomePowerPrefs() {
@@ -4409,6 +5152,186 @@ var incomePowerState = {
         visible: incomePowerState.visible || {},
       }));
     } catch (_) {}
+    ensureUserUiPrefsCache();
+    schedulePersistUserUiPreferences();
+  }
+
+  function applyUserUiOrgSliceToRuntime(orgId, slice) {
+    if (!orgId) return;
+    slice = slice && typeof slice === 'object' ? slice : {};
+    if (slice.customersColumns && typeof slice.customersColumns === 'object') {
+      var d = defaultCustomersColumnPrefs();
+      CUSTOMERS_COLUMN_DEFS.forEach(function (col) {
+        if (col.locked) return;
+        if (Object.prototype.hasOwnProperty.call(slice.customersColumns, col.id)) {
+          d[col.id] = slice.customersColumns[col.id] !== false;
+        }
+      });
+      customersColumnPrefs = d;
+      try {
+        localStorage.setItem(storageKey(CUSTOMERS_COLUMNS_PREFS_KEY), JSON.stringify(customersColumnPrefs));
+      } catch (_) {}
+    }
+    if (slice.incomePower && typeof slice.incomePower === 'object') {
+      if (typeof slice.incomePower.search === 'string') incomePowerState.search = slice.incomePower.search;
+      if (Array.isArray(slice.incomePower.filters)) {
+        incomePowerState.filters = slice.incomePower.filters.slice(0, 20);
+      }
+      if (slice.incomePower.visible && typeof slice.incomePower.visible === 'object') {
+        incomePowerColumns.forEach(function (col) {
+          if (Object.prototype.hasOwnProperty.call(slice.incomePower.visible, col.id)) {
+            incomePowerState.visible[col.id] = slice.incomePower.visible[col.id] !== false;
+          }
+        });
+      }
+    }
+    if (slice.incomeTrendRange === '30d' || slice.incomeTrendRange === '90d' || slice.incomeTrendRange === 'ytd' || slice.incomeTrendRange === 'all') {
+      incomeTrendRange = slice.incomeTrendRange;
+    }
+    try {
+      localStorage.setItem(storageKey(INCOME_POWER_PREFS_KEY), JSON.stringify({
+        search: incomePowerState.search || '',
+        filters: incomePowerState.filters || [],
+        visible: incomePowerState.visible || {},
+      }));
+      localStorage.setItem(storageKey(INCOME_TREND_RANGE_KEY), incomeTrendRange);
+    } catch (_) {}
+    if (typeof renderCustomersColumnsPanel === 'function') renderCustomersColumnsPanel();
+    if (typeof applyCustomersColumnVisibility === 'function') applyCustomersColumnVisibility();
+    var trendEl = document.getElementById('rev-trend-range');
+    if (trendEl) trendEl.value = incomeTrendRange;
+    if (typeof renderIncomePowerColumnChooser === 'function') renderIncomePowerColumnChooser();
+    if (typeof renderIncomePowerFilterRows === 'function') renderIncomePowerFilterRows();
+    if (state.computed && typeof renderIncomeSection === 'function') renderIncomeSection(state.computed);
+  }
+
+  function getSidebarHiddenPageSet() {
+    var set = {};
+    sanitizeSidebarHiddenPages(ensureUserUiPrefsCache().sidebarHiddenPages).forEach(function (id) {
+      set[id] = true;
+    });
+    return set;
+  }
+
+  function setSbNavDisplay(el, hidden) {
+    if (!el) return;
+    el.style.display = hidden ? 'none' : '';
+  }
+
+  function applySidebarNavVisibility() {
+    var hidden = getSidebarHiddenPageSet();
+    var sb = document.querySelector('.sb-nav');
+    if (!sb) return;
+    function isH(id) {
+      return !!hidden[id];
+    }
+    SIDEBAR_NAV_PAGE_DEFS.forEach(function (def) {
+      var id = def.id;
+      var h = isH(id);
+      if (id === 'lists') {
+        setSbNavDisplay(document.getElementById('nav-lbl-lists'), h);
+        setSbNavDisplay(document.getElementById('lists-sb-wrap'), h);
+        setSbNavDisplay(sb.querySelector('.ni[data-nav="lists"]'), h);
+      } else if (id === 'chat') {
+        setSbNavDisplay(document.getElementById('nav-lbl-chats'), h);
+        setSbNavDisplay(document.getElementById('chats-sb-wrap'), h);
+        setSbNavDisplay(sb.querySelector('.ni[data-nav="chat"]'), h);
+      } else {
+        setSbNavDisplay(sb.querySelector('.ni[data-nav="' + id + '"]'), h);
+      }
+    });
+    var showAnalyticsLabel =
+      !isH('performance') || !isH('retention') || !isH('insights') || !isH('marketing');
+    setSbNavDisplay(document.getElementById('nav-lbl-analytics'), !showAnalyticsLabel);
+  }
+
+  function setSidebarPageHidden(navId, hidden) {
+    if (!SIDEBAR_PAGE_ID_SET[navId]) return;
+    var c = ensureUserUiPrefsCache();
+    var arr = sanitizeSidebarHiddenPages(c.sidebarHiddenPages);
+    var ix = arr.indexOf(navId);
+    if (hidden && ix < 0) arr.push(navId);
+    if (!hidden && ix >= 0) arr.splice(ix, 1);
+    c.sidebarHiddenPages = arr;
+    applySidebarNavVisibility();
+    if (getCurrentOrgId()) {
+      schedulePersistUserUiPreferences();
+    } else {
+      supabase = window.supabaseClient || supabase;
+      currentUser = window.currentUser || currentUser;
+      if (supabase && currentUser && !isDemoDashboardUser()) {
+        void persistUserUiPreferencesFromCache();
+      }
+    }
+    renderSettingsPagesPanel();
+  }
+
+  function renderSettingsPagesPanel() {
+    var listEl = document.getElementById('settings-pages-visible-list');
+    var sel = document.getElementById('settings-pages-add-select');
+    var emptyHint = document.getElementById('settings-pages-add-empty');
+    if (!listEl || !sel) return;
+    var hidden = getSidebarHiddenPageSet();
+    var visibleRows = [];
+    SIDEBAR_NAV_PAGE_DEFS.forEach(function (def) {
+      if (!hidden[def.id]) visibleRows.push(def);
+    });
+    listEl.innerHTML = visibleRows.length
+      ? visibleRows
+          .map(function (def) {
+            return (
+              '<div class="settings-pages-row">' +
+              '<span class="settings-pages-row-label">' +
+              def.label +
+              '</span>' +
+              '<button type="button" class="btn" data-settings-page-remove="' +
+              def.id +
+              '">Remove</button>' +
+              '</div>'
+            );
+          })
+          .join('')
+      : '<p class="settings-ws-hint">No optional pages in the sidebar. Use Add below to restore a page.</p>';
+    while (sel.options.length > 1) {
+      sel.remove(1);
+    }
+    var hiddenAny = false;
+    SIDEBAR_NAV_PAGE_DEFS.forEach(function (def) {
+      if (hidden[def.id]) {
+        hiddenAny = true;
+        var op = document.createElement('option');
+        op.value = def.id;
+        op.textContent = def.label;
+        sel.appendChild(op);
+      }
+    });
+    if (emptyHint) emptyHint.style.display = hiddenAny ? 'none' : '';
+    sel.value = '';
+  }
+
+  function wireSettingsPagesPanel() {
+    var panel = document.getElementById('settings-panel-pages');
+    if (!panel || panel.getAttribute('data-pages-wired') === '1') return;
+    panel.setAttribute('data-pages-wired', '1');
+    panel.addEventListener('click', function (ev) {
+      var t = ev.target;
+      if (!t || !t.getAttribute) return;
+      var rm = t.getAttribute('data-settings-page-remove');
+      if (rm) {
+        ev.preventDefault();
+        setSidebarPageHidden(rm, true);
+      }
+    });
+    var addBtn = document.getElementById('settings-pages-add-btn');
+    if (addBtn && addBtn.getAttribute('data-pages-add-wired') !== '1') {
+      addBtn.setAttribute('data-pages-add-wired', '1');
+      addBtn.addEventListener('click', function () {
+        var s = document.getElementById('settings-pages-add-select');
+        var v = s && s.value ? String(s.value).trim() : '';
+        if (!v) return;
+        setSidebarPageHidden(v, false);
+      });
+    }
   }
 
   // Light UI chart theme: primary series follow Settings accent; muted grays for secondary series.
@@ -5883,6 +6806,7 @@ var incomePowerState = {
         await persistProfileUserMetadata();
         await persistWorkspaceOrganizationName();
         await syncBudgetsNow();
+        await flushPersistUserUiPreferences();
         // Brief visual confirmation
         var orig = saveBtn.textContent;
         saveBtn.textContent = 'Saved!';
@@ -5908,6 +6832,8 @@ var incomePowerState = {
             if (tz) tz.disabled = !!document.getElementById('pref-timezone-auto').checked;
           }
           bumpRuntime();
+          ensureUserUiPrefsCache();
+          schedulePersistUserUiPreferences();
         });
       });
       bumpRuntime();
@@ -5983,7 +6909,14 @@ var incomePowerState = {
       if (activeKicker) activeKicker.textContent = opener.getAttribute('data-settings-kicker') || '';
       var saveBtn = document.getElementById('btn-save-settings');
       var dirLink = document.getElementById('settings-people-directory-link');
-      if (saveBtn) saveBtn.style.display = panelId === 'people' || panelId === 'refer-earn' ? 'none' : '';
+      if (saveBtn) {
+        saveBtn.style.display =
+          panelId === 'people' || panelId === 'refer-earn' || panelId === 'connections' || panelId === 'pages'
+            ? 'none'
+            : '';
+      }
+      var discoverApps = document.getElementById('settings-head-discover-apps');
+      if (discoverApps) discoverApps.style.display = panelId === 'connections' ? 'inline-flex' : 'none';
       if (dirLink) dirLink.style.display = panelId === 'people' ? 'inline-flex' : 'none';
       if (panelId === 'account') refreshAccountSecurityUiFromServer();
       if (panelId === 'workspace') hydrateWorkspaceSettingsFields();
@@ -5996,9 +6929,15 @@ var incomePowerState = {
       if (panelId === 'stripe') {
         refreshStripeConnectPanel();
       }
+      if (panelId === 'connections') {
+        refreshConnectionsPanel();
+      }
       if (panelId === 'profile') {
         syncPrefsToProfilePanel();
         refreshAccountSecurityUiFromServer();
+      }
+      if (panelId === 'pages') {
+        renderSettingsPagesPanel();
       }
     }
 
@@ -6041,6 +6980,92 @@ var incomePowerState = {
         if (t) t.click();
       });
     }
+
+    var discoverBtn = document.getElementById('settings-head-discover-apps');
+    if (discoverBtn && discoverBtn.getAttribute('data-settings-discover-wired') !== '1') {
+      discoverBtn.setAttribute('data-settings-discover-wired', '1');
+      discoverBtn.addEventListener('click', function () {
+        var t = document.getElementById('settings-nav-mail-calendar');
+        if (t) t.click();
+      });
+    }
+
+    var connBack = document.getElementById('conn-back-to-general');
+    if (connBack && connBack.getAttribute('data-conn-back-wired') !== '1') {
+      connBack.setAttribute('data-conn-back-wired', '1');
+      connBack.addEventListener('click', function () {
+        var g = document.getElementById('settings-nav-general');
+        if (g) g.click();
+      });
+    }
+
+    document.querySelectorAll('.conn-app-card[data-conn-target]').forEach(function (card) {
+      if (card.getAttribute('data-conn-card-wired') === '1') return;
+      card.setAttribute('data-conn-card-wired', '1');
+      card.addEventListener('click', function () {
+        var tid = card.getAttribute('data-conn-target');
+        if (!tid) return;
+        var nav = document.querySelector('.settings-nav-item[data-settings-panel="' + tid + '"]');
+        if (nav) nav.click();
+      });
+    });
+
+    wireSettingsPagesPanel();
+  }
+
+  async function refreshConnectionsPanel() {
+    var gmailCard = document.getElementById('conn-card-gmail');
+    var calCard = document.getElementById('conn-card-gcalendar');
+    var stripeCard = document.getElementById('conn-card-stripe');
+    if (!gmailCard || !calCard || !stripeCard) return;
+
+    function setRow(card, on) {
+      card.classList.toggle('conn-app-card--on', !!on);
+      var nm = (card.querySelector('.conn-app-card-name') || {}).textContent || 'App';
+      card.setAttribute('aria-label', nm + (on ? ', connected' : ', not connected'));
+    }
+
+    var sb = window.supabaseClient;
+    var org = getCurrentOrgId();
+    if (!sb || !org) {
+      setRow(gmailCard, false);
+      setRow(calCard, false);
+      setRow(stripeCard, false);
+      return;
+    }
+    var sessRes = await sb.auth.getSession();
+    var sess = sessRes && sessRes.data ? sessRes.data.session : null;
+    if (!sess || !sess.access_token) {
+      setRow(gmailCard, false);
+      setRow(calCard, false);
+      setRow(stripeCard, false);
+      return;
+    }
+    var base = typeof window.__bizdashSupabaseUrl === 'string' ? window.__bizdashSupabaseUrl.trim().replace(/\/$/, '') : '';
+    var anon = typeof window.__bizdashSupabaseAnonKey === 'string' ? window.__bizdashSupabaseAnonKey.trim() : '';
+    if (!base || !anon) return;
+    var res = await fetch(base + '/functions/v1/integration-connection-status', {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: 'Bearer ' + sess.access_token,
+        apikey: anon,
+      },
+      body: JSON.stringify({ organizationId: org }),
+    });
+    var j = {};
+    try {
+      j = await res.json();
+    } catch (_) {}
+    if (!res.ok) {
+      setRow(gmailCard, false);
+      setRow(calCard, false);
+      setRow(stripeCard, false);
+      return;
+    }
+    setRow(gmailCard, !!j.gmail);
+    setRow(calCard, !!j.google_calendar);
+    setRow(stripeCard, !!j.stripe);
   }
 
   async function refreshStripeConnectPanel() {
@@ -6048,45 +7073,52 @@ var incomePowerState = {
     var btnStart = document.getElementById('btn-stripe-connect-start');
     var sb = window.supabaseClient;
     var org = getCurrentOrgId();
-    if (!el) return;
-    if (!sb || !org) {
-      el.textContent = 'Sign in and open a workspace to manage Stripe.';
-      if (btnStart) btnStart.disabled = true;
-      return;
-    }
-    if (btnStart) btnStart.disabled = false;
-    el.textContent = 'Loading…';
-    var result = await sb.from('organization_stripe_connections').select('*').eq('organization_id', org).maybeSingle();
-    if (result.error) {
-      el.textContent =
-        'Could not load Stripe status. For new installs, run supabase/organization_stripe_connect.sql in the Supabase SQL editor. ' +
-        formatSupabaseErr(result.error);
-      return;
-    }
-    var data = result.data;
-    if (!data) {
+    try {
+      if (!el) return;
+      if (!sb || !org) {
+        el.textContent = 'Sign in and open a workspace to manage Stripe.';
+        if (btnStart) btnStart.disabled = true;
+        return;
+      }
+      if (btnStart) btnStart.disabled = false;
+      el.textContent = 'Loading…';
+      var result = await sb.from('organization_stripe_connections').select('*').eq('organization_id', org).maybeSingle();
+      if (result.error) {
+        el.textContent =
+          'Could not load Stripe status. For new installs, run supabase/organization_stripe_connect.sql in the Supabase SQL editor. ' +
+          formatSupabaseErr(result.error);
+        return;
+      }
+      var data = result.data;
+      if (!data) {
+        el.innerHTML =
+          '<strong>Not connected.</strong> Invoice <strong>Pay now</strong> is disabled until an owner or admin completes Stripe Connect.';
+        if (btnStart) btnStart.textContent = 'Connect Stripe';
+        return;
+      }
+      var ch = data.charges_enabled ? 'yes' : 'no';
+      var py = data.payouts_enabled ? 'yes' : 'no';
+      var st = data.connect_status || 'pending';
       el.innerHTML =
-        '<strong>Not connected.</strong> Invoice <strong>Pay now</strong> is disabled until an owner or admin completes Stripe Connect.';
-      if (btnStart) btnStart.textContent = 'Connect Stripe';
-      return;
-    }
-    var ch = data.charges_enabled ? 'yes' : 'no';
-    var py = data.payouts_enabled ? 'yes' : 'no';
-    var st = data.connect_status || 'pending';
-    el.innerHTML =
-      '<div><strong>Stripe account</strong> ' +
-      esc(String(data.stripe_account_id || '—')) +
-      '</div>' +
-      '<div style="margin-top:6px;"><strong>Dashboard status</strong> ' +
-      esc(st) +
-      ' · charges ' +
-      ch +
-      ' · payouts ' +
-      py +
-      '</div>';
-    if (btnStart) {
-      btnStart.textContent =
-        data.charges_enabled && data.payouts_enabled ? 'Open Stripe onboarding again' : 'Continue Stripe setup';
+        '<div><strong>Stripe account</strong> ' +
+        esc(String(data.stripe_account_id || '—')) +
+        '</div>' +
+        '<div style="margin-top:6px;"><strong>Dashboard status</strong> ' +
+        esc(st) +
+        ' · charges ' +
+        ch +
+        ' · payouts ' +
+        py +
+        '</div>';
+      if (btnStart) {
+        btnStart.textContent =
+          data.charges_enabled && data.payouts_enabled ? 'Open Stripe onboarding again' : 'Continue Stripe setup';
+      }
+    } finally {
+      var connPanel = document.getElementById('settings-panel-connections');
+      if (connPanel && connPanel.classList.contains('on')) {
+        refreshConnectionsPanel();
+      }
     }
   }
 
@@ -6129,6 +7161,7 @@ var incomePowerState = {
       }
       window.setTimeout(function () {
         refreshStripeConnectPanel();
+        refreshConnectionsPanel();
       }, 800);
     } catch (_) {}
   }
@@ -6326,10 +7359,13 @@ var incomePowerState = {
         var mcTab = document.getElementById('settings-nav-mail-calendar');
         if (mcTab) mcTab.click();
         else {
-        var acctTab = document.getElementById('settings-nav-account');
-        if (acctTab) acctTab.click();
+          var acctTab = document.getElementById('settings-nav-account');
+          if (acctTab) acctTab.click();
         }
       }
+      window.setTimeout(function () {
+        refreshConnectionsPanel();
+      }, 600);
     } catch (_) {}
   }
 
@@ -10197,6 +11233,10 @@ var incomePowerState = {
     var tx = state.transactions.find(function (t) { return t.id === txId; });
     if (!tx) return;
     var existing = getInvoiceByIncomeTxId(txId);
+    if (isEdit && existing) {
+      openFullInvoiceEditor(txId);
+      return;
+    }
     var today = new Date().toISOString().slice(0, 10);
     var issueDefault = existing && existing.dateIssued ? existing.dateIssued : (tx.date || today);
     var dueDefault = existing && existing.dueDate
@@ -10247,12 +11287,70 @@ var incomePowerState = {
     var issueDate = inv && inv.dateIssued ? inv.dateIssued : todayISO();
     var dueDate = inv && inv.dueDate ? inv.dueDate : issueDate;
     var number = inv && inv.number ? inv.number : nextInvoiceNumber();
-    var amount = Number(inv && inv.amount != null ? inv.amount : (tx && tx.amount ? tx.amount : 0));
-    var taxRate = 0.10;
-    var subtotal = amount;
+    var serviceLabel = tx && tx.description ? tx.description : 'Project consulting';
+    var det = inv && inv.invoiceDetails && typeof inv.invoiceDetails === 'object' ? inv.invoiceDetails : {};
+    var lineItems = [];
+    if (Array.isArray(det.lineItems) && det.lineItems.length) {
+      det.lineItems.forEach(function (li) {
+        if (!li || typeof li !== 'object') return;
+        var qty = Math.max(0, Number(li.qty) || 0);
+        var unit = Number(li.unitPrice);
+        if (!isFinite(unit)) unit = 0;
+        var desc = li.description != null ? String(li.description) : 'Item';
+        lineItems.push({ description: desc, qty: qty || 1, unitPrice: unit, amount: (qty || 1) * unit });
+      });
+    }
+    if (!lineItems.length) {
+      var legacyAmt = Number(inv && inv.amount != null ? inv.amount : (tx && tx.amount ? tx.amount : 0));
+      lineItems.push({ description: serviceLabel, qty: 1, unitPrice: legacyAmt, amount: legacyAmt });
+    }
+    var subtotal = lineItems.reduce(function (s, li) {
+      return s + (Number(li.amount) || 0);
+    }, 0);
+    var taxPct =
+      det &&
+      typeof det === 'object' &&
+      Object.prototype.hasOwnProperty.call(det, 'taxRate') &&
+      typeof det.taxRate === 'number' &&
+      isFinite(det.taxRate)
+        ? det.taxRate
+        : 10;
+    var taxRate = taxPct / 100;
     var tax = subtotal * taxRate;
     var total = subtotal + tax;
-    var serviceLabel = tx && tx.description ? tx.description : 'Project consulting';
+    var taxLabel = taxPct ? String(taxPct) + '%' : '0%';
+
+    var memoHtml = '';
+    if (det.memo && String(det.memo).trim()) {
+      memoHtml =
+        '<div style="font-size:14px;color:#4c4c4c;margin-bottom:16px;line-height:1.5;"><strong>Memo:</strong> ' +
+        esc(String(det.memo)) +
+        '</div>';
+    }
+
+    var rowsHtml = lineItems
+      .map(function (li) {
+        return (
+          '<tr>' +
+          '<td style="padding:10px 0 8px;font-size:18px;font-weight:500;line-height:1.25;">' +
+          esc(li.description) +
+          '</td>' +
+          '<td style="padding:10px 0 8px;font-size:18px;font-weight:500;">' +
+          esc(fmtCurrencyPrecise(li.unitPrice)) +
+          '</td>' +
+          '<td style="padding:10px 0 8px;font-size:18px;font-weight:500;">' +
+          esc(String(li.qty != null ? li.qty : 1)) +
+          '</td>' +
+          '<td style="padding:10px 0 8px;font-size:18px;font-weight:500;">' +
+          esc(taxLabel) +
+          '</td>' +
+          '<td style="padding:10px 0 8px;font-size:18px;font-weight:500;text-align:right;">' +
+          esc(fmtCurrencyPrecise(li.amount)) +
+          '</td>' +
+          '</tr>'
+        );
+      })
+      .join('');
 
     return '' +
       '<div style="max-width:860px;margin:0 auto;background:#fff;border-radius:16px;padding:54px 58px;color:#1f1f1f;font-family:\'Helvetica Now Pro Display Medium\',system-ui,-apple-system,sans-serif;box-shadow:0 8px 28px rgba(0,0,0,0.08);">' +
@@ -10284,6 +11382,7 @@ var incomePowerState = {
             '<div style="font-size:15px;font-weight:500;color:#4c4c4c;">Due date: ' + esc(fmtDateDisplay(dueDate)) + '</div>' +
           '</div>' +
         '</div>' +
+        memoHtml +
         '<div style="border-radius:14px;background:#f5f5f5;padding:16px 18px;margin-bottom:18px;">' +
           '<table style="width:100%;border-collapse:collapse;font-size:14px;">' +
             '<thead><tr style="color:#6d6d6d;text-align:left;">' +
@@ -10293,13 +11392,9 @@ var incomePowerState = {
               '<th style="padding:8px 0;font-weight:500;">Tax</th>' +
               '<th style="padding:8px 0;font-weight:500;text-align:right;">Amount</th>' +
             '</tr></thead>' +
-            '<tbody><tr>' +
-              '<td style="padding:10px 0 8px;font-size:28px;font-weight:500;line-height:1.2;">' + esc(serviceLabel) + '</td>' +
-              '<td style="padding:10px 0 8px;font-size:28px;font-weight:500;">' + esc(fmtCurrencyPrecise(subtotal)) + '</td>' +
-              '<td style="padding:10px 0 8px;font-size:28px;font-weight:500;">1</td>' +
-              '<td style="padding:10px 0 8px;font-size:28px;font-weight:500;">10%</td>' +
-              '<td style="padding:10px 0 8px;font-size:28px;font-weight:500;text-align:right;">' + esc(fmtCurrencyPrecise(subtotal)) + '</td>' +
-            '</tr></tbody>' +
+            '<tbody>' +
+            rowsHtml +
+            '</tbody>' +
           '</table>' +
         '</div>' +
         '<div style="display:flex;justify-content:flex-end;">' +
@@ -11808,10 +12903,26 @@ var incomePowerState = {
   }
 
   function userHasEmailPasswordIdentity(user) {
-    if (!user || !Array.isArray(user.identities)) return false;
-    return user.identities.some(function (id) {
-      return id && id.provider === 'email';
-    });
+    if (!user) return false;
+    function provIsEmail(p) {
+      return p != null && String(p).toLowerCase() === 'email';
+    }
+    if (Array.isArray(user.identities) && user.identities.length) {
+      var hit = user.identities.some(function (id) {
+        return id && provIsEmail(id.provider);
+      });
+      if (hit) return true;
+    }
+    var meta = user.app_metadata;
+    if (meta && typeof meta === 'object') {
+      if (provIsEmail(meta.provider)) return true;
+      if (Array.isArray(meta.providers)) {
+        for (var i = 0; i < meta.providers.length; i++) {
+          if (provIsEmail(meta.providers[i])) return true;
+        }
+      }
+    }
+    return false;
   }
 
   var PROFILE_AVATAR_STORAGE_KEY = 'bizdash.profileAvatarDataUrl';
@@ -11882,17 +12993,61 @@ var incomePowerState = {
     }
   }
 
+  function getAdvisorGreetingFirstName(user) {
+    if (!user) return 'there';
+    var meta = user.user_metadata && typeof user.user_metadata === 'object' ? user.user_metadata : {};
+    var first = meta.first_name != null ? String(meta.first_name).trim() : '';
+    if (!first && meta.full_name) {
+      var parts = String(meta.full_name).trim().split(/\s+/);
+      first = parts[0] || '';
+    }
+    if (!first && user.email) {
+      var local = String(user.email).split('@')[0];
+      var seg = local.split(/[._-]/)[0] || local;
+      if (seg) {
+        first = seg.charAt(0).toUpperCase() + seg.slice(1).toLowerCase();
+      }
+    }
+    return first || 'there';
+  }
+
+  function advisorChatGreetingVisitKey(user) {
+    var uid = user && user.id ? String(user.id) : 'anon';
+    return 'bizdash-advisor-chat-visits:' + uid;
+  }
+
+  function syncAdvisorChatShellGreeting(opts) {
+    opts = opts || {};
+    var leadEl = document.getElementById('chat-greeting-lead');
+    var nameEl = document.getElementById('chat-greeting-name');
+    if (!leadEl || !nameEl) return;
+    var user = window.currentUser || currentUser;
+    nameEl.textContent = getAdvisorGreetingFirstName(user);
+    if (opts.fromNav) {
+      var k = advisorChatGreetingVisitKey(user);
+      var n = parseInt(sessionStorage.getItem(k) || '0', 10);
+      leadEl.textContent = n === 0 ? 'Hey there,' : 'Welcome back,';
+      sessionStorage.setItem(k, String(n + 1));
+    }
+  }
+
+  window.bizDashSyncAdvisorChatShellGreeting = syncAdvisorChatShellGreeting;
+
   function hydrateProfileFieldsFromUser(user) {
     var fn = document.getElementById('profile-first-name');
     var ln = document.getElementById('profile-last-name');
     var em = document.getElementById('profile-primary-email');
-    if (!fn || !ln) return;
+    if (!fn || !ln) {
+      syncAdvisorChatShellGreeting();
+      return;
+    }
     if (!user) {
       fn.value = '';
       ln.value = '';
       if (em) em.value = '';
       applyProfileAvatarFromStorage();
       updateProfileAvatarFallbackLetter();
+      syncAdvisorChatShellGreeting();
       return;
     }
     var meta = user.user_metadata && typeof user.user_metadata === 'object' ? user.user_metadata : {};
@@ -11908,6 +13063,7 @@ var incomePowerState = {
     if (em) em.value = user.email ? String(user.email) : '';
     applyProfileAvatarFromStorage();
     updateProfileAvatarFallbackLetter();
+    syncAdvisorChatShellGreeting();
   }
 
   async function persistProfileUserMetadata() {
@@ -12073,7 +13229,7 @@ var incomePowerState = {
     }
     if (passBtn) {
       passBtn.disabled = false;
-      passBtn.textContent = hasPwd ? 'Change password' : 'Add password';
+      passBtn.textContent = hasPwd ? 'Change Password' : 'Add password';
     }
     if (delBtn) delBtn.disabled = false;
     hydrateProfileFieldsFromUser(user);
@@ -12308,25 +13464,6 @@ var incomePowerState = {
       if (m) m.classList.remove('on');
     }
 
-    function wireModalBackdrop(modalId, closeFn) {
-      var m = $(modalId);
-      if (!m || m.getAttribute('data-acct-bd') === '1') return;
-      m.setAttribute('data-acct-bd', '1');
-      m.addEventListener('click', function (ev) {
-        if (ev.target === m) closeFn();
-      });
-    }
-
-    wireModalBackdrop('accountEmailModal', function () {
-      closeMo('accountEmailModal');
-    });
-    wireModalBackdrop('accountPasswordModal', function () {
-      closeMo('accountPasswordModal');
-    });
-    wireModalBackdrop('accountDeleteModal', function () {
-      closeMo('accountDeleteModal');
-    });
-
     var manage = $('settings-btn-account-manage-email');
     if (manage) {
       manage.addEventListener('click', function () {
@@ -12390,7 +13527,7 @@ var incomePowerState = {
         var hasPwd = userHasEmailPasswordIdentity(user);
         var title = $('account-password-modal-title');
         var hint = $('account-password-modal-hint');
-        if (title) title.textContent = hasPwd ? 'Change password' : 'Set password';
+        if (title) title.textContent = hasPwd ? 'Change Password' : 'Set password';
         if (hint) {
           hint.textContent = hasPwd
             ? 'Choose a new password for email sign-in.'
@@ -12436,6 +13573,10 @@ var incomePowerState = {
           if (res.error) {
             showInlineErr('account-password-modal-err', res.error.message || 'Could not update password.');
             return;
+          }
+          if (res.data && res.data.user) {
+            window.currentUser = res.data.user;
+            currentUser = res.data.user;
           }
           closeMo('accountPasswordModal');
           alert('Your password was updated.');
@@ -13245,8 +14386,36 @@ var incomePowerState = {
         weeklySummaries = await fetchWeeklySummariesFromSupabase();
 
         var settingsRow = await fetchAppSettingsFromSupabase();
+        var rawUiPayload = await fetchUserUiPreferencesPayload();
+        userUiPrefsCache = normalizeUserUiPayload(rawUiPayload);
+        var orgDash =
+          settingsRow && settingsRow.dashboard_settings && typeof settingsRow.dashboard_settings === 'object'
+            ? settingsRow.dashboard_settings
+            : null;
+        var orgLegacyPrefs = orgDash && orgDash.preferences ? orgDash.preferences : null;
+        if (
+          (userUiPrefsCache.preferences == null || userUiPrefsCache.preferences === undefined) &&
+          orgLegacyPrefs
+        ) {
+          userUiPrefsCache.preferences = normalizePreferences(orgLegacyPrefs);
+          schedulePersistUserUiPreferences();
+        }
+        if (userUiPrefsCache.preferences != null && userUiPrefsCache.preferences !== undefined) {
+          applyPreferencesToForm(userUiPrefsCache.preferences);
+          applyPreferencesRuntime(userUiPrefsCache.preferences);
+        }
+        var oidForUi = getCurrentOrgId();
+        if (oidForUi && userUiPrefsCache.orgs && userUiPrefsCache.orgs[oidForUi]) {
+          applyUserUiOrgSliceToRuntime(oidForUi, userUiPrefsCache.orgs[oidForUi]);
+        } else if (oidForUi && typeof window.bizDashReloadCustomersColumnPrefs === 'function') {
+          window.bizDashReloadCustomersColumnPrefs();
+        }
+        applySidebarNavVisibility();
         if (settingsRow && settingsRow.dashboard_settings) {
           await applyDashboardSettingsFromCloud(settingsRow.dashboard_settings);
+        }
+        if (userUiPrefsCache && userUiPrefsCache.preferences != null && userUiPrefsCache.preferences !== undefined) {
+          applyPreferencesRuntime(userUiPrefsCache.preferences);
         }
         if (settingsRow && Array.isArray(settingsRow.project_statuses) && settingsRow.project_statuses.length) {
           projectStatuses = settingsRow.project_statuses.map(function (s) { return String(s); }).filter(Boolean);
@@ -13262,6 +14431,9 @@ var incomePowerState = {
         saveInvoices(invoices);
         saveCampaigns(campaigns);
         saveTimesheetEntries(timesheetEntries);
+      } else {
+        ensureUserUiPrefsCache();
+        applySidebarNavVisibility();
       }
 
       await wfRefreshFromSupabase();
@@ -13294,6 +14466,8 @@ var incomePowerState = {
       renderAll();
       renderProjects();
       refreshCloudSyncStatus();
+      ensureUserUiPrefsCache();
+      applySidebarNavVisibility();
     }
   }
 
@@ -13556,6 +14730,7 @@ var incomePowerState = {
   }
 
   function clearRuntimeDataForAuthChange(nextUser) {
+    clearUserUiPrefsCache();
     currentUser = nextUser || null;
     window.currentUser = currentUser;
     if (!nextUser) {
@@ -13846,6 +15021,23 @@ var incomePowerState = {
     applyCustomersColumnVisibility();
   }
   window.bizDashReloadCustomersColumnPrefs = reloadCustomersColumnPrefsForCurrentStorageScope;
+  window.bizDashPersistUserUiPrefsForOrgLeaving = persistUserUiPrefsForOrgLeaving;
+  window.bizDashApplyUserUiPrefsForOrg = function (orgId) {
+    orgId = orgId && String(orgId).trim() ? String(orgId).trim() : null;
+    if (!orgId) return;
+    ensureUserUiPrefsCache();
+    var slice = userUiPrefsCache.orgs && userUiPrefsCache.orgs[orgId] ? userUiPrefsCache.orgs[orgId] : null;
+    if (!slice || typeof slice !== 'object') return;
+    var hasData =
+      (slice.customersColumns && typeof slice.customersColumns === 'object') ||
+      (slice.incomePower && typeof slice.incomePower === 'object') ||
+      slice.incomeTrendRange === '30d' ||
+      slice.incomeTrendRange === '90d' ||
+      slice.incomeTrendRange === 'ytd' ||
+      slice.incomeTrendRange === 'all';
+    if (!hasData) return;
+    applyUserUiOrgSliceToRuntime(orgId, slice);
+  };
   window.clearRuntimeDataForAuthChange = clearRuntimeDataForAuthChange;
   window.initDataFromSupabase = initDataFromSupabase;
   window.loadScreenshotMockData = loadScreenshotMockData;
@@ -16041,6 +17233,42 @@ var incomePowerState = {
     if (openFromContacts) openFromContacts.addEventListener('click', function () { goTeam(); });
   }
 
+  /** Click dimmed backdrop (the `.mo` root) to close any open modal without running Save actions. */
+  function wireModalBackdropDismissAll() {
+    if (window.__bizdashModalBackdropDismissWired) return;
+    window.__bizdashModalBackdropDismissWired = true;
+    document.addEventListener('click', function (ev) {
+      var t = ev.target;
+      if (!t || !t.classList || !t.classList.contains('mo') || !t.classList.contains('on')) return;
+      if (t.getAttribute('data-no-backdrop-dismiss') === 'true') return;
+      var id = t.id || '';
+      if (id === 'quickActionsModal') {
+        closeQuickActionsModal();
+        return;
+      }
+      if (id === 'listTemplatesModal') {
+        closeListTemplatesModal();
+        return;
+      }
+      if (id === 'listPreviewModal') {
+        closeListPreviewModal();
+        return;
+      }
+      if (id === 'eml-compose-modal') {
+        if (typeof window.__bizdashCloseEmlComposeModal === 'function') window.__bizdashCloseEmlComposeModal();
+        return;
+      }
+      if (id === 'invoiceEditFullModal') {
+        closeFullInvoiceEditor();
+        return;
+      }
+      t.classList.remove('on');
+      if (t.hasAttribute('aria-hidden')) {
+        t.setAttribute('aria-hidden', 'true');
+      }
+    });
+  }
+
   function init() {
     state.filter = { mode: 'all', start: null, end: null };
     wireTransactionForm();
@@ -16050,6 +17278,7 @@ var incomePowerState = {
     wireDeleteHandlers();
     wireClientForm();
     wireInvoiceModal();
+    wireInvoiceFullEditor();
     wireInvoicePreviewModal();
     wireProjectsAndStatuses();
     wireFilter();
@@ -16078,6 +17307,7 @@ var incomePowerState = {
     wireListsFeature();
     wireQuickActionsPalette();
     wireSidebarChrome();
+    wireModalBackdropDismissAll();
 
     // Simple page navigation wiring to replace the original bundle's nav().
     // Exposed globally so existing onclick="nav('dashboard', this)" continues to work.
@@ -16100,6 +17330,9 @@ var incomePowerState = {
         if (chatPg) chatPg.classList.remove('chat-compose-docked');
       }
       if (pageId === 'chat') {
+        if (typeof window.bizDashSyncAdvisorChatShellGreeting === 'function') {
+          window.bizDashSyncAdvisorChatShellGreeting({ fromNav: true });
+        }
         var didReplay = false;
         try {
           var rawReplay = sessionStorage.getItem('advisor-pending-replay');

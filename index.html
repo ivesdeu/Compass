@@ -513,7 +513,7 @@
     color: var(--text3);
     pointer-events: none;
   }
-  .settings-nav-search {
+  .settings-nav-search-wrap .settings-nav-search {
     width: 100%;
     box-sizing: border-box;
     padding: 6px 8px 6px 30px;
@@ -1057,7 +1057,8 @@
     color: var(--text);
     margin: 0 0 6px;
   }
-  .settings-profile-upload-btn {
+  /* Higher specificity than `.btn` alone so later `.btn` rules do not reset background while `color:#fff` stays. */
+  .btn.settings-profile-upload-btn {
     display: inline-flex;
     align-items: center;
     gap: 8px;
@@ -1070,10 +1071,12 @@
     padding: 8px 14px;
     border-radius: 8px;
   }
-  .settings-profile-upload-btn:hover {
+  .btn.settings-profile-upload-btn:hover {
     filter: brightness(1.05);
+    color: #fff !important;
+    border-color: #1d4ed8;
   }
-  .settings-profile-upload-btn svg {
+  .btn.settings-profile-upload-btn svg {
     width: 16px;
     height: 16px;
   }
@@ -1279,6 +1282,22 @@
     border-bottom: none;
     padding-bottom: 4px;
   }
+  .settings-pages-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 12px 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .settings-pages-row:last-child {
+    border-bottom: none;
+  }
+  .settings-pages-row-label {
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text);
+  }
   .settings-pref-copy {
     flex: 1;
     min-width: 0;
@@ -1451,16 +1470,16 @@
     font-weight: 600;
     border: none;
     cursor: pointer;
-    background: #2383e2;
+    background: var(--coral);
     color: #fff;
     font-family: inherit;
   }
   .btn-mc:hover {
-    background: #1a6ec4;
+    background: var(--coral2);
     color: #fff;
   }
   .btn-mc:focus-visible {
-    outline: 2px solid #2383e2;
+    outline: 2px solid var(--coral);
     outline-offset: 3px;
   }
   .mc-promo-art {
@@ -1544,6 +1563,155 @@
     }
   }
 
+  /* Connections — installed apps style */
+  .conn-installed-inner {
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 0 4px 24px;
+    box-sizing: border-box;
+  }
+  .conn-back-row {
+    margin: 0 0 20px;
+  }
+  .conn-back-link {
+    display: inline-flex;
+    align-items: center;
+    gap: 2px;
+    padding: 0;
+    border: none;
+    background: none;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    color: var(--text3);
+    cursor: pointer;
+    text-decoration: none;
+  }
+  .conn-back-link:hover {
+    color: var(--text2);
+  }
+  .conn-app-list {
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .conn-app-card {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    width: 100%;
+    padding: 18px 18px 18px 16px;
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    background: var(--bg);
+    box-sizing: border-box;
+    text-align: left;
+    font: inherit;
+    cursor: pointer;
+    transition: border-color 0.15s ease, box-shadow 0.15s ease;
+  }
+  .conn-app-card:hover {
+    border-color: var(--border2);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  }
+  html[data-color-scheme="dark"] .conn-app-card:hover {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.35);
+  }
+  .conn-app-card:focus-visible {
+    outline: 2px solid var(--coral-border-focus);
+    outline-offset: 2px;
+  }
+  .conn-app-card-ic {
+    flex-shrink: 0;
+    width: 48px;
+    height: 48px;
+    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg2);
+    border: 1px solid var(--border);
+    box-sizing: border-box;
+  }
+  .conn-app-card-ic svg {
+    display: block;
+  }
+  .conn-app-card-mid {
+    flex: 1;
+    min-width: 0;
+  }
+  .conn-app-card-title-row {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin: 0 0 4px;
+  }
+  .conn-app-card-name {
+    font-size: 15px;
+    font-weight: 600;
+    color: var(--text);
+    letter-spacing: -0.02em;
+  }
+  .conn-connected-badge {
+    display: none;
+    align-items: center;
+    justify-content: center;
+    width: 22px;
+    height: 22px;
+    border-radius: 999px;
+    background: #22c55e;
+    color: #fff;
+    flex-shrink: 0;
+  }
+  .conn-connected-badge svg {
+    width: 12px;
+    height: 12px;
+  }
+  .conn-app-card--on .conn-connected-badge {
+    display: inline-flex;
+  }
+  .conn-app-card-desc {
+    margin: 0;
+    font-size: 13px;
+    line-height: 1.45;
+    color: var(--text3);
+  }
+  .conn-app-card-chev {
+    flex-shrink: 0;
+    color: var(--text3);
+    opacity: 0.7;
+  }
+  .conn-app-card-chev svg {
+    width: 18px;
+    height: 18px;
+    display: block;
+  }
+  .btn-conn-discover {
+    display: none;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 14px;
+    border-radius: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    color: var(--text);
+    background: var(--bg);
+    border: 1px solid var(--border);
+    cursor: pointer;
+    white-space: nowrap;
+  }
+  .btn-conn-discover:hover {
+    border-color: var(--border2);
+    background: var(--bg2);
+  }
+  .btn-conn-discover svg {
+    width: 16px;
+    height: 16px;
+    opacity: 0.75;
+  }
+
   /* Chat — flat workspace with docked composer */
   #page-chat.pg.on {
     display: flex;
@@ -1567,7 +1735,7 @@
   }
   .chat-shell-header {
     flex-shrink: 0;
-    padding: 4px 2px 14px;
+    padding: 4px 2px 18px;
     text-align: left;
     border-bottom: none;
     background: transparent;
@@ -1580,14 +1748,35 @@
     color: var(--text3);
     margin: 0;
   }
-  .chat-shell-sub {
-    font-size: 0.875rem;
-    color: var(--text2);
-    line-height: 1.45;
-    margin: 6px 0 0;
-    max-width: 68rem;
+  .chat-shell-greeting {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 10px;
+    margin: clamp(16px, 4vh, 36px) 0 0;
+    padding: 0 8px;
+    text-align: center;
   }
-  .chat-shell-sub-mobile { display: none; }
+  .chat-greeting-sparkle {
+    flex-shrink: 0;
+    font-size: 1.35rem;
+    line-height: 1;
+    color: #d97757;
+    font-weight: 300;
+    user-select: none;
+  }
+  .chat-shell-greeting-text {
+    margin: 0;
+    font-family: ui-serif, Georgia, 'Times New Roman', serif;
+    font-size: clamp(1.5rem, 4.2vw, 2.125rem);
+    font-weight: 400;
+    letter-spacing: -0.02em;
+    color: var(--text);
+    line-height: 1.2;
+  }
+  .chat-greeting-name-part {
+    font-weight: 500;
+  }
   .chat-transcript {
     flex: 1;
     min-height: 0;
@@ -1955,14 +2144,13 @@
       min-height: calc(100dvh - 170px);
     }
     .chat-shell-header { padding: 4px 0 12px; }
-    .chat-shell-sub { display: none; }
-    .chat-shell-sub-mobile {
-      display: block;
-      font-size: 0.8125rem;
-      color: var(--text2);
-      line-height: 1.4;
-      margin: 6px 0 0;
-      max-width: 100%;
+    .chat-shell-greeting {
+      margin: clamp(12px, 3vh, 24px) 0 0;
+      gap: 8px;
+    }
+    .chat-greeting-sparkle { font-size: 1.2rem; }
+    .chat-shell-greeting-text {
+      font-size: clamp(1.35rem, 5vw, 1.75rem);
     }
     .chat-log { padding: 10px 0; }
     .chat-composer-stack { padding: 8px 0 4px; }
@@ -2451,10 +2639,8 @@
     margin-top: 20px;
   }
 
-  /* Emails hub (drafts / outbox / templates) */
+  /* Emails hub (drafts / outbox / templates) — accent follows global --coral / --coral2 (branding). */
   #page-emails.emails-hub {
-    --eml-blue: #2563eb;
-    --eml-blue-hover: #1d4ed8;
     background: #ffffff;
     max-width: none;
     margin: 0;
@@ -2508,7 +2694,7 @@
   #page-emails.emails-hub .eml-tab.on {
     color: #111827;
     font-weight: 600;
-    border-bottom-color: var(--eml-blue);
+    border-bottom-color: var(--coral);
   }
   #page-emails.emails-hub .eml-tab svg {
     width: 18px;
@@ -2558,18 +2744,19 @@
     justify-content: center;
     gap: 8px;
     padding: 9px 18px;
-    border: none;
+    border: 1px solid var(--coral);
     border-radius: 8px;
     font-family: inherit;
     font-size: 14px;
     font-weight: 600;
     color: #fff;
-    background: var(--eml-blue);
+    background: var(--coral);
     cursor: pointer;
-    box-shadow: 0 1px 2px rgba(37, 99, 235, 0.25);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.1);
   }
   #page-emails.emails-hub .eml-btn-compose:hover {
-    background: var(--eml-blue-hover);
+    background: var(--coral2);
+    border-color: var(--coral2);
   }
   #page-emails.emails-hub .eml-btn-compose svg {
     width: 16px;
@@ -2828,9 +3015,399 @@
   /* MODAL */
   .mo { display:none; position:fixed; inset:0; background:rgba(0,0,0,0.3); z-index:100; align-items:center; justify-content:center; }
   .mo.on { display:flex; }
+  #invoicePreviewModal.mo.on {
+    z-index: 130;
+  }
   .md { background:var(--bg2); border:1px solid var(--border); border-radius:var(--rl); padding:28px; width:520px; max-width:95vw; max-height:88vh; overflow-y:auto; box-shadow:0 1px 3px rgba(0,0,0,0.06); }
   .mt { font-size:1.125rem; font-weight:600; margin-bottom:20px; letter-spacing:-0.02em; line-height:1.25; }
   .mf { display:flex; gap:8px; justify-content:flex-end; margin-top:22px; padding-top:18px; border-top:1px solid var(--border); }
+
+  /* Full-screen invoice editor (Stripe-style draft) */
+  .inv-fs-mo {
+    z-index: 105;
+    align-items: stretch;
+    justify-content: stretch;
+    padding: 0;
+    background: rgba(15, 23, 42, 0.35);
+  }
+  .inv-fs-mo.on {
+    display: flex;
+  }
+  .inv-fs-shell {
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+    min-width: 0;
+    background: #fafafa;
+    color: #0f172a;
+    font-family: ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  }
+  html[data-color-scheme="dark"] .inv-fs-shell {
+    background: var(--bg);
+    color: var(--text);
+  }
+  .inv-fs-topbar {
+    flex-shrink: 0;
+    border-bottom: 1px solid #e5e7eb;
+    background: #fff;
+    padding: 16px 24px 18px;
+  }
+  html[data-color-scheme="dark"] .inv-fs-topbar {
+    border-color: var(--border);
+    background: var(--bg2);
+  }
+  .inv-fs-topbar-inner {
+    max-width: 1280px;
+    margin: 0 auto;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: flex-start;
+    justify-content: space-between;
+    gap: 16px;
+  }
+  .inv-fs-bc {
+    display: block;
+    width: 100%;
+    text-align: left;
+    border: none;
+    background: none;
+    padding: 0 0 8px;
+    font-size: 13px;
+    font-weight: 500;
+    color: #635bff;
+    cursor: pointer;
+    font-family: inherit;
+  }
+  .inv-fs-bc:hover {
+    text-decoration: underline;
+  }
+  .inv-fs-title-block {
+    flex: 1;
+    min-width: 200px;
+  }
+  .inv-fs-h1 {
+    margin: 0 0 6px;
+    font-size: 22px;
+    font-weight: 650;
+    letter-spacing: -0.03em;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px;
+  }
+  .inv-fs-pill {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 3px 10px;
+    border-radius: 999px;
+    background: #e5e7eb;
+    color: #475569;
+  }
+  .inv-fs-pill.inv-fs-pill--draft {
+    background: #e0e7ff;
+    color: #4338ca;
+  }
+  .inv-fs-pill.inv-fs-pill--paid {
+    background: #dcfce7;
+    color: #166534;
+  }
+  html[data-color-scheme="dark"] .inv-fs-pill {
+    background: var(--bg4);
+    color: var(--text2);
+  }
+  .inv-fs-lead {
+    margin: 0;
+    font-size: 14px;
+    color: #64748b;
+  }
+  html[data-color-scheme="dark"] .inv-fs-lead {
+    color: var(--text3);
+  }
+  .inv-fs-actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-items: center;
+  }
+  .inv-fs-btn-secondary {
+    padding: 8px 14px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    border: 1px solid #d1d5db;
+    background: #fff;
+    color: #334155;
+    cursor: pointer;
+  }
+  html[data-color-scheme="dark"] .inv-fs-btn-secondary {
+    border-color: var(--border);
+    background: var(--bg3);
+    color: var(--text);
+  }
+  .inv-fs-btn-secondary:hover {
+    background: #f8fafc;
+  }
+  .inv-fs-btn-primary {
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-size: 13px;
+    font-weight: 600;
+    font-family: inherit;
+    border: none;
+    background: #635bff;
+    color: #fff;
+    cursor: pointer;
+  }
+  .inv-fs-btn-primary:hover {
+    background: #4f46e5;
+  }
+  .inv-fs-btn-primary:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+  .inv-fs-grid {
+    flex: 1;
+    min-height: 0;
+    overflow: auto;
+    display: grid;
+    grid-template-columns: 1fr min(320px, 92vw);
+    gap: 0;
+    max-width: 1280px;
+    margin: 0 auto;
+    width: 100%;
+    box-sizing: border-box;
+  }
+  @media (max-width: 900px) {
+    .inv-fs-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  .inv-fs-main {
+    padding: 20px 24px 40px;
+    border-right: 1px solid #e5e7eb;
+    min-width: 0;
+  }
+  html[data-color-scheme="dark"] .inv-fs-main {
+    border-color: var(--border);
+  }
+  .inv-fs-aside {
+    padding: 20px 24px 40px;
+    background: #fff;
+    min-width: 0;
+  }
+  html[data-color-scheme="dark"] .inv-fs-aside {
+    background: var(--bg2);
+  }
+  .inv-fs-card {
+    background: #fff;
+    border: 1px solid #e5e7eb;
+    border-radius: 12px;
+    padding: 16px 18px;
+    margin-bottom: 16px;
+  }
+  html[data-color-scheme="dark"] .inv-fs-card {
+    background: var(--bg2);
+    border-color: var(--border);
+  }
+  .inv-fs-card-hd {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 12px;
+    font-size: 13px;
+    font-weight: 600;
+    color: #334155;
+  }
+  html[data-color-scheme="dark"] .inv-fs-card-hd {
+    color: var(--text);
+  }
+  .inv-fs-linkbtn {
+    border: none;
+    background: none;
+    font: inherit;
+    font-size: 13px;
+    font-weight: 600;
+    color: #635bff;
+    cursor: pointer;
+  }
+  .inv-fs-activity {
+    font-size: 13px;
+    color: #475569;
+    line-height: 1.5;
+  }
+  html[data-color-scheme="dark"] .inv-fs-activity {
+    color: var(--text2);
+  }
+  .inv-fs-activity-row {
+    margin-bottom: 8px;
+  }
+  .inv-fs-sec-title {
+    margin: 0 0 14px;
+    font-size: 14px;
+    font-weight: 600;
+    color: #0f172a;
+  }
+  html[data-color-scheme="dark"] .inv-fs-sec-title {
+    color: var(--text);
+  }
+  .inv-fs-summary-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 24px;
+  }
+  @media (max-width: 640px) {
+    .inv-fs-summary-grid {
+      grid-template-columns: 1fr;
+    }
+  }
+  .inv-fs-lbl {
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+    color: #94a3b8;
+    margin-bottom: 6px;
+  }
+  .inv-fs-customer {
+    font-size: 15px;
+    font-weight: 600;
+    color: #2563eb;
+    margin-bottom: 4px;
+  }
+  .inv-fs-meta {
+    font-size: 13px;
+    color: #64748b;
+    margin-bottom: 4px;
+  }
+  .inv-fs-fields .fgp {
+    margin-bottom: 12px;
+  }
+  .inv-fs-fields .fl {
+    font-size: 12px;
+    font-weight: 600;
+    color: #475569;
+    margin-bottom: 4px;
+    display: block;
+  }
+  .inv-fs-fields .fi,
+  .inv-fs-fields select.fi {
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 13px;
+  }
+  .inv-fs-table-wrap {
+    overflow-x: auto;
+    border: 1px solid #e5e7eb;
+    border-radius: 10px;
+  }
+  html[data-color-scheme="dark"] .inv-fs-table-wrap {
+    border-color: var(--border);
+  }
+  .inv-fs-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+  }
+  .inv-fs-table th {
+    text-align: left;
+    padding: 10px 12px;
+    background: #f8fafc;
+    color: #64748b;
+    font-weight: 600;
+    border-bottom: 1px solid #e5e7eb;
+  }
+  html[data-color-scheme="dark"] .inv-fs-table th {
+    background: var(--bg3);
+    color: var(--text3);
+    border-color: var(--border);
+  }
+  .inv-fs-table td {
+    padding: 10px 12px;
+    border-bottom: 1px solid #f1f5f9;
+    vertical-align: middle;
+  }
+  html[data-color-scheme="dark"] .inv-fs-table td {
+    border-color: var(--border);
+  }
+  .inv-fs-table tr:last-child td {
+    border-bottom: none;
+  }
+  .inv-fs-table .fi {
+    width: 100%;
+    box-sizing: border-box;
+    font-size: 13px;
+  }
+  .inv-fs-totals {
+    margin-top: 16px;
+    display: flex;
+    justify-content: flex-end;
+  }
+  .inv-fs-totals-inner {
+    width: 100%;
+    max-width: 280px;
+    font-size: 13px;
+  }
+  .inv-fs-total-row {
+    display: flex;
+    justify-content: space-between;
+    padding: 4px 0;
+    color: #475569;
+  }
+  .inv-fs-total-row strong {
+    color: #0f172a;
+  }
+  .inv-fs-detail-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    font-size: 13px;
+    margin-bottom: 10px;
+    color: #475569;
+  }
+  .inv-fs-detail-row code {
+    font-size: 11px;
+    word-break: break-all;
+  }
+  .inv-fs-iconbtn {
+    border: none;
+    background: #f1f5f9;
+    border-radius: 6px;
+    padding: 4px 8px;
+    cursor: pointer;
+    font-size: 12px;
+  }
+  .inv-fs-metadata-empty {
+    border: 1px dashed #cbd5e1;
+    border-radius: 8px;
+    padding: 16px;
+    text-align: center;
+    font-size: 13px;
+    color: #94a3b8;
+    margin-bottom: 10px;
+  }
+  .inv-fs-meta-row {
+    display: grid;
+    grid-template-columns: 1fr 1fr auto;
+    gap: 8px;
+    margin-bottom: 8px;
+    align-items: center;
+  }
+  .inv-fs-readonly-banner {
+    margin: 0 0 12px;
+    padding: 10px 12px;
+    border-radius: 8px;
+    background: #fef3c7;
+    color: #92400e;
+    font-size: 13px;
+    font-weight: 500;
+  }
+  html[data-color-scheme="dark"] .inv-fs-readonly-banner {
+    background: rgba(234, 179, 8, 0.15);
+    color: #fcd34d;
+  }
 
   /* First-run onboarding (split card, blue accent — scoped to #onboardModal) */
   #onboardModal {
@@ -4350,7 +4927,7 @@
     </div>
   </div>
   <nav class="sb-nav">
-    <div class="nav-lbl">Overview</div>
+    <div class="nav-lbl" id="nav-lbl-overview">Overview</div>
     <div class="ni active" data-nav="dashboard" onclick="nav('dashboard',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="9" x="3" y="3" rx="1"/><rect width="7" height="5" x="14" y="3" rx="1"/><rect width="7" height="9" x="14" y="12" rx="1"/><rect width="7" height="5" x="3" y="16" rx="1"/></svg>Dashboard
     </div>
@@ -4372,7 +4949,7 @@
     <div class="ni" data-nav="timesheet" onclick="nav('timesheet',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>Timesheet
     </div>
-    <div class="nav-lbl">Lists</div>
+    <div class="nav-lbl" id="nav-lbl-lists">Lists</div>
     <div class="lists-sb-wrap" id="lists-sb-wrap">
       <button type="button" class="lists-sb-toggle" id="lists-sb-toggle" aria-expanded="true" aria-controls="lists-sb-panel">
         <svg class="lists-sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
@@ -4387,7 +4964,7 @@
     <div class="ni" data-nav="lists" onclick="nav('lists',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>All lists
     </div>
-    <div class="nav-lbl">Chats</div>
+    <div class="nav-lbl" id="nav-lbl-chats">Chats</div>
     <div class="lists-sb-wrap" id="chats-sb-wrap">
       <button type="button" class="lists-sb-toggle" id="chats-sb-toggle" aria-expanded="true" aria-controls="chats-sb-panel">
         <svg class="lists-sb-chevron" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
@@ -4402,7 +4979,7 @@
     <div class="ni" data-nav="chat" onclick="nav('chat',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/></svg>Advisor
     </div>
-    <div class="nav-lbl">Analytics</div>
+    <div class="nav-lbl" id="nav-lbl-analytics">Analytics</div>
     <div class="ni" data-nav="performance" onclick="nav('performance',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 7h6v6"/><path d="m22 7-8.5 8.5-5-5L2 17"/></svg>Performance
     </div>
@@ -5184,8 +5761,13 @@
     <div class="chat-shell">
       <header class="chat-shell-header">
         <p class="chat-shell-title">Advisor</p>
-        <p class="chat-shell-sub">Your business copilot for this dashboard. Turn your numbers into clear next steps with focused recommendations and drafts.</p>
-        <p class="chat-shell-sub-mobile">Your business copilot. Get prioritized next steps from your dashboard data.</p>
+        <div class="chat-shell-greeting" id="chat-shell-greeting-wrap" aria-live="polite">
+          <span class="chat-greeting-sparkle" aria-hidden="true">✦</span>
+          <p class="chat-shell-greeting-text" id="chat-shell-greeting-line">
+            <span id="chat-greeting-lead">Hey there,</span>
+            <span id="chat-greeting-name" class="chat-greeting-name-part">there</span>
+          </p>
+        </div>
       </header>
       <div class="chat-transcript">
         <div id="chat-log" class="chat-log" role="log" aria-live="polite" aria-relevant="additions"></div>
@@ -5343,6 +5925,10 @@
               <span class="settings-nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"/><path d="M12 1v2M12 21v2M4.22 4.22l1.42 1.42M18.36 18.36l1.42 1.42M1 12h2M21 12h2M4.22 19.78l1.42-1.42M18.36 5.64l1.42-1.42"/></svg></span>
               <span class="settings-nav-txt">Preferences</span>
             </button>
+            <button type="button" class="settings-nav-item" id="settings-nav-pages" data-settings-panel="pages" data-settings-kicker="Workspace" data-settings-title="Pages" data-settings-desc="Choose which areas appear in the left sidebar. Dashboard and Settings always stay available.">
+              <span class="settings-nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"/><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/><path d="M8 7h8"/><path d="M8 11h8"/></svg></span>
+              <span class="settings-nav-txt">Pages</span>
+            </button>
             <button type="button" class="settings-nav-item" id="settings-nav-branding" data-settings-panel="branding" data-settings-kicker="Workspace" data-settings-title="Branding" data-settings-desc="Accent color and logo files for light and dark mode.">
               <span class="settings-nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17.5 12a5.5 5.5 0 1 1-11 0c0-3 2.5-6.5 5.5-10 3 3.5 5.5 7 5.5 10Z"/><circle cx="12" cy="9" r="1.25" fill="currentColor" stroke="none"/></svg></span>
               <span class="settings-nav-txt">Branding</span>
@@ -5358,6 +5944,10 @@
             <button type="button" class="settings-nav-item" id="settings-nav-refer-earn" data-settings-panel="refer-earn" data-settings-kicker="Workspace" data-settings-title="Refer and earn" data-settings-desc="Earn rewards by referring teams to Compass.">
               <span class="settings-nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 12v10H4V12"/><path d="M22 7H2v5h20z"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/></svg></span>
               <span class="settings-nav-txt">Refer and earn</span>
+            </button>
+            <button type="button" class="settings-nav-item" id="settings-nav-connections" data-settings-panel="connections" data-settings-kicker="Workspace" data-settings-title="Installed apps" data-settings-desc="View and configure your installed apps">
+              <span class="settings-nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22v-5"/><path d="M9 8V2"/><path d="M15 8V2"/><path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8Z"/></svg></span>
+              <span class="settings-nav-txt">Connections</span>
             </button>
             <button type="button" class="settings-nav-item" id="settings-nav-mail-calendar" data-settings-panel="mail-calendar" data-settings-kicker="Workspace" data-settings-title="Mail &amp; Calendar" data-settings-desc="Connect Gmail and Google Calendar to this workspace for mail and scheduling features.">
               <span class="settings-nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="6" width="10" height="7" rx="1"/><path d="m1 6 5 3.5L11 6"/><rect x="13" y="5" width="10" height="11" rx="1"/><path d="M16 5v2M20 5v2M13 10h10"/></svg></span>
@@ -5391,6 +5981,10 @@
             <p class="settings-main-desc" id="settings-active-desc">Business profile, contact details, and how dates appear on the dashboard.</p>
           </div>
           <div class="settings-main-head-actions">
+            <button type="button" class="btn-conn-discover" id="settings-head-discover-apps" aria-label="Discover integrations">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="7" height="7" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/><rect width="7" height="7" x="3" y="14" rx="1"/></svg>
+              Discover new apps
+            </button>
             <a href="#" class="settings-people-ext-link" id="settings-people-directory-link">
               View People Directory
               <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><path d="M15 3h6v6"/><path d="M10 14 21 3"/></svg>
@@ -5560,6 +6154,22 @@
                   <div class="fgp" style="grid-column:1/-1;"><label class="fl">Address</label><input class="fi" id="setting-address" /></div>
                   <div class="fgp"><label class="fl">Dashboard period label</label><input class="fi" id="setting-period" placeholder="e.g. March 2026" /></div>
                 </div>
+              </div>
+            </div>
+          </div>
+          <div id="settings-panel-pages" class="settings-panel" role="tabpanel" aria-labelledby="settings-nav-pages" data-settings-panel-id="pages">
+            <div class="settings-stack">
+              <div class="card">
+                <div class="fst">Sidebar pages</div>
+                <p class="settings-pref-desc" style="margin-bottom:14px;">Remove pages you do not use; add them back anytime. Changes apply immediately and sync to your account.</p>
+                <div id="settings-pages-visible-list" aria-live="polite"></div>
+                <div style="margin-top:18px;display:flex;flex-wrap:wrap;gap:10px;align-items:center;">
+                  <select class="fi" id="settings-pages-add-select" style="min-width:200px;max-width:280px;" aria-label="Page to add">
+                    <option value="">Add a page…</option>
+                  </select>
+                  <button type="button" class="btn" id="settings-pages-add-btn">Add</button>
+                </div>
+                <p id="settings-pages-add-empty" class="settings-ws-hint" style="margin-top:12px;display:none;">All available pages are shown in the sidebar.</p>
               </div>
             </div>
           </div>
@@ -5848,6 +6458,54 @@
                 <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"/><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"/></svg>
                 Copy message
               </button>
+            </div>
+          </div>
+          <div id="settings-panel-connections" class="settings-panel" role="tabpanel" aria-labelledby="settings-nav-connections" data-settings-panel-id="connections">
+            <div class="conn-installed-inner">
+              <div class="conn-back-row">
+                <button type="button" class="conn-back-link" id="conn-back-to-general" aria-label="Back to General settings">&lt; Back</button>
+              </div>
+              <div class="conn-app-list" role="list">
+                <button type="button" class="conn-app-card" id="conn-card-gmail" data-conn-target="mail-calendar" role="listitem">
+                  <div class="conn-app-card-ic" aria-hidden="true">
+                    <svg width="28" height="28" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M6 12h18v24H6z"/><path fill="#34A853" d="M24 12v9l9 4.5V12z"/><path fill="#FBBC05" d="M24 21v15l18-9V21z"/><path fill="#4285F4" d="M6 12l18 9 9-4.5L24 6z"/></svg>
+                  </div>
+                  <div class="conn-app-card-mid">
+                    <div class="conn-app-card-title-row">
+                      <span class="conn-app-card-name">Gmail</span>
+                      <span class="conn-connected-badge" id="conn-badge-gmail" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+                    </div>
+                    <p class="conn-app-card-desc">Send and sync email for this workspace.</p>
+                  </div>
+                  <span class="conn-app-card-chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+                </button>
+                <button type="button" class="conn-app-card" id="conn-card-gcalendar" data-conn-target="mail-calendar" role="listitem">
+                  <div class="conn-app-card-ic" aria-hidden="true">
+                    <svg width="28" height="28" viewBox="0 0 48 48" aria-hidden="true"><path fill="var(--bg2)" stroke="var(--border)" stroke-width="1" d="M6.5 8.5h35v35H6.5z"/><path fill="#4285F4" d="M6 8h36v8H6z"/><path fill="#EA4335" d="M22 22h4v4h-4z"/><path fill="#34A853" d="M28 28h4v4h-4z"/><path fill="#FBBC05" d="M22 34h4v4h-4z"/><path fill="#1967D2" d="M6 16h8v8H6z"/></svg>
+                  </div>
+                  <div class="conn-app-card-mid">
+                    <div class="conn-app-card-title-row">
+                      <span class="conn-app-card-name">Google Calendar</span>
+                      <span class="conn-connected-badge" id="conn-badge-gcalendar" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+                    </div>
+                    <p class="conn-app-card-desc">Sync events and availability for scheduling.</p>
+                  </div>
+                  <span class="conn-app-card-chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+                </button>
+                <button type="button" class="conn-app-card" id="conn-card-stripe" data-conn-target="stripe" role="listitem">
+                  <div class="conn-app-card-ic" aria-hidden="true">
+                    <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#635BFF" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h18"/><path d="M7 15h1"/><path d="M12 15h1"/><path d="M7 10v10"/><path d="M17 10v4"/><path d="M14 18h4"/><rect x="2" y="4" width="20" height="6" rx="1"/></svg>
+                  </div>
+                  <div class="conn-app-card-mid">
+                    <div class="conn-app-card-title-row">
+                      <span class="conn-app-card-name">Stripe</span>
+                      <span class="conn-connected-badge" id="conn-badge-stripe" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>
+                    </div>
+                    <p class="conn-app-card-desc">Accept invoice payments and sync paid amounts to income.</p>
+                  </div>
+                  <span class="conn-app-card-chev" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg></span>
+                </button>
+              </div>
             </div>
           </div>
           <div id="settings-panel-mail-calendar" class="settings-panel" role="tabpanel" aria-labelledby="settings-nav-mail-calendar" data-settings-panel-id="mail-calendar">
@@ -6212,6 +6870,137 @@
       </div>
     </div>
     <div id="invoice-preview-body" style="background:#f3f3f3;padding:20px;max-height:calc(92vh - 64px);overflow:auto;"></div>
+  </div>
+</div>
+
+<!-- Full-screen invoice editor (Stripe-style) -->
+<div class="mo inv-fs-mo" id="invoiceEditFullModal" aria-hidden="true">
+  <div class="inv-fs-shell" role="dialog" aria-modal="true" aria-labelledby="inv-fs-heading">
+    <input type="hidden" id="inv-fs-income-id" value="" />
+    <header class="inv-fs-topbar">
+      <div class="inv-fs-topbar-inner">
+        <div style="flex:1;min-width:220px;">
+          <button type="button" class="inv-fs-bc" id="inv-fs-bc">Invoices</button>
+          <h1 class="inv-fs-h1" id="inv-fs-heading"><span id="inv-fs-num"></span> <span class="inv-fs-pill" id="inv-fs-pill"></span></h1>
+          <p class="inv-fs-lead" id="inv-fs-lead"></p>
+        </div>
+        <div class="inv-fs-actions">
+          <button type="button" class="inv-fs-btn-secondary" id="inv-fs-preview">Preview</button>
+          <button type="button" class="inv-fs-btn-secondary" id="inv-fs-cancel">Cancel</button>
+          <button type="button" class="inv-fs-btn-primary" id="inv-fs-save">Save</button>
+        </div>
+      </div>
+    </header>
+    <div class="inv-fs-grid">
+      <main class="inv-fs-main">
+        <p class="inv-fs-readonly-banner" id="inv-fs-readonly" style="display:none;">This invoice is paid and cannot be edited.</p>
+        <section class="inv-fs-card">
+          <div class="inv-fs-card-hd">
+            <span>Recent activity</span>
+            <button type="button" class="inv-fs-linkbtn" id="inv-fs-add-note">+ Add note</button>
+          </div>
+          <div class="inv-fs-activity" id="inv-fs-activity"></div>
+        </section>
+        <section class="inv-fs-card">
+          <h2 class="inv-fs-sec-title">Summary</h2>
+          <div class="inv-fs-summary-grid">
+            <div>
+              <div class="inv-fs-lbl">Billed to</div>
+              <div class="inv-fs-customer" id="inv-fs-customer-name"></div>
+              <div class="inv-fs-meta" id="inv-fs-customer-email"></div>
+              <div class="inv-fs-meta" id="inv-fs-customer-phone"></div>
+              <div class="inv-fs-lbl" style="margin-top:14px;">Billing details</div>
+              <p class="inv-fs-meta" style="margin:0;">Workspace client record. Edit the income line or client card to change address details.</p>
+            </div>
+            <div class="inv-fs-fields">
+              <div class="fgp">
+                <label class="fl" for="inv-fs-field-number">Invoice number</label>
+                <input class="fi" id="inv-fs-field-number" type="text" autocomplete="off" />
+              </div>
+              <div class="fgp">
+                <label class="fl" for="inv-fs-field-issue">Issue date</label>
+                <input class="fi" id="inv-fs-field-issue" type="date" />
+              </div>
+              <div class="fgp">
+                <label class="fl" for="inv-fs-field-due">Due date</label>
+                <input class="fi" id="inv-fs-field-due" type="date" />
+              </div>
+              <div class="fgp">
+                <label class="fl" for="inv-fs-field-currency">Currency</label>
+                <select class="fi" id="inv-fs-field-currency">
+                  <option value="USD">USD</option>
+                  <option value="EUR">EUR</option>
+                </select>
+              </div>
+              <div class="fgp">
+                <label class="fl" for="inv-fs-field-billing">Billing method</label>
+                <select class="fi" id="inv-fs-field-billing">
+                  <option value="send_invoice">Send invoice</option>
+                  <option value="charge_automatically">Charge customer</option>
+                </select>
+              </div>
+              <div class="fgp">
+                <label class="fl" for="inv-fs-field-memo">Memo</label>
+                <textarea class="fi" id="inv-fs-field-memo" rows="2" placeholder="Visible on invoice"></textarea>
+              </div>
+              <div class="fgp">
+                <label class="fl" for="inv-fs-field-tax">Tax rate (%)</label>
+                <input class="fi" id="inv-fs-field-tax" type="number" min="0" max="100" step="0.01" value="10" />
+              </div>
+            </div>
+          </div>
+        </section>
+        <section class="inv-fs-card">
+          <div class="inv-fs-card-hd">
+            <span>Invoice items</span>
+            <button type="button" class="inv-fs-linkbtn" id="inv-fs-add-line">+ Add line</button>
+          </div>
+          <div class="inv-fs-table-wrap">
+            <table class="inv-fs-table">
+              <thead>
+                <tr>
+                  <th style="min-width:180px;">Description</th>
+                  <th style="width:72px;">Qty</th>
+                  <th style="width:110px;">Unit price</th>
+                  <th style="width:110px;text-align:right;">Amount</th>
+                  <th style="width:44px;"></th>
+                </tr>
+              </thead>
+              <tbody id="inv-fs-lines-body"></tbody>
+            </table>
+          </div>
+          <div class="inv-fs-totals">
+            <div class="inv-fs-totals-inner">
+              <div class="inv-fs-total-row"><span>Subtotal</span><span id="inv-fs-subtotal"></span></div>
+              <div class="inv-fs-total-row"><span>Tax</span><span id="inv-fs-taxamt"></span></div>
+              <div class="inv-fs-total-row"><strong>Total</strong><strong id="inv-fs-total"></strong></div>
+            </div>
+          </div>
+        </section>
+      </main>
+      <aside class="inv-fs-aside">
+        <section class="inv-fs-card">
+          <div class="inv-fs-lbl">Details</div>
+          <div class="inv-fs-detail-row">
+            <span>ID</span>
+            <button type="button" class="inv-fs-iconbtn" id="inv-fs-copy-id" title="Copy invoice ID">Copy</button>
+          </div>
+          <code id="inv-fs-detail-id" style="display:block;font-size:11px;margin:-4px 0 12px;word-break:break-all;color:#64748b;"></code>
+          <div class="inv-fs-detail-row" style="margin-bottom:0;">
+            <span>Created</span>
+            <span id="inv-fs-created"></span>
+          </div>
+        </section>
+        <section class="inv-fs-card">
+          <div class="inv-fs-card-hd">
+            <span>Metadata</span>
+          </div>
+          <div id="inv-fs-metadata-empty" class="inv-fs-metadata-empty">No metadata</div>
+          <div id="inv-fs-metadata-rows"></div>
+          <button type="button" class="inv-fs-btn-secondary" id="inv-fs-metadata-add" style="width:100%;margin-top:4px;">+ Add metadata</button>
+        </section>
+      </aside>
+    </div>
   </div>
 </div>
 

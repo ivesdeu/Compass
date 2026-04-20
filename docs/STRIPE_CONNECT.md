@@ -2,6 +2,20 @@
 
 This dashboard routes **invoice Checkout** to each workspace’s **Stripe Connect Express** account and records **paid** amounts as income on the linked revenue transaction (or as a new transaction when there is no invoice).
 
+## Client-ready checklist (operator)
+
+Work through in order. The static app must use the **same** Supabase project as Edge secrets and migrations (`VITE_SUPABASE_*` in [`.env.example`](../.env.example); defaults in [`vite.config.mjs`](../vite.config.mjs) match the linked IDM project).
+
+1. **Database** — Link the CLI (`supabase link --project-ref <ref>`), then `npm run db:push` (or `npm run db:push:all` if the CLI reports migrations “inserted before” the remote tip—review output first). Migrations must include multitenancy before [`20260301107100_organization_stripe_connect.sql`](../supabase/migrations/20260301107100_organization_stripe_connect.sql).
+2. **Supabase Auth URLs** — Dashboard → **Authentication** → **URL configuration**:
+   - **Site URL:** your production dashboard origin (e.g. `https://your-host.com`), or `http://localhost:5173` for local-only.
+   - **Redirect URL allow list:** production origin, `http://localhost:5173`, `http://127.0.0.1:5173`, and any preview origins you use. Org slug paths (`https://host/your-org/`) stay same-origin; see [`docs/DEPLOYMENT_ORG_ROUTING.md`](DEPLOYMENT_ORG_ROUTING.md) for Safari / OAuth notes.
+3. **Frontend build** — Copy `.env.example` to `.env`, set `VITE_SUPABASE_URL` and `VITE_SUPABASE_ANON_KEY` to the target project, then `npm run build` and deploy `dist/` (e.g. Netlify). Mismatched project vs Edge causes **401** on `stripe-connect-start`.
+4. **Edge secrets** — Dashboard → **Edge Functions** → **Secrets** (or `supabase secrets set --project-ref <ref> …`). Required names: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `APP_BASE_URL`, `DASHBOARD_ALLOWED_ORIGINS`. Optional: `STRIPE_CONNECT_DEFAULT_COUNTRY`. Verify digests with `supabase secrets list --project-ref <ref>`.
+5. **Deploy Edge Functions** — `export SUPABASE_PROJECT_REF=<ref>` then `npm run deploy:edge` (see [`scripts/deploy-edge-functions.sh`](../scripts/deploy-edge-functions.sh)).
+6. **Stripe Dashboard (platform)** — Connect Express, redirect allowlist for `APP_BASE_URL`, platform webhook to `https://<ref>.supabase.co/functions/v1/stripe-webhook` with **events on connected accounts** (see below).
+7. **Smoke test** — Sign in as **owner** or **admin** → **Settings → Stripe** → **Continue Stripe setup** (expect **200** and redirect to Stripe). Complete test onboarding; confirm webhook deliveries **200** in Stripe; use **Pay now** on an invoice in test mode and confirm invoice / income updates.
+
 ## Prerequisites
 
 1. Apply migration [`20260301107100_organization_stripe_connect.sql`](../supabase/migrations/20260301107100_organization_stripe_connect.sql) via `supabase db push` (after multitenancy so `organizations` and helpers exist). See [`docs/DEPLOYMENT_ORG_ROUTING.md`](DEPLOYMENT_ORG_ROUTING.md).

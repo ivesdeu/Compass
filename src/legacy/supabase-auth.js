@@ -7,9 +7,9 @@
   var PENDING_INVITE_KEY = 'bizdash_pending_org_invite';
   var FLASH_INVITE_KEY = 'bizdash_flash_invite_msg';
 
-  // NOTE: anon key is safe to expose in the browser.
-  var SUPABASE_URL = 'https://ausivxesedagohjlthiy.supabase.co';
-  var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1c2l2eGVzZWRhZ29oamx0aGl5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNTU3MTEsImV4cCI6MjA5MDYzMTcxMX0.H5PRdJVXCq8_9CbB12F6xFzy0ljqz1-aiVZmguErLxk';
+  // Injected at build/dev time by Vite (`vite.config.mjs`); set VITE_SUPABASE_* in `.env` for other projects.
+  var SUPABASE_URL = typeof __BIZDASH_SUPABASE_URL__ !== 'undefined' ? __BIZDASH_SUPABASE_URL__ : '';
+  var SUPABASE_ANON_KEY = typeof __BIZDASH_SUPABASE_ANON_KEY__ !== 'undefined' ? __BIZDASH_SUPABASE_ANON_KEY__ : '';
 
   if (!window.supabase) {
     console.error('Supabase JS not loaded. Check that the app bundle built correctly.');
@@ -226,7 +226,17 @@
   }
 
   function setOrgContext(orgId, slug, role) {
-    window.currentOrganizationId = orgId || null;
+    var prevOrg = window.currentOrganizationId;
+    var nextOrg = orgId || null;
+    if (
+      prevOrg &&
+      nextOrg &&
+      String(prevOrg) !== String(nextOrg) &&
+      typeof window.bizDashPersistUserUiPrefsForOrgLeaving === 'function'
+    ) {
+      window.bizDashPersistUserUiPrefsForOrgLeaving(String(prevOrg));
+    }
+    window.currentOrganizationId = nextOrg;
     window.currentOrganizationSlug = slug || null;
     window.currentOrganizationRole = role || null;
     if (typeof window.refreshSidebarWorkspaceChrome === 'function') {
@@ -234,6 +244,9 @@
     }
     // Column prefs (and similar) key localStorage by user+org. Auth flow sets the user before
     // org resolution, so prefs were loaded under :noorg:; reload once the workspace id exists.
+    if (orgId && typeof window.bizDashApplyUserUiPrefsForOrg === 'function') {
+      window.bizDashApplyUserUiPrefsForOrg(orgId);
+    }
     if (orgId && typeof window.bizDashReloadCustomersColumnPrefs === 'function') {
       window.bizDashReloadCustomersColumnPrefs();
     }

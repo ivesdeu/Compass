@@ -428,6 +428,10 @@ verify_jwt = false
 [functions.gmail-send]
 verify_jwt = true
 
+# Returns booleans for Gmail / Calendar / Stripe readiness (no secrets).
+[functions.integration-connection-status]
+verify_jwt = true
+
 # Stripe Checkout for workspace invoices (caller JWT); charges on the connected account when configured.
 [functions.create-stripe-checkout-session]
 verify_jwt = true

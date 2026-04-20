@@ -178,6 +178,8 @@ CREATE TABLE IF NOT EXISTS public.app_settings (
   updated_at timestamptz DEFAULT now()
 );
 ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS dashboard_settings jsonb DEFAULT '{}'::jsonb;
+-- Legacy deployments may have created `app_settings` without `user_id`; RLS policies below require it.
+ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS user_id uuid REFERENCES auth.users (id) ON DELETE CASCADE;
 
 -- ---- RLS ----
 ALTER TABLE public.projects ENABLE ROW LEVEL SECURITY;
