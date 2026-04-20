@@ -2,17 +2,29 @@
   "name": "idm-business-dashboard",
   "private": true,
   "type": "module",
+  "engines": {
+    "node": "22.x"
+  },
   "scripts": {
-    "dev": "vite preview --host localhost --port 5173 --strictPort",
-    "build": "node scripts/build-static.mjs",
-    "preview": "vite preview"
+    "dev": "vite --host localhost --port 5173 --strictPort",
+    "build": "vite build",
+    "preview": "vite preview --host localhost --port 5173 --strictPort"
   },
   "devDependencies": {
+    "browserslist-to-esbuild": "^2.1.1",
     "lucide": "^1.7.0",
     "supabase": "^2.91.3",
     "vite": "^6.2.0"
   },
+  "sideEffects": [
+    "src/legacy/**/*.js",
+    "src/entries/bootstrap.js",
+    "src/entries/chart-setup.js",
+    "src/entries/supabase-vendor.js",
+    "src/entries/telemetry-init.js"
+  ],
   "dependencies": {
-    "@supabase/supabase-js": "^2.101.1"
+    "@supabase/supabase-js": "2.101.1",
+    "chart.js": "4.5.1"
   }
 }

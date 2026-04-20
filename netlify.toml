@@ -2,7 +2,18 @@
   command = "npm run build"
   publish = "dist"
 
-# SPA: serve index.html for client-side routes (OAuth return, deep links)
+[build.environment]
+  NODE_VERSION = "22"
+
+# Long cache for versioned font files under public/fonts/ (MIME types are correct by extension on Netlify).
+[[headers]]
+  for = "/fonts/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# SPA: serve index.html for client-side routes (OAuth return, deep links).
+# If you add same-origin APIs or Netlify Functions paths later, declare their redirects/rewrites
+# ABOVE this catch-all so real routes are not shadowed by /* -> index.html.
 [[redirects]]
   from = "/*"
   to = "/index.html"

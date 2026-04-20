@@ -1,6 +1,3 @@
--- Optional case study fields on projects (run after projects table exists).
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS case_study_published boolean DEFAULT false;
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS case_study_challenge text;
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS case_study_strategy jsonb DEFAULT '[]'::jsonb;
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS case_study_results jsonb DEFAULT '[]'::jsonb;
-ALTER TABLE public.projects ADD COLUMN IF NOT EXISTS case_study_category text;
+-- Schema source of truth: versioned migration (do not paste this file into the SQL editor as primary deploy).
+-- Migration: supabase/migrations/20260301109000_project_case_study.sql
+-- Apply: `supabase db push` with a linked project, or your migration pipeline.

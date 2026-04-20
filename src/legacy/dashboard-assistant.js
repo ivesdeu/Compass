@@ -361,7 +361,7 @@
     if (/\b(mrr|retainer|recurring)\b/.test(ql)) {
       return (
         'MRR on the dashboard comes from retainers: clients with is_retainer and related income transactions. ' +
-        'The main KPI logic lives in public/assets/financial-core.js; client records are in public.clients.'
+        'The main KPI logic lives in src/legacy/financial-core.js; client records are in public.clients.'
       );
     }
 
@@ -378,21 +378,21 @@
 
     if (/\b(build|dist|netlify|deploy)\b/.test(ql)) {
       return (
-        'npm run build runs scripts/build-static.mjs, which copies index.html and public/ into dist/. ' +
-        'netlify.toml publishes dist/ and SPA-redirects to index.html. No bundler step for the main dashboard JS.'
+        'npm run build runs Vite (vite.config.mjs): transpiles to browserslist targets, bundles Chart.js and @supabase/supabase-js, ' +
+        'and emits dist/ with index.html plus hashed assets. netlify.toml publishes dist/ and SPA-redirects to index.html.'
       );
     }
 
     if (/\b(script|javascript|frontend)\b/.test(ql) && /\b(where|which|file)\b/.test(ql)) {
       return (
-        'Main UI logic: public/assets/financial-core.js. Auth: public/assets/supabase-auth.js (creates window.supabaseClient). ' +
-        'Entry markup: index.html.'
+        'Main UI logic: src/legacy/financial-core.js. Auth: src/legacy/supabase-auth.js (creates window.supabaseClient). ' +
+        'Vite entry: src/entries/bootstrap.js; markup: index.html.'
       );
     }
 
     if (/\b(sign in|signin|login|auth|github)\b/.test(ql)) {
       return (
-        'Sign-in is handled in public/assets/supabase-auth.js using @supabase/supabase-js. ' +
+        'Sign-in is handled in src/legacy/supabase-auth.js using @supabase/supabase-js (loaded via src/entries/supabase-vendor.js). ' +
         'After session is established, initDataFromSupabase loads your data into the dashboard.'
       );
     }

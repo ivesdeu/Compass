@@ -1,0 +1,2 @@
+-- Optional seed data for `supabase db reset` (see supabase/config.toml [db.seed]).
+-- Add INSERT statements here for local development fixtures.

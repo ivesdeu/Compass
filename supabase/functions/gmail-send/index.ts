@@ -1,7 +1,8 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
+import { serveWithEdgeRequestLogging } from "../_shared/withEdgeRequestLogging.ts";
 import { encodeBase64Url } from "https://deno.land/std@0.224.0/encoding/base64url.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.101.1";
 import { corsHeadersFor } from "../_shared/cors.ts";
+import { edgeLog } from "../_shared/edgeLog.ts";
 import { resolveOrganizationId } from "../_shared/orgContext.ts";
 import { getGoogleAccessTokenForUserOrg } from "../_shared/googleAccessToken.ts";
 
@@ -40,7 +41,8 @@ function buildRfc2822(params: { from: string; to: string; subject: string; body:
   return lines.join("\r\n");
 }
 
-serve(async (req) => {
+serveWithEdgeRequestLogging("gmail-send", async (req, ctx) => {
+  const requestId = ctx.requestId;
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeadersFor(req) });
   }
@@ -108,6 +110,15 @@ serve(async (req) => {
     organizationIdRaw || null,
   );
   if (!orgId) {
+    edgeLog({
+      fn: "gmail-send",
+      level: "warn",
+      action: "deny",
+      requestId,
+      userId: userId,
+      organizationId: organizationIdRaw || undefined,
+      detail: "no organization membership for requested org",
+    });
     return json(req, 403, { error: "No organization membership" });
   }
 

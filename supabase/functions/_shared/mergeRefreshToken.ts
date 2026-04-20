@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2.101.1";
 
 /**
  * Google/Microsoft often omit `refresh_token` on repeat consent. Keep the previous DB value when the new exchange has none.

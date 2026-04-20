@@ -1,5 +1,5 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.101.1";
+import { serveWithEdgeRequestLogging } from "../_shared/withEdgeRequestLogging.ts";
 import { corsHeadersFor } from "../_shared/cors.ts";
 
 type Action =
@@ -58,7 +58,7 @@ async function findUserIdByEmail(
   return null;
 }
 
-serve(async (req) => {
+serveWithEdgeRequestLogging("organization-team", async (req, _ctx) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeadersFor(req) });
   }

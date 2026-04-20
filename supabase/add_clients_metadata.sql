@@ -1,2 +1,3 @@
--- Optional JSON on each client (e.g. Customers tab revenue/cost overrides). Run once in Supabase SQL Editor.
-ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS metadata jsonb DEFAULT '{}'::jsonb;
+-- Schema source of truth: versioned migration (do not paste this file into the SQL editor as primary deploy).
+-- Migration: supabase/migrations/20260301104000_add_clients_metadata.sql
+-- Apply: `supabase db push` with a linked project, or your migration pipeline.

@@ -1,5 +1,5 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.101.1";
+import { serveWithEdgeRequestLogging } from "../_shared/withEdgeRequestLogging.ts";
 import { corsHeadersFor } from "../_shared/cors.ts";
 import { edgeFunctionUrl } from "../_shared/edgeUrls.ts";
 import { decodeJwtPayload } from "../_shared/jwtPayload.ts";
@@ -15,7 +15,7 @@ function redirect(req: Request, location: string, status = 302) {
   });
 }
 
-serve(async (req) => {
+serveWithEdgeRequestLogging("oauth-google-callback", async (req, _ctx) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeadersFor(req) });
   }

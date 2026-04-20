@@ -1,5 +1,5 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.101.1";
+import { serveWithEdgeRequestLogging } from "../_shared/withEdgeRequestLogging.ts";
 import Stripe from "npm:stripe@16.12.0";
 import { corsHeadersFor } from "../_shared/cors.ts";
 
@@ -24,7 +24,7 @@ function isWriteRole(role: string | undefined) {
   return role === "owner" || role === "admin" || role === "member";
 }
 
-serve(async (req) => {
+serveWithEdgeRequestLogging("create-stripe-checkout-session", async (req, _ctx) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeadersFor(req) });
   }
@@ -120,34 +120,63 @@ serve(async (req) => {
   const amountInCents = Math.round(amount * 100);
   const invoiceLabel = invoice.number ? `Invoice ${invoice.number}` : `Invoice ${invoice.id}`;
 
+  const { data: stripeConn, error: connErr } = await adminClient
+    .from("organization_stripe_connections")
+    .select("stripe_account_id, charges_enabled, connect_status")
+    .eq("organization_id", body.organizationId)
+    .maybeSingle();
+
+  if (connErr) {
+    return jsonResponse(req, 500, { error: "Failed to load Stripe Connect settings.", details: connErr.message });
+  }
+  const stripeAccountId = String(stripeConn?.stripe_account_id || "").trim();
+  const chargesOk = !!stripeConn?.charges_enabled;
+  if (!stripeAccountId || !chargesOk) {
+    return jsonResponse(req, 409, {
+      error:
+        "Stripe Connect is not ready for this workspace. An owner or admin must finish Stripe onboarding under Settings → Stripe before customers can pay invoices online.",
+      code: "STRIPE_CONNECT_REQUIRED",
+      connectStatus: stripeConn?.connect_status ?? null,
+    });
+  }
+
+  const sessionMetadata = {
+    invoice_id: String(invoice.id),
+    organization_id: String(body.organizationId),
+    user_id: String(user.id),
+    income_tx_id: String(invoice.income_tx_id || ""),
+    connected_account_id: stripeAccountId,
+  };
+
   try {
-    const session = await stripe.checkout.sessions.create({
-      mode: "payment",
-      success_url: successUrl,
-      cancel_url: cancelUrl,
-      payment_method_types: ["card"],
-      line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: "usd",
-            unit_amount: amountInCents,
-            product_data: {
-              name: invoiceLabel,
-              description: "Payment for dashboard invoice",
+    const session = await stripe.checkout.sessions.create(
+      {
+        mode: "payment",
+        success_url: successUrl,
+        cancel_url: cancelUrl,
+        payment_method_types: ["card"],
+        line_items: [
+          {
+            quantity: 1,
+            price_data: {
+              currency: "usd",
+              unit_amount: amountInCents,
+              product_data: {
+                name: invoiceLabel,
+                description: "Payment for dashboard invoice",
+              },
             },
           },
+        ],
+        metadata: sessionMetadata,
+        payment_intent_data: {
+          metadata: { ...sessionMetadata },
         },
-      ],
-      metadata: {
-        invoice_id: String(invoice.id),
-        organization_id: String(body.organizationId),
-        user_id: String(user.id),
-        income_tx_id: String(invoice.income_tx_id || ""),
+        client_reference_id: String(invoice.id),
+        customer_email: user.email || undefined,
       },
-      client_reference_id: String(invoice.id),
-      customer_email: user.email || undefined,
-    });
+      { stripeAccount: stripeAccountId },
+    );
 
     const { error: updateErr } = await adminClient
       .from("invoices")

@@ -1,0 +1,3 @@
+-- Schema source of truth: versioned migration (do not paste this file into the SQL editor as primary deploy).
+-- Migration: supabase/migrations/20260301107100_organization_stripe_connect.sql
+-- Apply: `supabase db push` with a linked project, or your migration pipeline.

@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2.101.1";
 
 export async function resolveOrganizationId(
   userClient: SupabaseClient,

@@ -1,7 +1,6 @@
 node_modules/
 .vite/
-# App loads financial-core.js only; ignore stray Vite entry chunks in public/
-public/assets/index-*.js
+# Legacy app JS lives under src/legacy/; Vite emits hashed chunks to dist/assets/ only.
 .env
 .env.local
 .env.*.local

@@ -1,6 +1,7 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.101.1";
+import { serveWithEdgeRequestLogging } from "../_shared/withEdgeRequestLogging.ts";
 import { corsHeadersFor } from "../_shared/cors.ts";
+import { edgeLog } from "../_shared/edgeLog.ts";
 
 function json(req: Request, status: number, body: Record<string, unknown>) {
   return new Response(JSON.stringify(body), {
@@ -23,7 +24,8 @@ function authorizeCron(req: Request): boolean {
  * Scheduled / manual worker for integration sync (refresh tokens, queue sends, etc.).
  * Protect with INTEGRATION_WORKER_SECRET (header or Bearer). Implement sync logic here.
  */
-serve(async (req) => {
+serveWithEdgeRequestLogging("integration-worker", async (req, ctx) => {
+  const requestId = ctx.requestId;
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeadersFor(req) });
   }
@@ -32,6 +34,13 @@ serve(async (req) => {
   }
 
   if (!authorizeCron(req)) {
+    edgeLog({
+      fn: "integration-worker",
+      level: "warn",
+      action: "deny",
+      requestId,
+      detail: "missing or invalid INTEGRATION_WORKER_SECRET",
+    });
     return json(req, 401, { error: "Unauthorized" });
   }
 

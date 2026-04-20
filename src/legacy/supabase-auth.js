@@ -12,7 +12,7 @@
   var SUPABASE_ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImF1c2l2eGVzZWRhZ29oamx0aGl5Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzUwNTU3MTEsImV4cCI6MjA5MDYzMTcxMX0.H5PRdJVXCq8_9CbB12F6xFzy0ljqz1-aiVZmguErLxk';
 
   if (!window.supabase) {
-    console.error('Supabase JS not loaded. Check CDN <script> tag.');
+    console.error('Supabase JS not loaded. Check that the app bundle built correctly.');
     function recoverNoSupabaseClient() {
       var loading = document.getElementById('auth-loading');
       var shell = document.getElementById('auth-login-shell');
@@ -23,7 +23,7 @@
       if (app) app.classList.remove('on');
       if (ge) {
         ge.textContent =
-          'The sign-in library did not load. Check your connection, allow cdn.jsdelivr.net, then refresh. Sign-in will not work until this script loads.';
+          'The sign-in library did not load. Try a hard refresh or redeploy; sign-in will not work until the app JavaScript loads.';
       }
     }
     if (document.readyState === 'loading') {
@@ -39,6 +39,45 @@
   /** Used by team Edge `fetch` (CDN bundles may not expose `supabaseUrl` / `supabaseKey`). */
   window.__bizdashSupabaseUrl = SUPABASE_URL;
   window.__bizdashSupabaseAnonKey = SUPABASE_ANON_KEY;
+
+  if (supabase.functions && typeof supabase.functions.invoke === 'function') {
+    var rawInvoke = supabase.functions.invoke.bind(supabase.functions);
+    supabase.functions.invoke = function (name, options) {
+      return rawInvoke(name, options).then(
+        function (res) {
+          if (res && res.error) {
+            try {
+              console.error(
+                '[bizdash]',
+                JSON.stringify({
+                  kind: 'functions.invoke',
+                  correlationId: window.__bizdashCorrelationId || '',
+                  fnName: name,
+                  message: String((res.error && res.error.message) || res.error || ''),
+                  status: res.error && (res.error.status || res.error.code),
+                }),
+              );
+            } catch (_) {}
+          }
+          return res;
+        },
+        function (err) {
+          try {
+            console.error(
+              '[bizdash]',
+              JSON.stringify({
+                kind: 'functions.invoke',
+                correlationId: window.__bizdashCorrelationId || '',
+                fnName: name,
+                message: err && err.message ? String(err.message) : String(err),
+              }),
+            );
+          } catch (_) {}
+          return Promise.reject(err);
+        },
+      );
+    };
+  }
 
   function $(id) {
     return document.getElementById(id);

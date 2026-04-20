@@ -5,12 +5,6 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>Business Dashboard</title>
 <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 64 64'%3E%3Crect width='64' height='64' rx='16' fill='%23e8501a'/%3E%3Ctext x='50%25' y='52%25' text-anchor='middle' font-size='32' fill='white' font-family='sans-serif'%3EBD%3C/text%3E%3C/svg%3E">
-<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
-<script>
-  if (typeof Chart !== 'undefined' && Chart.defaults) {
-    Chart.defaults.font.family = '"Helvetica Now Pro Display Medium", system-ui, -apple-system, sans-serif';
-  }
-</script>
 <style>
   *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
   :root {
@@ -4285,6 +4279,7 @@
     .spend-kpi-row { grid-template-columns: 1fr; }
   }
 </style>
+  <script type="module" crossorigin src="/assets/index-BG-zMVfi.js"></script>
 </head>
 <body>
 
@@ -4794,7 +4789,7 @@
     <div class="card">
       <div class="sh"><div class="st">Income entries</div></div>
       <div class="power-toolbar">
-        <input type="search" class="fi" id="income-power-search" placeholder="Search source, client, project, invoice..." autocomplete="off" />
+        <input type="search" class="fi" id="income-power-search" placeholder="Search source, client, project, invoice, recording…" autocomplete="off" />
         <button type="button" class="btn" id="income-power-add-filter">+ Filter rule</button>
         <button type="button" class="btn" id="income-power-columns">Columns</button>
         <select class="fi" id="income-power-bulk-action" title="Bulk action">
@@ -5369,6 +5364,10 @@
               <span class="settings-nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="1" y="6" width="10" height="7" rx="1"/><path d="m1 6 5 3.5L11 6"/><rect x="13" y="5" width="10" height="11" rx="1"/><path d="M16 5v2M20 5v2M13 10h10"/></svg></span>
               <span class="settings-nav-txt">Mail &amp; Calendar</span>
             </button>
+            <button type="button" class="settings-nav-item" id="settings-nav-stripe" data-settings-panel="stripe" data-settings-kicker="Workspace" data-settings-title="Stripe" data-settings-desc="Connect Stripe so invoice payments go to your business and paid amounts sync to income.">
+              <span class="settings-nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10h18"/><path d="M7 15h1"/><path d="M12 15h1"/><path d="M7 10v10"/><path d="M17 10v4"/><path d="M14 18h4"/><rect x="2" y="4" width="20" height="6" rx="1"/></svg></span>
+              <span class="settings-nav-txt">Stripe</span>
+            </button>
             <button type="button" class="settings-nav-item" id="settings-nav-profile" data-settings-panel="profile" data-settings-kicker="Account" data-settings-title="Profile" data-settings-desc="Manage your personal details.">
               <span class="settings-nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21v-2a4 4 0 0 0-4-4H9a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>
               <span class="settings-nav-txt">Profile</span>
@@ -5916,6 +5915,21 @@
                 </div>
               </div>
               <p style="font-size:12px;color:var(--text3);line-height:1.5;margin:0;">One Google sign-in grants the scopes configured for your project (see <code style="font-size:11px;">docs/SUPABASE_EDGE_INTEGRATIONS.md</code>). Redirect URI: <code style="font-size:10px;">https://&lt;project&gt;.supabase.co/functions/v1/oauth-google-callback</code> unless you set <code style="font-size:10px;">GOOGLE_REDIRECT_URI</code>.</p>
+            </div>
+          </div>
+          <div id="settings-panel-stripe" class="settings-panel" role="tabpanel" aria-labelledby="settings-nav-stripe" data-settings-panel-id="stripe">
+            <div class="settings-stack" style="gap:16px;">
+              <div class="card" style="padding:16px;">
+                <h2 style="margin:0 0 8px;font-size:16px;">Stripe Connect</h2>
+                <p style="margin:0 0 12px;font-size:13px;color:var(--text2);line-height:1.5;">Invoice <strong>Pay now</strong> uses Checkout on your connected Stripe account. Stripe-linked income appears on the Revenue page with a <strong>Stripe</strong> recording label.</p>
+                <div id="stripe-connect-status" style="font-size:13px;color:var(--text);margin-bottom:12px;line-height:1.5;" role="status">Loading…</div>
+                <div style="display:flex;flex-wrap:wrap;gap:8px;align-items:center;">
+                  <button type="button" class="btn btn-p" id="btn-stripe-connect-start">Continue Stripe setup</button>
+                  <button type="button" class="btn" id="btn-stripe-connect-refresh">Refresh status</button>
+                  <button type="button" class="btn" id="btn-stripe-connect-disconnect" style="color:var(--red);">Disconnect</button>
+                </div>
+                <p style="margin:12px 0 0;font-size:12px;color:var(--text3);line-height:1.5;">Operators: see <code style="font-size:11px;">docs/STRIPE_CONNECT.md</code> for webhooks, secrets, and Connect dashboard steps.</p>
+              </div>
             </div>
           </div>
           <div id="settings-panel-profile" class="settings-panel" role="tabpanel" aria-labelledby="settings-nav-profile" data-settings-panel-id="profile">
@@ -6907,24 +6921,28 @@
 </div>
 
 <div class="mobile-actions">
-  <button type="button" class="btn" onclick="document.getElementById('btn-add-client')?.click()">+ Client</button>
-  <button type="button" class="btn" onclick="document.getElementById('btn-add-project')?.click()">+ Project</button>
-  <button type="button" class="btn" onclick="document.getElementById('btn-add-expense')?.click()">+ Expense</button>
-  <button type="button" class="btn" onclick="document.getElementById('btn-add-time')?.click()">+ Time</button>
-  <button type="button" class="btn btn-p" onclick="document.getElementById('btn-add-income')?.click()">+ Income</button>
+  <button type="button" class="btn" onclick="(function(el){ if(el) el.click(); })(document.getElementById('btn-add-client'))">+ Client</button>
+  <button type="button" class="btn" onclick="(function(el){ if(el) el.click(); })(document.getElementById('btn-add-project'))">+ Project</button>
+  <button type="button" class="btn" onclick="(function(el){ if(el) el.click(); })(document.getElementById('btn-add-expense'))">+ Expense</button>
+  <button type="button" class="btn" onclick="(function(el){ if(el) el.click(); })(document.getElementById('btn-add-time'))">+ Time</button>
+  <button type="button" class="btn btn-p" onclick="(function(el){ if(el) el.click(); })(document.getElementById('btn-add-income'))">+ Income</button>
 </div>
 
 <script>
-  document.getElementById('btn-close-input')?.addEventListener('click', function () {
-    document.getElementById('inputModal').classList.remove('on');
-  });
-  document.getElementById('btn-apply-input')?.addEventListener('click', function () {
-    if (window.updateData) window.updateData();
-  });
+  (function () {
+    var closeBtn = document.getElementById('btn-close-input');
+    if (closeBtn) {
+      closeBtn.addEventListener('click', function () {
+        document.getElementById('inputModal').classList.remove('on');
+      });
+    }
+    var applyBtn = document.getElementById('btn-apply-input');
+    if (applyBtn) {
+      applyBtn.addEventListener('click', function () {
+        if (window.updateData) window.updateData();
+      });
+    }
+  })();
 </script>
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="/assets/financial-core.js?v=20260408-industry"></script>
-<script src="/assets/supabase-auth.js"></script>
-<script src="/assets/dashboard-assistant.js"></script>
 </body>
 </html>

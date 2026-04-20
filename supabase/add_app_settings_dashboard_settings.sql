@@ -1,2 +1,3 @@
--- Run in Supabase SQL Editor once. Stores Settings page business profile, budgets, and budget history JSON.
-ALTER TABLE public.app_settings ADD COLUMN IF NOT EXISTS dashboard_settings jsonb DEFAULT '{}'::jsonb;
+-- Schema source of truth: versioned migration (do not paste this file into the SQL editor as primary deploy).
+-- Migration: supabase/migrations/20260418003000_add_app_settings_dashboard_settings.sql
+-- Apply: `supabase db push` with a linked project, or your migration pipeline.

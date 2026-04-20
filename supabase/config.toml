@@ -427,3 +427,18 @@ verify_jwt = false
 # Send email via stored Google tokens; caller must present Supabase user JWT.
 [functions.gmail-send]
 verify_jwt = true
+
+# Stripe Checkout for workspace invoices (caller JWT); charges on the connected account when configured.
+[functions.create-stripe-checkout-session]
+verify_jwt = true
+
+# Stripe webhooks (signature verification only; no Supabase JWT).
+[functions.stripe-webhook]
+verify_jwt = false
+
+# Stripe Connect Express onboarding (owner/admin JWT).
+[functions.stripe-connect-start]
+verify_jwt = true
+
+[functions.stripe-connect-disconnect]
+verify_jwt = true

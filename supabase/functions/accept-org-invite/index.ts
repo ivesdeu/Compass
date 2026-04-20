@@ -1,5 +1,5 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+import { createClient } from "npm:@supabase/supabase-js@2.101.1";
+import { serveWithEdgeRequestLogging } from "../_shared/withEdgeRequestLogging.ts";
 import { corsHeadersFor } from "../_shared/cors.ts";
 
 function json(req: Request, status: number, body: Record<string, unknown>) {
@@ -9,7 +9,7 @@ function json(req: Request, status: number, body: Record<string, unknown>) {
   });
 }
 
-serve(async (req) => {
+serveWithEdgeRequestLogging("accept-org-invite", async (req, _ctx) => {
   if (req.method === "OPTIONS") {
     return new Response("ok", { headers: corsHeadersFor(req) });
   }

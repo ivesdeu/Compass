@@ -677,6 +677,13 @@
     if (meta.importSource != null && String(meta.importSource).trim()) out.importSource = String(meta.importSource).trim();
     if (meta.externalId != null && String(meta.externalId).trim()) out.externalId = String(meta.externalId).trim();
     if (meta.rawMemo != null && String(meta.rawMemo).trim()) out.rawMemo = String(meta.rawMemo).trim();
+    if (meta.income_source === 'stripe') out.incomeSourceStripe = true;
+    if (meta.stripe_payment_intent_id != null && String(meta.stripe_payment_intent_id).trim()) {
+      out.stripePaymentIntentId = String(meta.stripe_payment_intent_id).trim();
+    }
+    if (meta.stripe_charge_id != null && String(meta.stripe_charge_id).trim()) {
+      out.stripeChargeId = String(meta.stripe_charge_id).trim();
+    }
     return out;
   }
 
@@ -1461,26 +1468,83 @@
       alert('Sign in first to start Stripe Checkout.');
       return;
     }
+    var base =
+      typeof window.__bizdashSupabaseUrl === 'string' ? window.__bizdashSupabaseUrl.trim().replace(/\/$/, '') : '';
+    var anon = typeof window.__bizdashSupabaseAnonKey === 'string' ? window.__bizdashSupabaseAnonKey.trim() : '';
     try {
-      var res = await supabase.functions.invoke('create-stripe-checkout-session', {
-        body: {
+      var sessRes = await supabase.auth.getSession();
+      var tok = sessRes && sessRes.data && sessRes.data.session ? sessRes.data.session.access_token : '';
+      if (!tok) {
+        alert('Sign in again to start Stripe Checkout.');
+        return;
+      }
+      if (!base || !anon) {
+        alert('Supabase URL or anon key is not configured.');
+        return;
+      }
+      var res = await fetch(base + '/functions/v1/create-stripe-checkout-session', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: 'Bearer ' + tok,
+          apikey: anon,
+        },
+        body: JSON.stringify({
           invoiceId: inv.id,
           organizationId: getCurrentOrgId(),
           successUrl: window.location.origin + window.location.pathname + '?payment=success',
           cancelUrl: window.location.origin + window.location.pathname + '?payment=cancel',
-        },
+        }),
       });
-      if (res.error) {
-        alert('Stripe checkout failed: ' + (res.error.message || 'Unknown error'));
+      var payload = {};
+      try {
+        payload = await res.json();
+      } catch (_) {}
+      if (!res.ok) {
+        try {
+          console.error(
+            '[bizdash]',
+            JSON.stringify({
+              kind: 'edge_fetch',
+              correlationId: window.__bizdashCorrelationId || '',
+              fnName: 'create-stripe-checkout-session',
+              httpStatus: res.status,
+              message: String((payload && payload.error) || res.statusText || ''),
+            }),
+          );
+        } catch (_) {}
+        if (payload && payload.code === 'STRIPE_CONNECT_REQUIRED') {
+          alert(
+            (payload.error || 'Stripe is not ready for this workspace.') +
+              '\n\nAn owner or admin can complete setup under Settings → Stripe.',
+          );
+          if (typeof window.nav === 'function') {
+            window.nav('settings', document.querySelector('.ni[data-nav="settings"]'));
+            var st = document.getElementById('settings-nav-stripe');
+            if (st) st.click();
+          }
+          return;
+        }
+        alert('Stripe checkout failed: ' + (payload.error || res.statusText || 'Unknown error'));
         return;
       }
-      var payload = res.data || {};
       if (!payload.url) {
         alert('Stripe checkout failed: no redirect URL returned.');
         return;
       }
-      window.location.href = payload.url;
+      window.location.href = String(payload.url);
     } catch (err) {
+      try {
+        console.error(
+          '[bizdash]',
+          JSON.stringify({
+            kind: 'edge_fetch',
+            correlationId: window.__bizdashCorrelationId || '',
+            fnName: 'create-stripe-checkout-session',
+            message: err && err.message ? String(err.message) : String(err),
+          }),
+        );
+      } catch (_) {}
       console.error('startStripeCheckoutForInvoice error', err);
       alert('Stripe checkout failed. Check console and edge function logs.');
     }
@@ -4289,11 +4353,21 @@ var incomePowerColumns = [
   { id: 'category', label: 'Category', type: 'enum' },
   { id: 'amount', label: 'Amount', type: 'number' },
   { id: 'invoice', label: 'Invoice', type: 'enum' },
+  { id: 'recording', label: 'Recording', type: 'enum' },
 ];
 var incomePowerState = {
   search: '',
   filters: [],
-  visible: { date: true, source: true, client: true, project: true, category: true, amount: true, invoice: true },
+  visible: {
+    date: true,
+    source: true,
+    client: true,
+    project: true,
+    category: true,
+    amount: true,
+    invoice: true,
+    recording: true,
+  },
   selected: {},
 };
 
@@ -5919,6 +5993,9 @@ var incomePowerState = {
       if (panelId === 'refer-earn' && typeof window.refreshReferEarnPanel === 'function') {
         window.refreshReferEarnPanel();
       }
+      if (panelId === 'stripe') {
+        refreshStripeConnectPanel();
+      }
       if (panelId === 'profile') {
         syncPrefsToProfilePanel();
         refreshAccountSecurityUiFromServer();
@@ -5962,6 +6039,186 @@ var incomePowerState = {
       jumpMc.addEventListener('click', function () {
         var t = document.getElementById('settings-nav-mail-calendar');
         if (t) t.click();
+      });
+    }
+  }
+
+  async function refreshStripeConnectPanel() {
+    var el = document.getElementById('stripe-connect-status');
+    var btnStart = document.getElementById('btn-stripe-connect-start');
+    var sb = window.supabaseClient;
+    var org = getCurrentOrgId();
+    if (!el) return;
+    if (!sb || !org) {
+      el.textContent = 'Sign in and open a workspace to manage Stripe.';
+      if (btnStart) btnStart.disabled = true;
+      return;
+    }
+    if (btnStart) btnStart.disabled = false;
+    el.textContent = 'Loading…';
+    var result = await sb.from('organization_stripe_connections').select('*').eq('organization_id', org).maybeSingle();
+    if (result.error) {
+      el.textContent =
+        'Could not load Stripe status. For new installs, run supabase/organization_stripe_connect.sql in the Supabase SQL editor. ' +
+        formatSupabaseErr(result.error);
+      return;
+    }
+    var data = result.data;
+    if (!data) {
+      el.innerHTML =
+        '<strong>Not connected.</strong> Invoice <strong>Pay now</strong> is disabled until an owner or admin completes Stripe Connect.';
+      if (btnStart) btnStart.textContent = 'Connect Stripe';
+      return;
+    }
+    var ch = data.charges_enabled ? 'yes' : 'no';
+    var py = data.payouts_enabled ? 'yes' : 'no';
+    var st = data.connect_status || 'pending';
+    el.innerHTML =
+      '<div><strong>Stripe account</strong> ' +
+      esc(String(data.stripe_account_id || '—')) +
+      '</div>' +
+      '<div style="margin-top:6px;"><strong>Dashboard status</strong> ' +
+      esc(st) +
+      ' · charges ' +
+      ch +
+      ' · payouts ' +
+      py +
+      '</div>';
+    if (btnStart) {
+      btnStart.textContent =
+        data.charges_enabled && data.payouts_enabled ? 'Open Stripe onboarding again' : 'Continue Stripe setup';
+    }
+  }
+
+  function consumeStripeSettingsReturnFromUrl() {
+    try {
+      var params = new URLSearchParams(window.location.search || '');
+      var stripeReturn = (params.get('stripe_return') || '').trim();
+      var stripeRefresh = (params.get('stripe_refresh') || '').trim();
+      var stripePanel = (params.get('stripe_panel') || '').trim();
+      if (!stripeReturn && !stripeRefresh && stripePanel !== 'stripe') return;
+
+      params.delete('stripe_return');
+      params.delete('stripe_refresh');
+      params.delete('stripe_panel');
+      params.delete('settings');
+      var qs = params.toString();
+      var path = window.location.pathname || '/';
+      window.history.replaceState(null, '', path + (qs ? '?' + qs : '') + (window.location.hash || ''));
+
+      var bar = document.getElementById('app-invite-flash');
+      var msg =
+        stripeReturn === '1'
+          ? 'Returned from Stripe. Status updates in a few seconds after webhooks process.'
+          : stripeRefresh === '1'
+            ? 'Stripe onboarding link was refreshed. Continue setup when you are ready.'
+            : '';
+      if (bar && msg) {
+        bar.textContent = msg;
+        bar.style.display = 'block';
+        window.setTimeout(function () {
+          bar.style.display = 'none';
+          bar.textContent = '';
+        }, 10000);
+      }
+
+      if (typeof window.nav === 'function') {
+        window.nav('settings', document.querySelector('.ni[data-nav="settings"]'));
+        var st = document.getElementById('settings-nav-stripe');
+        if (st) st.click();
+      }
+      window.setTimeout(function () {
+        refreshStripeConnectPanel();
+      }, 800);
+    } catch (_) {}
+  }
+
+  function wireStripeConnectInSettings() {
+    var start = document.getElementById('btn-stripe-connect-start');
+    var refBtn = document.getElementById('btn-stripe-connect-refresh');
+    var disc = document.getElementById('btn-stripe-connect-disconnect');
+    if (start && start.getAttribute('data-wired-stripe-connect') !== '1') {
+      start.setAttribute('data-wired-stripe-connect', '1');
+      start.addEventListener('click', async function () {
+        var supa = window.supabaseClient;
+        var sessRes = supa ? await supa.auth.getSession() : null;
+        var sess = sessRes && sessRes.data ? sessRes.data.session : null;
+        if (!sess || !sess.access_token) {
+          alert('Sign in first.');
+          return;
+        }
+        var base =
+          typeof window.__bizdashSupabaseUrl === 'string' ? window.__bizdashSupabaseUrl.trim().replace(/\/$/, '') : '';
+        var anon = typeof window.__bizdashSupabaseAnonKey === 'string' ? window.__bizdashSupabaseAnonKey.trim() : '';
+        var orgId = getCurrentOrgId();
+        if (!base || !anon) {
+          alert('Supabase URL or anon key is not configured in this app.');
+          return;
+        }
+        if (!orgId) {
+          alert('Open a workspace before connecting Stripe.');
+          return;
+        }
+        var res = await fetch(base + '/functions/v1/stripe-connect-start', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + sess.access_token,
+            apikey: anon,
+          },
+          body: JSON.stringify({ organizationId: orgId }),
+        });
+        var j = {};
+        try {
+          j = await res.json();
+        } catch (_) {}
+        if (!res.ok || !j.url) {
+          alert(j.error ? String(j.error) : 'Could not start Stripe Connect. Deploy stripe-connect-start and check logs.');
+          return;
+        }
+        window.location.href = String(j.url);
+      });
+    }
+    if (refBtn && refBtn.getAttribute('data-wired-stripe-connect') !== '1') {
+      refBtn.setAttribute('data-wired-stripe-connect', '1');
+      refBtn.addEventListener('click', function () {
+        refreshStripeConnectPanel();
+      });
+    }
+    if (disc && disc.getAttribute('data-wired-stripe-connect') !== '1') {
+      disc.setAttribute('data-wired-stripe-connect', '1');
+      disc.addEventListener('click', async function () {
+        if (!confirm('Disconnect Stripe for this workspace? Invoice Pay now will stop until you connect again.')) return;
+        var supa = window.supabaseClient;
+        var sessRes = supa ? await supa.auth.getSession() : null;
+        var sess = sessRes && sessRes.data ? sessRes.data.session : null;
+        if (!sess || !sess.access_token) {
+          alert('Sign in first.');
+          return;
+        }
+        var base =
+          typeof window.__bizdashSupabaseUrl === 'string' ? window.__bizdashSupabaseUrl.trim().replace(/\/$/, '') : '';
+        var anon = typeof window.__bizdashSupabaseAnonKey === 'string' ? window.__bizdashSupabaseAnonKey.trim() : '';
+        var orgId = getCurrentOrgId();
+        if (!base || !anon || !orgId) return;
+        var res = await fetch(base + '/functions/v1/stripe-connect-disconnect', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + sess.access_token,
+            apikey: anon,
+          },
+          body: JSON.stringify({ organizationId: orgId }),
+        });
+        var j = {};
+        try {
+          j = await res.json();
+        } catch (_) {}
+        if (!res.ok) {
+          alert(j.error ? String(j.error) : 'Disconnect failed.');
+          return;
+        }
+        refreshStripeConnectPanel();
       });
     }
   }
@@ -7873,7 +8130,7 @@ var incomePowerState = {
   function incomeRuleOptionsForColumn(colId) {
     if (colId === 'amount') return ['eq', 'gt', 'gte', 'lt', 'lte', 'between'];
     if (colId === 'date') return ['on', 'after', 'before', 'between'];
-    if (colId === 'category' || colId === 'invoice') return ['is', 'not'];
+    if (colId === 'category' || colId === 'invoice' || colId === 'recording') return ['is', 'not'];
     return ['contains', 'is', 'starts'];
   }
 
@@ -7928,7 +8185,7 @@ var incomePowerState = {
       alert('No rows to export.');
       return;
     }
-    var out = ['Date,Source,Client,Project,Category,Amount,Invoice status'];
+    var out = ['Date,Source,Client,Project,Category,Amount,Invoice status,Recording'];
     rows.forEach(function (r) {
       out.push(
         '"' + String(r.date || '').replace(/"/g, '""') + '",' +
@@ -7937,7 +8194,8 @@ var incomePowerState = {
         '"' + String(r.project || '').replace(/"/g, '""') + '",' +
         '"' + String(r.category || '').replace(/"/g, '""') + '",' +
         Number(r.amount || 0) + ',' +
-        '"' + String(r.invoice || '').replace(/"/g, '""') + '"'
+        '"' + String(r.invoice || '').replace(/"/g, '""') + '",' +
+        '"' + String(r.recording || '').replace(/"/g, '""') + '"'
       );
     });
     var blob = new Blob([out.join('\n')], { type: 'text/csv;charset=utf-8' });
@@ -8058,6 +8316,8 @@ var incomePowerState = {
         var cl = tx.clientId ? clients.find(function (c2) { return c2.id === tx.clientId; }) : null;
         var pr = tx.projectId ? projects.find(function (p2) { return p2.id === tx.projectId; }) : null;
         var inv2 = invoiceForTx[tx.id] || null;
+        var recording =
+          tx.incomeSourceStripe || tx.stripePaymentIntentId ? 'Stripe' : 'Manual';
         return {
           tx: tx,
           id: tx.id,
@@ -8069,6 +8329,7 @@ var incomePowerState = {
           amount: Number(tx.amount || 0),
           invoice: inv2 ? (inv2.status === 'paid' ? 'Paid' : 'Sent') : 'No invoice',
           invoiceObj: inv2,
+          recording: recording,
         };
       });
       var sourceIdMap = {};
@@ -8080,7 +8341,7 @@ var incomePowerState = {
       var filteredRows = sourceRows.filter(function (row) {
         var textHit = true;
         if (q) {
-          var hay = [row.date, row.source, row.client, row.project, row.category, row.invoice]
+          var hay = [row.date, row.source, row.client, row.project, row.category, row.invoice, row.recording]
             .join(' ')
             .toLowerCase();
           textHit = hay.indexOf(q) !== -1;
@@ -15802,6 +16063,7 @@ var incomePowerState = {
     wireProfileSettings();
     wireAccountSecuritySettings();
     wireGoogleOAuthInSettings();
+    wireStripeConnectInSettings();
     wirePersonableActions();
     wireCloudSyncPanel();
     wireMarketingCampaign();
@@ -15912,6 +16174,7 @@ var incomePowerState = {
       }
     };
 
+    consumeStripeSettingsReturnFromUrl();
     consumeOAuthReturnFromUrl();
 
     document.addEventListener('keydown', function (ev) {

@@ -2,7 +2,7 @@
 
 > **This file is documentation, not SQL.** Do not paste this whole page into the Supabase SQL Editor — lines starting with `#` are Markdown headings and produce `ERROR: 42601: syntax error at or near "#"`. For database setup, run only the **`.sql` files** listed under [Database](#database) (open each file in the repo, copy its contents, run in the SQL editor).
 
-This project stores Google OAuth tokens for **Gmail and Google Calendar** in `public.integration_credentials` (see `supabase/integration_credentials.sql`). Only Edge Functions using the **service role** key should read or write that table.
+This project stores Google OAuth tokens for **Gmail and Google Calendar** in `public.integration_credentials` (see migration [`20260418001000_integration_credentials.sql`](../supabase/migrations/20260418001000_integration_credentials.sql)). Only Edge Functions using the **service role** key should read or write that table.
 
 If you later add Microsoft (Graph, Outlook, etc.), use the `oauth-microsoft-*` functions and Azure redirect URIs documented in git history or re-add a short “Microsoft” section; this doc assumes **Google only**.
 
@@ -96,17 +96,12 @@ After Google is connected for the workspace, the dashboard calls **`gmail-send`*
 
 ## Cron / schedules
 
-Invoke **`integration-worker`** on a schedule with header `x-integration-worker-secret: <INTEGRATION_WORKER_SECRET>` or `Authorization: Bearer <same>`. See `supabase/cron_integration_worker.sql` for a commented `pg_cron` example.
+Invoke **`integration-worker`** on a schedule with header `x-integration-worker-secret: <INTEGRATION_WORKER_SECRET>` or `Authorization: Bearer <same>`. See migration [`20260418005000_cron_integration_worker.sql`](../supabase/migrations/20260418005000_cron_integration_worker.sql) for a commented `pg_cron` example.
 
 ## Database
 
-In the Supabase dashboard, use **SQL → New query**. Paste and run **one file at a time** from your repo (not this `.md` file):
-
-1. **`supabase/organizations_multitenancy.sql`** — open the file, copy all, run once.  
-2. **`supabase/integration_credentials.sql`** — copy all, run once (depends on `organizations` from step 1).
-
-If a file errors because objects already exist, read the message: you may have partially applied migrations already; fix forward or adjust only the failing statements with help from your team.
+Schema changes belong in [`supabase/migrations/`](../supabase/migrations/) and are applied with the Supabase CLI (for example `supabase db push` on a linked project). See [`docs/DEPLOYMENT_ORG_ROUTING.md`](DEPLOYMENT_ORG_ROUTING.md) for the full migration order. For integration credentials specifically, ensure [`20260418001000_integration_credentials.sql`](../supabase/migrations/20260418001000_integration_credentials.sql) has run after core org tables exist.
 
 ## Vault (optional)
 
-See `supabase/optional_vault_encryption_notes.sql` for Vault / pgsodium vs app-level `INTEGRATION_TOKEN_ENCRYPTION_KEY`.
+See migration [`20260418007000_optional_vault_encryption_notes.sql`](../supabase/migrations/20260418007000_optional_vault_encryption_notes.sql) for Vault / pgsodium vs app-level `INTEGRATION_TOKEN_ENCRYPTION_KEY`.

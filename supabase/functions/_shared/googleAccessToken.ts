@@ -1,4 +1,4 @@
-import type { SupabaseClient } from "npm:@supabase/supabase-js@2";
+import type { SupabaseClient } from "npm:@supabase/supabase-js@2.101.1";
 import { maybeDecryptRefreshToken, maybeEncryptRefreshToken } from "./tokenCrypto.ts";
 import { resolveRefreshTokenForUpsert } from "./mergeRefreshToken.ts";
 

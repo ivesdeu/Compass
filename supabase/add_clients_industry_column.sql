@@ -1,3 +1,3 @@
--- Run once in Supabase SQL Editor if clients fail to save with:
--- "Could not find the 'industry' column of 'clients' in the schema cache"
-ALTER TABLE public.clients ADD COLUMN IF NOT EXISTS industry text;
+-- Schema source of truth: versioned migration (do not paste this file into the SQL editor as primary deploy).
+-- Migration: supabase/migrations/20260301105000_add_clients_industry_column.sql
+-- Apply: `supabase db push` with a linked project, or your migration pipeline.

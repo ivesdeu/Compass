@@ -1,5 +1,11 @@
-import { serve } from "https://deno.land/std@0.224.0/http/server.ts";
-import { createClient } from "npm:@supabase/supabase-js@2";
+/**
+ * Advisor / AI assistant — FAIL-SAFE: this function does NOT use SUPABASE_SERVICE_ROLE_KEY.
+ * All CRM or workflow mutations must stay on the user-scoped Supabase client (JWT + RLS) or a
+ * dedicated Edge handler that re-checks organization_members after authenticate.
+ * Never add blind service-role writes from model output.
+ */
+import { createClient } from "npm:@supabase/supabase-js@2.101.1";
+import { serveWithEdgeRequestLogging } from "../_shared/withEdgeRequestLogging.ts";
 import { corsHeadersFor } from "../_shared/cors.ts";
 
 type AdvisorTask = "daily_brief" | "followup_draft" | "variance_explain" | "weekly_recap" | "general";
@@ -417,7 +423,7 @@ async function probeAnthropic(anthropicApiKey: string) {
   return true;
 }
 
-serve(async (req) => {
+serveWithEdgeRequestLogging("ai-assistant", async (req, _ctx) => {
   if (req.method === "OPTIONS") return new Response("ok", { headers: corsHeadersFor(req) });
   if (req.method !== "POST") return jsonResponse(req, 405, { error: "Method not allowed. Use POST." });
 
