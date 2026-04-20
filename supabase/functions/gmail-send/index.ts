@@ -132,11 +132,11 @@ serveWithEdgeRequestLogging("gmail-send", async (req, ctx) => {
 
   if (!tokenResult.ok) {
     if (tokenResult.code === "not_connected") {
-      return json(req, 400, { error: "not_connected", detail: "Connect Google in Settings → Mail & Calendar." });
+      return json(req, 400, { error: "not_connected", detail: "Connect Google in Settings → Connections." });
     }
     return json(req, 502, {
       error: "token_refresh",
-      detail: "Could not refresh Google access. Reconnect in Settings → Mail & Calendar.",
+      detail: "Could not refresh Google access. Reconnect in Settings → Connections.",
     });
   }
 

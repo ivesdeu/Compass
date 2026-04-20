@@ -14,7 +14,7 @@ Work through in order. The static app must use the **same** Supabase project as 
 4. **Edge secrets** — Dashboard → **Edge Functions** → **Secrets** (or `supabase secrets set --project-ref <ref> …`). Required names: `SUPABASE_URL`, `SUPABASE_ANON_KEY`, `SUPABASE_SERVICE_ROLE_KEY`, `STRIPE_SECRET_KEY`, `STRIPE_WEBHOOK_SECRET`, `APP_BASE_URL`, `DASHBOARD_ALLOWED_ORIGINS`. Optional: `STRIPE_CONNECT_DEFAULT_COUNTRY`. Verify digests with `supabase secrets list --project-ref <ref>`.
 5. **Deploy Edge Functions** — `export SUPABASE_PROJECT_REF=<ref>` then `npm run deploy:edge` (see [`scripts/deploy-edge-functions.sh`](../scripts/deploy-edge-functions.sh)).
 6. **Stripe Dashboard (platform)** — Connect Express, redirect allowlist for `APP_BASE_URL`, platform webhook to `https://<ref>.supabase.co/functions/v1/stripe-webhook` with **events on connected accounts** (see below).
-7. **Smoke test** — Sign in as **owner** or **admin** → **Settings → Stripe** → **Continue Stripe setup** (expect **200** and redirect to Stripe). Complete test onboarding; confirm webhook deliveries **200** in Stripe; use **Pay now** on an invoice in test mode and confirm invoice / income updates.
+7. **Smoke test** — Sign in as **owner** or **admin** → **Settings → Connections** (Stripe section) → **Continue Stripe setup** (expect **200** and redirect to Stripe). Complete test onboarding; confirm webhook deliveries **200** in Stripe; use **Pay now** on an invoice in test mode and confirm invoice / income updates.
 
 ## Prerequisites
 

@@ -2249,12 +2249,16 @@
         if (payload && payload.code === 'STRIPE_CONNECT_REQUIRED') {
           alert(
             (payload.error || 'Stripe is not ready for this workspace.') +
-              '\n\nAn owner or admin can complete setup under Settings → Stripe.',
+              '\n\nAn owner or admin can complete setup under Settings → Connections (Stripe).',
           );
           if (typeof window.nav === 'function') {
             window.nav('settings', document.querySelector('.ni[data-nav="settings"]'));
-            var st = document.getElementById('settings-nav-stripe');
+            var st = document.getElementById('settings-nav-connections');
             if (st) st.click();
+            window.setTimeout(function () {
+              var sec = document.getElementById('conn-section-stripe');
+              if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 80);
           }
           return;
         }
@@ -2720,6 +2724,7 @@
       peopleHoverCards: true,
       workspaceIconEmoji: '',
       workspaceIconUrl: '',
+      workspaceIconIconify: '',
     };
   }
 
@@ -2755,6 +2760,7 @@
       peopleHoverCards: chk('setting-ws-toggle-hover-cards'),
       workspaceIconEmoji: hid('setting-ws-icon-emoji-value'),
       workspaceIconUrl: hid('setting-ws-icon-url-value'),
+      workspaceIconIconify: parseWorkspaceIconIconify(hid('setting-ws-icon-iconify-value')),
     };
   }
 
@@ -2773,17 +2779,37 @@
     setChk('setting-ws-toggle-hover-cards', ws.peopleHoverCards);
     var em = document.getElementById('setting-ws-icon-emoji-value');
     var ur = document.getElementById('setting-ws-icon-url-value');
+    var ic = document.getElementById('setting-ws-icon-iconify-value');
     if (em) em.value = ws.workspaceIconEmoji != null ? String(ws.workspaceIconEmoji) : '';
     if (ur) ur.value = ws.workspaceIconUrl != null ? String(ws.workspaceIconUrl) : '';
+    if (ic) ic.value = parseWorkspaceIconIconify(ws.workspaceIconIconify != null ? String(ws.workspaceIconIconify) : '');
     renderWorkspaceIconPreview();
+  }
+
+  function parseWorkspaceIconIconify(raw) {
+    var s = String(raw || '').trim();
+    if (!s) return '';
+    var idx = s.indexOf(':');
+    if (idx < 1) return '';
+    var pre = s.slice(0, idx).toLowerCase();
+    var name = s.slice(idx + 1).trim().toLowerCase();
+    if (pre !== 'lucide' || !name) return '';
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(name)) return '';
+    return 'lucide:' + name;
+  }
+
+  function lucideIconifySvgImgSrc(iconName) {
+    return 'https://api.iconify.design/lucide.svg?icons=' + encodeURIComponent(iconName);
   }
 
   async function renderWorkspaceIconPreview() {
     var emojiH = document.getElementById('setting-ws-icon-emoji-value');
     var urlH = document.getElementById('setting-ws-icon-url-value');
+    var iconifyH = document.getElementById('setting-ws-icon-iconify-value');
     var prev = document.getElementById('setting-ws-icon-preview');
     if (!prev) return;
     var url = urlH ? String(urlH.value || '').trim() : '';
+    var iconify = iconifyH ? parseWorkspaceIconIconify(iconifyH.value) : '';
     var emo = emojiH ? String(emojiH.value || '').trim() : '';
     prev.innerHTML = '';
     if (url) {
@@ -2792,6 +2818,15 @@
       img.alt = '';
       img.src = resolved || url;
       prev.appendChild(img);
+    } else if (iconify) {
+      var nm = iconify.slice('lucide:'.length);
+      var imgI = document.createElement('img');
+      imgI.alt = '';
+      imgI.loading = 'lazy';
+      imgI.src = lucideIconifySvgImgSrc(nm);
+      imgI.width = 22;
+      imgI.height = 22;
+      prev.appendChild(imgI);
     } else if (emo) {
       prev.textContent = emo.slice(0, 10);
     } else {
@@ -4486,7 +4521,7 @@
             var err = j.error ? String(j.error) : 'send_failed';
             var det = j.detail ? String(j.detail) : '';
             if (err === 'not_connected') {
-              showComposeErr('Connect Gmail first: open Settings → Mail & Calendar, then use Get started.');
+              showComposeErr('Connect Gmail first: open Settings → Connections, then use Get started.');
             } else {
               showComposeErr(det || err || 'Could not send. Try again or reconnect Google.');
             }
@@ -6915,8 +6950,6 @@ var incomePowerState = {
             ? 'none'
             : '';
       }
-      var discoverApps = document.getElementById('settings-head-discover-apps');
-      if (discoverApps) discoverApps.style.display = panelId === 'connections' ? 'inline-flex' : 'none';
       if (dirLink) dirLink.style.display = panelId === 'people' ? 'inline-flex' : 'none';
       if (panelId === 'account') refreshAccountSecurityUiFromServer();
       if (panelId === 'workspace') hydrateWorkspaceSettingsFields();
@@ -6926,11 +6959,9 @@ var incomePowerState = {
       if (panelId === 'refer-earn' && typeof window.refreshReferEarnPanel === 'function') {
         window.refreshReferEarnPanel();
       }
-      if (panelId === 'stripe') {
-        refreshStripeConnectPanel();
-      }
       if (panelId === 'connections') {
         refreshConnectionsPanel();
+        refreshStripeConnectPanel();
       }
       if (panelId === 'profile') {
         syncPrefsToProfilePanel();
@@ -6972,21 +7003,28 @@ var incomePowerState = {
       });
     }
 
+    function openConnectionsScrollTo(subSectionId) {
+      var c = document.getElementById('settings-nav-connections');
+      if (c) c.click();
+      if (!subSectionId) return;
+      window.requestAnimationFrame(function () {
+        window.setTimeout(function () {
+          var el = document.getElementById(subSectionId);
+          if (el) el.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 60);
+      });
+    }
+
     var jumpMc = document.getElementById('settings-jump-mail-calendar');
     if (jumpMc && jumpMc.getAttribute('data-settings-jump-mc-wired') !== '1') {
       jumpMc.setAttribute('data-settings-jump-mc-wired', '1');
       jumpMc.addEventListener('click', function () {
-        var t = document.getElementById('settings-nav-mail-calendar');
-        if (t) t.click();
-      });
-    }
-
-    var discoverBtn = document.getElementById('settings-head-discover-apps');
-    if (discoverBtn && discoverBtn.getAttribute('data-settings-discover-wired') !== '1') {
-      discoverBtn.setAttribute('data-settings-discover-wired', '1');
-      discoverBtn.addEventListener('click', function () {
-        var t = document.getElementById('settings-nav-mail-calendar');
-        if (t) t.click();
+        if (typeof window.nav === 'function') {
+          window.nav('settings', document.querySelector('.ni[data-nav="settings"]'));
+        }
+        window.setTimeout(function () {
+          openConnectionsScrollTo('conn-section-google');
+        }, 120);
       });
     }
 
@@ -7005,6 +7043,16 @@ var incomePowerState = {
       card.addEventListener('click', function () {
         var tid = card.getAttribute('data-conn-target');
         if (!tid) return;
+        var sub =
+          tid === 'stripe'
+            ? 'conn-section-stripe'
+            : tid === 'google' || tid === 'mail-calendar'
+              ? 'conn-section-google'
+              : null;
+        if (sub) {
+          openConnectionsScrollTo(sub);
+          return;
+        }
         var nav = document.querySelector('.settings-nav-item[data-settings-panel="' + tid + '"]');
         if (nav) nav.click();
       });
@@ -7156,8 +7204,12 @@ var incomePowerState = {
 
       if (typeof window.nav === 'function') {
         window.nav('settings', document.querySelector('.ni[data-nav="settings"]'));
-        var st = document.getElementById('settings-nav-stripe');
+        var st = document.getElementById('settings-nav-connections');
         if (st) st.click();
+        window.setTimeout(function () {
+          var sec = document.getElementById('conn-section-stripe');
+          if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+        }, 80);
       }
       window.setTimeout(function () {
         refreshStripeConnectPanel();
@@ -7356,9 +7408,14 @@ var incomePowerState = {
       }
       if (typeof window.nav === 'function') {
         window.nav('settings', document.querySelector('.ni[data-nav="settings"]'));
-        var mcTab = document.getElementById('settings-nav-mail-calendar');
-        if (mcTab) mcTab.click();
-        else {
+        var connTab = document.getElementById('settings-nav-connections');
+        if (connTab) {
+          connTab.click();
+          window.setTimeout(function () {
+            var sec = document.getElementById('conn-section-google');
+            if (sec) sec.scrollIntoView({ behavior: 'smooth', block: 'start' });
+          }, 80);
+        } else {
           var acctTab = document.getElementById('settings-nav-account');
           if (acctTab) acctTab.click();
         }
@@ -15434,12 +15491,187 @@ var incomePowerState = {
     window.refreshTeamPage = refreshTeamPage;
   }
 
+  var __bizdashLucideIconNames = null;
+  var __bizdashLucideIconFetchPromise = null;
+
+  function loadLucideIconNamesFromIconify() {
+    if (__bizdashLucideIconNames) return Promise.resolve(__bizdashLucideIconNames);
+    if (!__bizdashLucideIconFetchPromise) {
+      __bizdashLucideIconFetchPromise = fetch('https://api.iconify.design/collection?prefix=lucide')
+        .then(function (res) {
+          if (!res.ok) throw new Error(String(res.status));
+          return res.json();
+        })
+        .then(function (j) {
+          var arr = [];
+          if (j && Array.isArray(j.uncategorized)) {
+            arr = j.uncategorized.filter(Boolean).map(function (x) {
+              return String(x).toLowerCase();
+            });
+          }
+          arr.sort();
+          __bizdashLucideIconNames = arr;
+          return arr;
+        })
+        .catch(function (err) {
+          console.error('loadLucideIconNamesFromIconify', err);
+          __bizdashLucideIconNames = [];
+          return [];
+        });
+    }
+    return __bizdashLucideIconFetchPromise;
+  }
+
+  function wireWorkspaceIconPickerModal() {
+    var root = document.getElementById('workspaceIconPickerModal');
+    if (!root || root.getAttribute('data-ws-icon-mo-wired') === '1') return;
+    root.setAttribute('data-ws-icon-mo-wired', '1');
+    var search = document.getElementById('ws-icon-picker-search');
+    var grid = document.getElementById('ws-icon-picker-grid');
+    var statusEl = document.getElementById('ws-icon-picker-status');
+    var closeBtn = document.getElementById('ws-icon-picker-close');
+    var pasteEmoji = document.getElementById('ws-icon-picker-paste-emoji');
+    var debTimer = null;
+
+    function renderIconGrid(allNames, q) {
+      if (!grid) return;
+      q = String(q || '').trim().toLowerCase();
+      var list = allNames;
+      if (q) {
+        list = allNames.filter(function (n) {
+          return n.indexOf(q) !== -1;
+        });
+      } else {
+        list = allNames.slice(0, 100);
+      }
+      var max = 200;
+      if (list.length > max) list = list.slice(0, max);
+      grid.innerHTML = '';
+      list.forEach(function (name) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'ws-icon-picker-cell';
+        btn.setAttribute('role', 'listitem');
+        btn.setAttribute('aria-label', 'Icon ' + name);
+        btn.setAttribute('data-lucide-icon', name);
+        var img = document.createElement('img');
+        img.alt = '';
+        img.loading = 'lazy';
+        img.width = 22;
+        img.height = 22;
+        img.src = lucideIconifySvgImgSrc(name);
+        btn.appendChild(img);
+        grid.appendChild(btn);
+      });
+      if (statusEl) {
+        if (!allNames.length) {
+          statusEl.textContent = 'Could not load icons. Check your connection and try again.';
+        } else if (!list.length) {
+          statusEl.textContent = 'No matches. Try a different search.';
+        } else {
+          statusEl.textContent =
+            'Showing ' +
+            list.length +
+            (q ? ' match' + (list.length === 1 ? '' : 'es') : ' icons') +
+            (q ? '' : ' · type to filter');
+        }
+      }
+    }
+
+    function setOpen(on) {
+      root.classList.toggle('on', !!on);
+      root.setAttribute('aria-hidden', on ? 'false' : 'true');
+      if (on) {
+        if (grid) grid.innerHTML = '';
+        if (statusEl) statusEl.textContent = 'Loading icons…';
+        if (search) {
+          search.value = '';
+          window.setTimeout(function () {
+            try {
+              search.focus();
+            } catch (_) {}
+          }, 30);
+        }
+        loadLucideIconNamesFromIconify().then(function (names) {
+          renderIconGrid(names, '');
+        });
+      }
+    }
+
+    root.addEventListener('click', function (ev) {
+      if (ev.target === root) setOpen(false);
+    });
+    if (closeBtn) {
+      closeBtn.addEventListener('click', function () {
+        setOpen(false);
+      });
+    }
+    if (pasteEmoji) {
+      pasteEmoji.addEventListener('click', function () {
+        var raw = window.prompt('Paste an emoji for this workspace (one character recommended)', '🙂');
+        if (raw == null) return;
+        var t = String(raw || '').trim().slice(0, 10);
+        if (!t) return;
+        var ur = document.getElementById('setting-ws-icon-url-value');
+        var em = document.getElementById('setting-ws-icon-emoji-value');
+        var ic = document.getElementById('setting-ws-icon-iconify-value');
+        if (ur) ur.value = '';
+        if (ic) ic.value = '';
+        if (em) em.value = t;
+        renderWorkspaceIconPreview();
+        setOpen(false);
+      });
+    }
+    if (grid) {
+      grid.addEventListener('click', function (ev) {
+        var btn = ev.target && ev.target.closest ? ev.target.closest('[data-lucide-icon]') : null;
+        if (!btn) return;
+        var name = btn.getAttribute('data-lucide-icon');
+        if (!name) return;
+        var ur = document.getElementById('setting-ws-icon-url-value');
+        var em = document.getElementById('setting-ws-icon-emoji-value');
+        var ic = document.getElementById('setting-ws-icon-iconify-value');
+        if (ur) ur.value = '';
+        if (em) em.value = '';
+        if (ic) ic.value = 'lucide:' + name;
+        renderWorkspaceIconPreview();
+        setOpen(false);
+      });
+    }
+    if (search) {
+      search.addEventListener('input', function () {
+        if (debTimer) clearTimeout(debTimer);
+        debTimer = setTimeout(function () {
+          debTimer = null;
+          var names = __bizdashLucideIconNames;
+          if (!names || !names.length) {
+            loadLucideIconNamesFromIconify().then(function (n) {
+              renderIconGrid(n, search.value);
+            });
+          } else {
+            renderIconGrid(names, search.value);
+          }
+        }, 120);
+      });
+    }
+    document.addEventListener('keydown', function (ev) {
+      if (ev.key !== 'Escape') return;
+      if (!root.classList.contains('on')) return;
+      setOpen(false);
+    });
+
+    window.__bizdashOpenWorkspaceIconPicker = function () {
+      setOpen(true);
+    };
+  }
+
   function wireWorkspaceSettingsPanel() {
     var root = document.getElementById('page-settings');
     if (!root || root.getAttribute('data-workspace-settings-wired') === '1') return;
     root.setAttribute('data-workspace-settings-wired', '1');
 
     window.bizdashWorkspacePrefs = window.bizdashWorkspacePrefs || defaultWorkspacePrefs();
+    wireWorkspaceIconPickerModal();
 
     function downloadBlob(filename, blob) {
       var a = document.createElement('a');
@@ -15513,7 +15745,9 @@ var incomePowerState = {
           if (!url) throw new Error('Upload failed');
           var ur = document.getElementById('setting-ws-icon-url-value');
           var em = document.getElementById('setting-ws-icon-emoji-value');
+          var ic = document.getElementById('setting-ws-icon-iconify-value');
           if (em) em.value = '';
+          if (ic) ic.value = '';
           if (ur) ur.value = url;
           await renderWorkspaceIconPreview();
           iconFile.value = '';
@@ -15526,16 +15760,10 @@ var incomePowerState = {
 
     var emojiBtn = document.getElementById('setting-ws-icon-emoji-btn');
     if (emojiBtn) {
-      emojiBtn.addEventListener('click', async function () {
-        var raw = window.prompt('Paste an emoji for this workspace (one character recommended)', '🙂');
-        if (raw == null) return;
-        var t = String(raw || '').trim().slice(0, 10);
-        if (!t) return;
-        var ur = document.getElementById('setting-ws-icon-url-value');
-        var em = document.getElementById('setting-ws-icon-emoji-value');
-        if (ur) ur.value = '';
-        if (em) em.value = t;
-        await renderWorkspaceIconPreview();
+      emojiBtn.addEventListener('click', function () {
+        if (typeof window.__bizdashOpenWorkspaceIconPicker === 'function') {
+          window.__bizdashOpenWorkspaceIconPicker();
+        }
       });
     }
 
@@ -15544,8 +15772,10 @@ var incomePowerState = {
       clearBtn.addEventListener('click', async function () {
         var ur = document.getElementById('setting-ws-icon-url-value');
         var em = document.getElementById('setting-ws-icon-emoji-value');
+        var ic = document.getElementById('setting-ws-icon-iconify-value');
         if (ur) ur.value = '';
         if (em) em.value = '';
+        if (ic) ic.value = '';
         await renderWorkspaceIconPreview();
       });
     }
@@ -16662,7 +16892,7 @@ var incomePowerState = {
       { id: 'go-ins', label: 'Go to Insights', keys: '', kw: 'analytics forecast', run: function () { qaGo('insights'); } },
       { id: 'go-adv', label: 'Open Advisor', keys: '', kw: 'ai chat copilot assistant', run: function () { qaGo('chat'); } },
       { id: 'go-team', label: 'Go to Your team', keys: '', kw: 'invite members', run: function () { qaGo('team'); } },
-      { id: 'go-set', label: 'Open Settings', keys: '', kw: 'preferences profile branding mail calendar gmail google', run: function () { qaGo('settings'); } },
+      { id: 'go-set', label: 'Open Settings', keys: '', kw: 'preferences profile branding mail calendar gmail google connections stripe', run: function () { qaGo('settings'); } },
       {
         id: 'workspaces',
         label: 'Switch workspace…',
