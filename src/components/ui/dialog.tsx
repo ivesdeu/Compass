@@ -15,7 +15,10 @@ const DialogOverlay = React.forwardRef<
 >(({ className, ...props }, ref) => (
   <DialogPrimitive.Overlay
     ref={ref}
-    className={cn('fixed inset-0 z-[3000] bg-black/50', className)}
+    className={cn(
+      'fixed inset-0 z-[100000] bg-zinc-950/70 backdrop-blur-[2px]',
+      className,
+    )}
     {...props}
   />
 ));
@@ -30,8 +33,9 @@ const DialogContent = React.forwardRef<
     <DialogPrimitive.Content
       ref={ref}
       className={cn(
-        'fixed left-[50%] top-[50%] z-[3001] grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-border bg-background p-6 shadow-lg sm:rounded-2xl',
-        'max-h-[min(90vh,720px)] overflow-y-auto',
+        /* Portal mounts on `body` — scope shadcn CSS variables here so bg/border/text utilities resolve. */
+        'auth-gate-tw fixed left-[50%] top-[50%] z-[100001] grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-border bg-background p-6 text-foreground shadow-2xl sm:rounded-2xl',
+        'max-h-[min(90vh,720px)] overflow-y-auto outline-none',
         className,
       )}
       {...props}
