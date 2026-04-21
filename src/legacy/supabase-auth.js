@@ -480,6 +480,112 @@
   }
 
   /**
+   * PostgREST / Postgres when resolve_session_workspace migration has not been applied yet.
+   */
+  function isResolveSessionWorkspaceUnavailableError(err) {
+    if (!err) return false;
+    var code = err.code != null ? String(err.code) : '';
+    if (code === 'PGRST202' || code === '42883') return true;
+    var msg = String(err.message || err.details || err.hint || err || '').toLowerCase();
+    var blob = msg;
+    try {
+      blob = msg + ' ' + String(JSON.stringify(err)).toLowerCase();
+    } catch (_) {}
+    if (blob.indexOf('resolve_session_workspace') === -1) return false;
+    if (blob.indexOf('could not find the function') !== -1) return true;
+    if (blob.indexOf('schema cache') !== -1) return true;
+    if (blob.indexOf('does not exist') !== -1) return true;
+    if (blob.indexOf('unknown function') !== -1) return true;
+    return false;
+  }
+
+  /**
+   * Legacy path (slug RPC + membership + my_organizations) when resolve_session_workspace is missing.
+   * Invite flow must already have run in the caller.
+   * @param {function(string): void} gateErr
+   */
+  async function ensureOrganizationContextWithoutResolveRpc(user, authSession, gateErr) {
+    var slug = parseTenantSlug();
+    if (slug) {
+      var pubRes = await retryOnAuthLock(function () {
+        return supabase.rpc('organization_public_by_slug', { sl: slug });
+      });
+      if (pubRes.error) {
+        console.error('organization_public_by_slug failed', pubRes.error);
+        gateErr('Could not load workspace URL. ' + String(pubRes.error.message || pubRes.error));
+        clearOrgContext();
+        return { ok: false };
+      }
+      if (!pubRes.data || !pubRes.data.length) {
+        gateErr('Unknown workspace URL.');
+        clearOrgContext();
+        return { ok: false };
+      }
+      var org = pubRes.data[0];
+      var memRes = await retryOnAuthLock(function () {
+        return supabase
+          .from('organization_members')
+          .select('role')
+          .eq('organization_id', org.id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+      });
+      if (memRes.error) {
+        console.error('organization_members membership check failed', memRes.error);
+        gateErr('Could not verify workspace membership. ' + String(memRes.error.message || memRes.error));
+        clearOrgContext();
+        return { ok: false };
+      }
+      if (!memRes.data) {
+        var fallbackList = await retryOnAuthLock(function () {
+          return supabase.rpc('my_organizations');
+        });
+        if (fallbackList.error || !fallbackList.data || !fallbackList.data.length) {
+          gateErr('No workspace found for your account yet. Try again in a moment, or contact support.');
+          clearOrgContext();
+          return { ok: false };
+        }
+        var fb = fallbackList.data[0];
+        var fbPath = '/' + fb.slug + '/';
+        window.history.replaceState(null, '', fbPath + (window.location.search || ''));
+        setOrgContext(fb.id, fb.slug, fb.role);
+        var fbFlag = onboardingModalNeededFromRow(fb);
+        var needsFb = fbFlag !== null ? fbFlag : await fetchOrgNeedsOnboarding(fb.id);
+        return { ok: true, needsOnboarding: needsFb };
+      }
+      setOrgContext(org.id, org.slug || slug, memRes.data.role);
+      var slugFlag = onboardingModalNeededFromRow(org);
+      var needsOnSlug = slugFlag !== null ? slugFlag : await fetchOrgNeedsOnboarding(org.id);
+      return { ok: true, needsOnboarding: needsOnSlug };
+    }
+
+    var listRes = await retryOnAuthLock(function () {
+      return supabase.rpc('my_organizations');
+    });
+    if (listRes.error) {
+      console.error('my_organizations failed', listRes.error);
+      gateErr('Could not load your workspaces. ' + String(listRes.error.message || listRes.error));
+      clearOrgContext();
+      return { ok: false };
+    }
+    if (!listRes.data || !listRes.data.length) {
+      gateErr('No workspace found for your account. Contact support.');
+      clearOrgContext();
+      return { ok: false };
+    }
+    var first = listRes.data[0];
+    var targetPath = '/' + first.slug + '/';
+    var cur = window.location.pathname || '/';
+    if (cur !== targetPath && cur.replace(/\/$/, '') !== '/' + first.slug) {
+      window.history.replaceState(null, '', targetPath + (window.location.search || ''));
+    }
+    setOrgContext(first.id, first.slug, first.role);
+    var listFlag = onboardingModalNeededFromRow(first);
+    var needsOnList = listFlag !== null ? listFlag : await fetchOrgNeedsOnboarding(first.id);
+    return { ok: true, needsOnboarding: needsOnList };
+  }
+
+  /**
    * Resolve URL slug to org + membership, or redirect signed-in user to their first org.
    * @returns {Promise<{ ok: boolean, needsOnboarding?: boolean }>}
    */
@@ -502,6 +608,10 @@
     var wsRes = await retryOnAuthLock(function () {
       return supabase.rpc('resolve_session_workspace', { p_slug: slug || null });
     });
+    if (wsRes.error && isResolveSessionWorkspaceUnavailableError(wsRes.error)) {
+      console.warn('resolve_session_workspace unavailable; using legacy workspace resolution', wsRes.error);
+      return ensureOrganizationContextWithoutResolveRpc(user, authSession, gateErr);
+    }
     if (wsRes.error) {
       console.error('resolve_session_workspace failed', wsRes.error);
       gateErr('Could not load your workspace. ' + String(wsRes.error.message || wsRes.error));
@@ -1751,11 +1861,11 @@
   var authRecoveryMode = false;
   function setAuthRecoveryMode(on) {
     authRecoveryMode = !!on;
-    var heading = document.querySelector('#auth-login-shell .pt');
-    var subtitle = document.querySelector('#auth-login-shell p');
+    var heading = $('gate-auth-heading');
+    var subtitle = $('gate-auth-subtitle');
     var signin = $('gate-signin');
     var signup = $('gate-signup');
-    var github = $('gate-github');
+    var oauthStack = $('gate-oauth-stack');
     var forgot = $('gate-forgot-password');
     var confirmWrap = $('gate-confirm-wrap');
     var errorBox = $('gate-auth-error');
@@ -1767,9 +1877,9 @@
     }
     if (signin) signin.textContent = authRecoveryMode ? 'Update password' : 'Sign in';
     if (signup) signup.style.display = authRecoveryMode ? 'none' : '';
-    if (github) github.style.display = authRecoveryMode ? 'none' : '';
+    if (oauthStack) oauthStack.style.display = authRecoveryMode ? 'none' : '';
     if (forgot) forgot.style.display = authRecoveryMode ? 'none' : '';
-    if (confirmWrap) confirmWrap.style.display = authRecoveryMode ? '' : 'none';
+    if (confirmWrap) confirmWrap.style.display = authRecoveryMode ? 'flex' : 'none';
     if (errorBox && authRecoveryMode && !errorBox.textContent) {
       errorBox.textContent = 'Enter and confirm your new password.';
     }
@@ -2131,7 +2241,20 @@
     await runAuthSessionFlow(session.user, session);
   });
 
+  var authFormWired = false;
+
   function wireAuthForm() {
+    if (!$('gate-email')) {
+      if (typeof requestAnimationFrame !== 'undefined') {
+        requestAnimationFrame(wireAuthForm);
+      } else {
+        setTimeout(wireAuthForm, 0);
+      }
+      return;
+    }
+    if (authFormWired) return;
+    authFormWired = true;
+
     captureInviteFromUrlToStorage();
     updateGateInviteHint();
 
@@ -2140,7 +2263,6 @@
     var confirmWrap = $('gate-confirm-wrap');
     var confirmInput = $('gate-confirm-password');
     var errorBox = $('gate-auth-error');
-    var signupMode = false;
 
     function authEmailRedirectTo() {
       try {
@@ -2162,15 +2284,14 @@
       if (errorBox) errorBox.textContent = msg || '';
     }
 
-    function setSignupMode(on) {
-      signupMode = !!on;
-      if (confirmWrap) confirmWrap.style.display = signupMode || authRecoveryMode ? '' : 'none';
-      if (!signupMode && confirmInput) confirmInput.value = '';
+    /** Inline confirm password is only used for password recovery (signup uses the React modal). */
+    function setSignupMode(_on) {
+      void _on;
+      if (confirmWrap) confirmWrap.style.display = authRecoveryMode ? 'flex' : 'none';
+      if (!authRecoveryMode && confirmInput) confirmInput.value = '';
     }
 
     var btnSignin = $('gate-signin');
-    var btnSignup = $('gate-signup');
-    var btnGithub = $('gate-github');
     var btnForgot = $('gate-forgot-password');
 
     if (btnSignin) {
@@ -2245,63 +2366,7 @@
       });
     }
 
-    if (btnSignup) {
-      btnSignup.addEventListener('click', async function () {
-        if (!signupMode) {
-          setSignupMode(true);
-          setSignupEmailDeliverabilityHint(false);
-          setError('Confirm your password to create an account.');
-          if (confirmInput) confirmInput.focus();
-          return;
-        }
-        var email = emailInput && emailInput.value.trim();
-        var password = passwordInput && passwordInput.value;
-        var confirmPassword = confirmInput && confirmInput.value;
-        if (!email || !password) {
-          setError('Email and password are required.');
-          return;
-        }
-        if (!confirmPassword) {
-          setError('Please confirm your password.');
-          return;
-        }
-        if (password !== confirmPassword) {
-          setError('Passwords do not match.');
-          return;
-        }
-        setError('');
-        setSignupEmailDeliverabilityHint(false);
-        try {
-          var res = await supabase.auth.signUp({
-            email: email,
-            password: password,
-            options: { emailRedirectTo: authEmailRedirectTo() },
-          });
-          if (res.error) {
-            setError(res.error.message || 'Could not sign up.');
-            return;
-          }
-          var newUser = res.data && res.data.user;
-          var newSession = res.data && res.data.session;
-          if (newSession) {
-            try {
-              await supabase.auth.signOut();
-            } catch (_) {}
-          }
-          if (newUser && newUser.email_confirmed_at) {
-            setError('Account created. Sign in with your email and password.');
-            setSignupEmailDeliverabilityHint(false);
-          } else {
-            setError('Check your email to confirm your account, then sign in.');
-            setSignupEmailDeliverabilityHint(true);
-          }
-          setSignupMode(false);
-        } catch (err) {
-          console.error('signUp error', err);
-          setError('Unexpected error signing up.');
-        }
-      });
-    }
+    /* Sign up is handled by the React modal in `sign-in-form.tsx` (#gate-signup opens it). */
 
     var btnResendConfirm = $('gate-resend-confirm');
     if (btnResendConfirm) {
@@ -2364,8 +2429,10 @@
       });
     }
 
-    if (btnGithub) {
-      btnGithub.addEventListener('click', async function () {
+    function wireOAuthProvider(btnId, provider, label) {
+      var btn = $(btnId);
+      if (!btn) return;
+      btn.addEventListener('click', async function () {
         setSignupMode(false);
         setSignupEmailDeliverabilityHint(false);
         setError('');
@@ -2374,20 +2441,24 @@
           var search = window.location.search || '';
           var redirectTo = window.location.origin + path + search;
           var res = await supabase.auth.signInWithOAuth({
-            provider: 'github',
+            provider: provider,
             options: {
               redirectTo: redirectTo,
             },
           });
           if (res.error) {
-            setError(res.error.message || 'GitHub sign-in failed.');
+            setError(res.error.message || label + ' sign-in failed.');
           }
         } catch (err) {
-          console.error('GitHub auth error', err);
-          setError('Unexpected error starting GitHub sign-in.');
+          console.error(provider + ' auth error', err);
+          setError('Unexpected error starting ' + label + ' sign-in.');
         }
       });
     }
+
+    wireOAuthProvider('gate-github', 'github', 'GitHub');
+    wireOAuthProvider('gate-google', 'google', 'Google');
+    wireOAuthProvider('gate-apple', 'apple', 'Apple');
 
     var btnWs = $('btn-open-workspaces');
     if (btnWs) {

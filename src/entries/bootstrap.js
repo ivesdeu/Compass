@@ -6,10 +6,13 @@ import './telemetry-init.js';
 import './supabase-vendor.js';
 import './chart-setup.js';
 import '../legacy/financial-core.js';
+import { mountAuthLoginGate } from './auth-login-react-mount.tsx';
 import '../legacy/supabase-auth.js';
 import '../legacy/dashboard-assistant.js';
 import { mountAdvisorReactComposer } from './advisor-react-mount.tsx';
 import { mountSchedulingApp } from './scheduling-react-mount.tsx';
+
+mountAuthLoginGate();
 
 /*
  * financial-core `init()` can run synchronously while `document.readyState !== 'loading'`

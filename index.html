@@ -4627,13 +4627,12 @@
     --coral-border-focus:rgba(10,10,10,0.35);
   }
   #auth-login-shell .gate-card {
-    background:var(--bg2);
-    border:1px solid var(--border);
-    border-radius:8px;
-    padding:32px 40px;
-    max-width:520px;
+    background:transparent;
+    border:none;
+    padding:0;
+    max-width:480px;
     width:100%;
-    box-shadow:0 1px 3px rgba(0,0,0,0.06);
+    box-shadow:none;
   }
   #app-shell {
     display:none;
@@ -5059,26 +5058,8 @@
 </div>
 <div id="auth-login-shell">
   <div class="gate-card">
-    <div class="pt" style="margin-bottom:8px;">Sign in</div>
-    <p style="font-size:13px;color:var(--text2);line-height:1.5;margin-bottom:18px;">Sign in to use the dashboard.</p>
-    <div class="fg" style="grid-template-columns:1fr;gap:10px;margin-bottom:12px;">
-      <div class="fgp"><label class="fl">Email</label><input class="fi" id="gate-email" type="email" autocomplete="email" placeholder="you@company.com" /></div>
-      <div class="fgp"><label class="fl">Password</label><input class="fi" id="gate-password" type="password" autocomplete="current-password" placeholder="••••••••" /></div>
-      <div class="fgp" id="gate-confirm-wrap" style="display:none;"><label class="fl">Confirm password</label><input class="fi" id="gate-confirm-password" type="password" autocomplete="new-password" placeholder="••••••••" /></div>
-    </div>
-    <div id="gate-auth-error" style="font-size:13px;color:var(--red);margin-bottom:12px;min-height:1.2em;"></div>
-    <div id="gate-signup-email-hint" style="display:none;font-size:12px;color:var(--text2);line-height:1.5;margin:-4px 0 10px;">
-      If no message arrives: without <strong>Authentication → SMTP</strong> enabled, mail only goes to your Supabase <strong>org team</strong> addresses. If SMTP is already on, open <strong>Logs → Auth</strong> for the exact error, verify the <strong>sender domain</strong> at your provider (Resend/SendGrid/…), check spam, and add this site under <strong>Authentication → URL configuration → Redirect URLs</strong>.
-    </div>
-    <button type="button" class="btn" id="gate-resend-confirm" style="display:none;width:100%;margin:-4px 0 10px;font-size:13px;">Resend confirmation email</button>
-    <div id="gate-invite-hint" style="display:none;font-size:13px;color:var(--text2);line-height:1.45;margin:-4px 0 12px;padding:10px 12px;border-radius:10px;border:1px solid var(--border);background:var(--bg3);"></div>
-    <div style="display:flex;flex-wrap:wrap;gap:8px;margin-bottom:12px;">
-      <button type="button" class="btn btn-p" id="gate-signin">Sign in</button>
-      <button type="button" class="btn" id="gate-signup">Sign up</button>
-    </div>
-    <button type="button" class="btn" id="gate-forgot-password" style="width:100%;margin-bottom:10px;">Forgot password?</button>
-    <button type="button" class="btn" id="gate-github" style="width:100%;">Continue with GitHub</button>
-    <button type="button" class="btn" id="gate-view-demo" style="width:100%;margin-top:10px;">View Demo</button>
+    <!-- React + Tailwind sign-in (src/entries/auth-login-react-mount.tsx); keeps legacy gate-* ids for supabase-auth.js -->
+    <div id="auth-login-react-root"></div>
   </div>
 </div>
 
