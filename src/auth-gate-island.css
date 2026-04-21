@@ -33,3 +33,9 @@
 .auth-gate-tw [class*='shadow-sm']:is(button) {
   box-shadow: none !important;
 }
+
+/* Signup modal open: treat as a second screen — no sign-in card behind the dialog. */
+body.bizdash-signup-modal-open #auth-login-shell {
+  visibility: hidden !important;
+  pointer-events: none !important;
+}

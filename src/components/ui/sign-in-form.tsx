@@ -62,6 +62,12 @@ function SignupModal({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
     }
   }, [open]);
 
+  /** Hide the sign-in shell so the modal reads as a separate full-screen step. */
+  useEffect(() => {
+    document.body.classList.toggle('bizdash-signup-modal-open', open);
+    return () => document.body.classList.remove('bizdash-signup-modal-open');
+  }, [open]);
+
   async function handleCreateAccount(e: React.FormEvent) {
     e.preventDefault();
     setModalError('');

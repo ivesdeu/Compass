@@ -16,7 +16,7 @@ const DialogOverlay = React.forwardRef<
   <DialogPrimitive.Overlay
     ref={ref}
     className={cn(
-      'fixed inset-0 z-[100000] bg-zinc-950/70 backdrop-blur-[2px]',
+      'fixed inset-0 z-[100100] bg-zinc-950/80 backdrop-blur-sm',
       className,
     )}
     {...props}
@@ -30,25 +30,32 @@ const DialogContent = React.forwardRef<
 >(({ className, children, ...props }, ref) => (
   <DialogPortal>
     <DialogOverlay />
-    <DialogPrimitive.Content
-      ref={ref}
-      className={cn(
-        /* Portal mounts on `body` — scope shadcn CSS variables here so bg/border/text utilities resolve. */
-        'auth-gate-tw fixed left-[50%] top-[50%] z-[100001] grid w-full max-w-lg translate-x-[-50%] translate-y-[-50%] gap-4 border border-border bg-background p-6 text-foreground shadow-2xl sm:rounded-2xl',
-        'max-h-[min(90vh,720px)] overflow-y-auto outline-none',
-        className,
-      )}
-      {...props}
-    >
-      {children}
-      <DialogPrimitive.Close
-        type="button"
-        className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none"
-        aria-label="Close"
+    {/*
+      True viewport centering: flex layer above the overlay (pointer-events-none) so clicks
+      reach the dimmed backdrop, while the dialog panel stays pointer-events-auto.
+      Avoids left/top/translate drift from odd containing blocks or scroll.
+    */}
+    <div className="fixed inset-0 z-[100101] flex items-center justify-center overflow-y-auto p-4 sm:p-8 pointer-events-none">
+      <DialogPrimitive.Content
+        ref={ref}
+        className={cn(
+          /* Portal on body — re-scope tokens on the panel. */
+          'auth-gate-tw pointer-events-auto relative z-0 mx-auto grid w-full max-w-lg gap-4 border border-border bg-background p-6 text-foreground shadow-2xl sm:rounded-2xl',
+          'max-h-[min(90dvh,720px)] overflow-y-auto outline-none',
+          className,
+        )}
+        {...props}
       >
-        <X className="h-4 w-4" />
-      </DialogPrimitive.Close>
-    </DialogPrimitive.Content>
+        {children}
+        <DialogPrimitive.Close
+          type="button"
+          className="absolute right-4 top-4 rounded-sm opacity-70 ring-offset-background transition-opacity hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-ring focus:ring-offset-2 disabled:pointer-events-none"
+          aria-label="Close"
+        >
+          <X className="h-4 w-4" />
+        </DialogPrimitive.Close>
+      </DialogPrimitive.Content>
+    </div>
   </DialogPortal>
 ));
 DialogContent.displayName = DialogPrimitive.Content.displayName;
