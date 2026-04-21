@@ -551,30 +551,27 @@
 
   window.wireDashboardAssistant = function () {
     var pageChat = document.getElementById('page-chat');
-    var composerStack = pageChat ? pageChat.querySelector('.chat-composer-stack') : null;
     var logEl = document.getElementById('chat-log');
-    var ta = document.getElementById('chat-input');
-    var sendBtn = document.getElementById('chat-send');
-    var starters = document.getElementById('chat-starters');
-    var promptBox = document.getElementById('chat-prompt-box');
+    if (!logEl) return;
+
     var fileInput = document.getElementById('chat-file-input');
-    var attachBtn = document.getElementById('chat-attach-btn');
+    if (!fileInput && pageChat) {
+      fileInput = document.createElement('input');
+      fileInput.type = 'file';
+      fileInput.id = 'chat-file-input';
+      fileInput.className = 'chat-file-input-hidden';
+      fileInput.setAttribute('accept', 'image/*');
+      fileInput.setAttribute('tabindex', '-1');
+      fileInput.setAttribute('aria-hidden', 'true');
+      pageChat.appendChild(fileInput);
+    }
     var previewWrap = document.getElementById('chat-image-preview-wrap');
     var thumbImg = document.getElementById('chat-image-thumb');
     var thumbBtn = document.getElementById('chat-image-thumb-btn');
     var removeImgBtn = document.getElementById('chat-image-remove');
-    var toolsTrigger = document.getElementById('chat-tools-trigger');
-    var toolsPop = document.getElementById('chat-tools-pop');
-    var toolsLabel = document.getElementById('chat-tools-label');
-    var activeToolEl = document.getElementById('chat-active-tool');
-    var activeToolName = document.getElementById('chat-active-tool-name');
-    var activeToolClear = document.getElementById('chat-active-tool-clear');
     var lightbox = document.getElementById('chat-lightbox');
     var lightboxImg = document.getElementById('chat-lightbox-img');
     var lightboxClose = document.getElementById('chat-lightbox-close');
-    var micBtn = document.getElementById('chat-mic-btn');
-
-    if (!logEl || !ta || !sendBtn) return;
 
     var imagePreview = null;
     var selectedTool = null;
@@ -597,66 +594,34 @@
     window.bizDashSyncAdvisorComposerLayout = syncAdvisorComposerLayout;
 
     function syncSendDisabled() {
-      var has = ta.value.trim().length > 0 || !!imagePreview;
-      sendBtn.disabled = !has;
-    }
-
-    function autoResizeTa() {
-      ta.style.height = 'auto';
-      ta.style.height = Math.min(ta.scrollHeight, 200) + 'px';
+      /* React composer manages its own send affordance; nothing to sync on legacy controls. */
     }
 
     function setImagePreview(dataUrl) {
       imagePreview = dataUrl || null;
-      if (imagePreview) {
-        thumbImg.src = imagePreview;
-        previewWrap.hidden = false;
-      } else {
-        thumbImg.removeAttribute('src');
-        previewWrap.hidden = true;
-        if (fileInput) fileInput.value = '';
+      if (thumbImg && previewWrap) {
+        if (imagePreview) {
+          thumbImg.src = imagePreview;
+          previewWrap.hidden = false;
+        } else {
+          thumbImg.removeAttribute('src');
+          previewWrap.hidden = true;
+          if (fileInput) fileInput.value = '';
+        }
+      } else if (!imagePreview && fileInput) {
+        fileInput.value = '';
       }
       syncSendDisabled();
     }
 
-    function setToolsOpen(open) {
-      if (!toolsPop || !toolsTrigger) return;
-      toolsPop.hidden = !open;
-      toolsTrigger.setAttribute('aria-expanded', open ? 'true' : 'false');
+    function setToolsOpen() {
+      /* Legacy tools popover removed; React toggles map to selectedTool via setTools. */
     }
 
     function setSelectedTool(id) {
       selectedTool = id || null;
-      if (!activeToolEl || !activeToolName || !toolsLabel) return;
-      if (selectedTool && TOOL_META[selectedTool]) {
-        activeToolEl.hidden = false;
-        activeToolName.textContent = TOOL_META[selectedTool].short;
-        toolsLabel.style.display = 'none';
-      } else {
-        activeToolEl.hidden = true;
-        toolsLabel.style.display = '';
-      }
     }
 
-    ta.addEventListener('input', function () {
-      syncSendDisabled();
-      autoResizeTa();
-    });
-
-    ta.addEventListener('blur', function () {});
-
-    if (promptBox) {
-      promptBox.addEventListener('click', function (ev) {
-        if (ev.target.closest('button') || ev.target.closest('textarea')) return;
-        ta.focus();
-      });
-    }
-
-    if (attachBtn && fileInput) {
-      attachBtn.addEventListener('click', function () {
-        fileInput.click();
-      });
-    }
 
     if (fileInput) {
       fileInput.addEventListener('change', function (ev) {
@@ -699,47 +664,9 @@
     }
     if (lightboxClose) lightboxClose.addEventListener('click', closeLightbox);
 
-    if (toolsTrigger && toolsPop) {
-      toolsTrigger.addEventListener('click', function (e) {
-        e.stopPropagation();
-        setToolsOpen(toolsPop.hidden);
-      });
-    }
-
-    if (toolsPop) {
-      toolsPop.addEventListener('click', function (ev) {
-        ev.stopPropagation();
-        var row = ev.target.closest('[data-chat-tool]');
-        if (!row) return;
-        var id = row.getAttribute('data-chat-tool');
-        setSelectedTool(id);
-        setToolsOpen(false);
-      });
-    }
-
-    if (activeToolClear) {
-      activeToolClear.addEventListener('click', function () {
-        setSelectedTool(null);
-      });
-    }
-
-    document.addEventListener('click', function () {
-      setToolsOpen(false);
-    });
-
-    if (micBtn) {
-      micBtn.addEventListener('click', function () {
-        /* Title explains; no modal */
-      });
-    }
-
     document.addEventListener('keydown', function (ev) {
       if (ev.key === 'Escape') {
-        setToolsOpen(false);
         if (lightbox && !lightbox.hidden) closeLightbox();
-        if (document.activeElement === ta) {
-          ta.blur();
-        }
       }
     });
 
@@ -1052,16 +979,12 @@
         }
       }
 
-      ta.value = '';
-      autoResizeTa();
       setImagePreview(null);
-      ta.blur();
       try {
         window.dispatchEvent(new CustomEvent('advisor-composer-prefill', { detail: { value: '' } }));
       } catch (_) {}
 
       isThinking = true;
-      sendBtn.disabled = true;
       var thinkingEl = appendThinkingBubble(logEl);
 
       var t0 = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
@@ -1151,42 +1074,11 @@
       syncSendDisabled();
     }
 
-    sendBtn.addEventListener('click', function () {
-      handleSend(ta.value);
-    });
-
-    ta.addEventListener('keydown', function (ev) {
-      if (ev.key === 'Enter' && !ev.shiftKey) {
-        ev.preventDefault();
-        if (!sendBtn.disabled) handleSend(ta.value);
-      }
-    });
-
-    if (starters) {
-      starters.addEventListener('click', function (ev) {
-        var btn = ev.target.closest('[data-chat-q]');
-        if (!btn) return;
-        var q = btn.getAttribute('data-chat-q');
-        var task = btn.getAttribute('data-advisor-task');
-        if (q) {
-          pendingTask = task || null;
-          ta.value = q;
-          autoResizeTa();
-          syncSendDisabled();
-          try {
-            window.dispatchEvent(new CustomEvent('advisor-composer-prefill', { detail: { value: q } }));
-          } catch (_) {}
-          handleSend(q);
-        }
-      });
-    }
-
     if (document.getElementById('page-chat') && document.getElementById('page-chat').classList.contains('on')) {
       seedWelcome();
     }
 
     syncSendDisabled();
-    autoResizeTa();
 
     window.bizDashAskAdvisorToAddContactRequest = function (contactRequest) {
       if (typeof window.bizDashSetAdvisorContactContext === 'function') {
@@ -1199,17 +1091,14 @@
       var company = String(c.companyName || '').trim();
       var contact = String(c.contactName || '').trim();
       var who = [contact, company].filter(Boolean).join(' at ');
-      ta.value = who
+      var msg = who
         ? 'Add this contact request to my CRM: ' + who + '. Use Lead status and suggest any missing fields.'
         : 'Add this contact request to my CRM with Lead status and suggest any missing fields.';
-      autoResizeTa();
-      syncSendDisabled();
       try {
         window.dispatchEvent(
-          new CustomEvent('advisor-composer-prefill', { detail: { value: ta.value, focus: true } }),
+          new CustomEvent('advisor-composer-prefill', { detail: { value: msg, focus: true } }),
         );
       } catch (_) {}
-      ta.focus();
     };
 
     window.seedDashboardChatWelcome = seedWelcome;
@@ -1220,10 +1109,6 @@
       seeded = false;
       isThinking = false;
       pendingTask = null;
-      if (ta) {
-        ta.value = '';
-        autoResizeTa();
-      }
       setImagePreview(null);
       setSelectedTool(null);
       setToolsOpen(false);
@@ -1257,9 +1142,6 @@
       return {
         send: function (text) {
           var t = text != null ? String(text) : '';
-          ta.value = t;
-          syncSendDisabled();
-          autoResizeTa();
           handleSend(t);
         },
         attach: function () {

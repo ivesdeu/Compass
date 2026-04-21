@@ -14394,6 +14394,14 @@ var incomePowerState = {
             alert(res.error.message || 'Sign-in failed.');
             return;
           }
+          var su = res.data && res.data.user;
+          if (su && su.email && !su.email_confirmed_at) {
+            try {
+              await supabase.auth.signOut();
+            } catch (_) {}
+            alert('Confirm your email before signing in. Use the link we sent to your inbox (check spam).');
+            return;
+          }
           closeCloudAuthModal();
         } catch (err) {
           console.error('cloud modal signin', err);
@@ -14415,12 +14423,28 @@ var incomePowerState = {
           return;
         }
         try {
-          var res = await supabase.auth.signUp({ email: email, password: password });
+          var redirectTo = (window.location.href || '').split('#')[0];
+          var res = await supabase.auth.signUp({
+            email: email,
+            password: password,
+            options: { emailRedirectTo: redirectTo },
+          });
           if (res.error) {
             alert(res.error.message || 'Sign-up failed.');
             return;
           }
-          alert('Check your email to confirm your account if required, then sign in.');
+          var nu = res.data && res.data.user;
+          var ns = res.data && res.data.session;
+          if (ns) {
+            try {
+              await supabase.auth.signOut();
+            } catch (_) {}
+          }
+          if (nu && nu.email_confirmed_at) {
+            alert('Account created. Sign in with your email and password.');
+          } else {
+            alert('Check your email to confirm your account, then sign in.');
+          }
         } catch (err) {
           console.error('cloud modal signup', err);
           alert('Sign-up failed.');
@@ -17542,6 +17566,15 @@ var incomePowerState = {
     if (chatsBrowse) {
       chatsBrowse.addEventListener('click', function () {
         window.nav('chat', document.querySelector('.ni[data-nav="chat"]'));
+        document.body.classList.remove('mobile-nav-open');
+      });
+    }
+    var chatNewHeader = document.getElementById('btn-chat-new-thread');
+    if (chatNewHeader) {
+      chatNewHeader.addEventListener('click', function () {
+        if (typeof window.bizDashStartNewAdvisorSidebarThread === 'function') {
+          window.bizDashStartNewAdvisorSidebarThread();
+        }
         document.body.classList.remove('mobile-nav-open');
       });
     }

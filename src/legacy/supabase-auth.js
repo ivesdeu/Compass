@@ -86,9 +86,11 @@
   /**
    * Ceilings for org / onboarding resolution (not session read — that is driven by INITIAL_SESSION).
    * These are UX timeouts only; the auth session itself has no artificial cap.
+   * 8s was too tight on cold starts, slow networks, and first RPC after tab wake.
    */
-  var ORG_RESOLVE_MS = 8000;
-  var ONBOARDING_GATE_MS = 5000;
+  var ORG_RESOLVE_MS = 30000;
+  /** Prefetch org row + signed URLs; cold storage/RPC can exceed 5s on slow links. */
+  var ONBOARDING_GATE_MS = 20000;
 
   function withTimeout(promise, ms, errMsg) {
     return Promise.race([
@@ -113,6 +115,11 @@
     if (!msg && err) msg = String(err);
     msg = msg.toLowerCase();
     return msg.indexOf('lock was stolen by another request') !== -1 || msg.indexOf('aborterror') !== -1;
+  }
+
+  function isOrgResolveTimeoutError(err) {
+    var msg = err && err.message ? String(err.message) : String(err || '');
+    return msg.indexOf('Loading workspace timed out') !== -1;
   }
 
   async function retryOnAuthLock(task) {
@@ -463,20 +470,18 @@
   }
 
   async function resolveOrgContextWithRetry(user, authSession) {
+    var timedOutMsg = 'Loading workspace timed out. Check your connection and try again.';
     try {
-      return await withTimeout(
-        ensureOrganizationContext(user, authSession),
-        ORG_RESOLVE_MS,
-        'Loading workspace timed out. Check your connection and try again.'
-      );
+      return await withTimeout(ensureOrganizationContext(user, authSession), ORG_RESOLVE_MS, timedOutMsg);
     } catch (err) {
       // One immediate second chance for lock contention only (no extra wait).
       if (isLockStolenError(err)) {
-        return await withTimeout(
-          ensureOrganizationContext(user, authSession),
-          ORG_RESOLVE_MS,
-          'Loading workspace timed out. Check your connection and try again.'
-        );
+        return await withTimeout(ensureOrganizationContext(user, authSession), ORG_RESOLVE_MS, timedOutMsg);
+      }
+      // Transient slowness (cold Supabase connection, flaky network, tab backgrounded): one full retry.
+      if (isOrgResolveTimeoutError(err)) {
+        await sleep(400);
+        return await withTimeout(ensureOrganizationContext(user, authSession), ORG_RESOLVE_MS, timedOutMsg);
       }
       throw err;
     }
@@ -1744,6 +1749,21 @@
     return !!(app && app.classList && app.classList.contains('on'));
   }
 
+  /**
+   * True while first-run onboarding is active OR while we are between wireOnboardingWizard and showOnboardModal
+   * (prefillOnboardingWizard await). In that window the modal may not have class "on" yet, but we must not re-enter
+   * runAuthSessionFlow — duplicate INITIAL_SESSION / USER_UPDATED / SIGNED_IN would call showLoading() and time out.
+   * Once #app-shell is on (dashboard), we are never in this phase.
+   */
+  function isOnboardingOrPrefillPhase() {
+    var app = $('app-shell');
+    if (app && app.classList && app.classList.contains('on')) return false;
+    var ob = $('onboardModal');
+    if (!ob) return false;
+    if (ob.classList && ob.classList.contains('on')) return true;
+    return ob.getAttribute('data-wizard-wired') === '1';
+  }
+
   /** In-flight session resolution so bootstrap + INITIAL_SESSION do not run two flows in parallel. */
   var sessionFlowPromise = null;
 
@@ -1766,9 +1786,36 @@
       return sessionFlowPromise;
     }
     sessionFlowPromise = (async function () {
-      showLoading();
       try {
         setCurrentUser(user);
+        /*
+         * Re-entrant runAuthSessionFlow (duplicate auth events while onboarding) must not call
+         * showLoading() + resolveOrgContextWithRetry again — that produced "Loading workspace timed out"
+         * and /auth/v1/token noise even when org + URL slug were already correct.
+         */
+        var pathSlugEarly = parseTenantSlug();
+        var curSlugEarly = (window.currentOrganizationSlug || '').toLowerCase();
+        var slugMatchesEarly =
+          !pathSlugEarly ||
+          !curSlugEarly ||
+          String(pathSlugEarly).toLowerCase() === curSlugEarly;
+        if (
+          slugMatchesEarly &&
+          hasResolvedWorkspaceContext(authSession) &&
+          isOnboardingOrPrefillPhase() &&
+          window.currentUser &&
+          String(window.currentUser.id) === String(user.id)
+        ) {
+          wireOnboardingWizard(user);
+          var needsKnown = await fetchOrgNeedsOnboarding(window.currentOrganizationId);
+          await withTimeout(
+            maybeWorkspaceOnboardingThenShowApp(user, needsKnown),
+            ONBOARDING_GATE_MS,
+            'Could not finish workspace setup. Try signing in again.'
+          );
+          return;
+        }
+        showLoading();
         var ctx = await resolveOrgContextWithRetry(user, authSession);
         if (!ctx || !ctx.ok) {
           if (isAppVisible()) {
@@ -1869,6 +1916,8 @@
 
   function showApp(user) {
     hideOnboardModal();
+    var obM = $('onboardModal');
+    if (obM) obM.removeAttribute('data-wizard-wired');
     var loading = $('auth-loading');
     var shell = $('auth-login-shell');
     var app = $('app-shell');
@@ -1935,6 +1984,10 @@
         setCurrentUser(session.user);
         return;
       }
+      if (hasResolvedWorkspaceContext(session) && isOnboardingOrPrefillPhase()) {
+        setCurrentUser(session.user);
+        return;
+      }
       try {
         if (typeof window.setBizdashScreenshotNoCloud === 'function') {
           window.setBizdashScreenshotNoCloud(false);
@@ -1961,7 +2014,8 @@
     if (event === 'TOKEN_REFRESHED') {
       setCurrentUser(session.user);
       // Avoid showApp + initData before org resolution finishes (setCurrentUser runs early in runAuthSessionFlow).
-      if (hasResolvedWorkspaceContext(session)) {
+      // While the onboarding wizard is open, app-shell is off — showApp would hide the modal and strand the user.
+      if (hasResolvedWorkspaceContext(session) && !isOnboardingOrPrefillPhase()) {
         showApp(session.user);
       }
       return;
@@ -1969,6 +2023,17 @@
 
     /* Tab focus: GoTrue may emit SIGNED_IN / INITIAL_SESSION again without a real auth change. */
     if (shouldSkipSessionReflow(session)) {
+      setCurrentUser(session.user);
+      return;
+    }
+
+    /*
+     * updateUser (onboarding step 1 profile) emits USER_UPDATED / SIGNED_IN without app-shell on yet.
+     * Re-running runAuthSessionFlow would showLoading(), tear down UI, and re-hit my_organizations — often slow
+     * enough to hit ORG_RESOLVE_MS or confuse token refresh (400 on /token in the network panel).
+     * isOnboardingOrPrefillPhase also covers the gap after wireOnboardingWizard before showOnboardModal (prefill await).
+     */
+    if (hasResolvedWorkspaceContext(session) && isOnboardingOrPrefillPhase()) {
       setCurrentUser(session.user);
       return;
     }
@@ -1986,6 +2051,22 @@
     var confirmInput = $('gate-confirm-password');
     var errorBox = $('gate-auth-error');
     var signupMode = false;
+
+    function authEmailRedirectTo() {
+      try {
+        return (window.location.href || '').split('#')[0];
+      } catch (_) {
+        return (window.location.origin || '') + '/';
+      }
+    }
+
+    function setSignupEmailDeliverabilityHint(visible) {
+      var hint = $('gate-signup-email-hint');
+      var btnR = $('gate-resend-confirm');
+      var dis = visible ? '' : 'none';
+      if (hint) hint.style.display = dis;
+      if (btnR) btnR.style.display = dis;
+    }
 
     function setError(msg) {
       if (errorBox) errorBox.textContent = msg || '';
@@ -2008,6 +2089,7 @@
         var email = emailInput && emailInput.value.trim();
         var password = passwordInput && passwordInput.value;
         setError('');
+        setSignupEmailDeliverabilityHint(false);
         if (authRecoveryMode) {
           var confirmPasswordRecovery = confirmInput && confirmInput.value;
           if (!password) {
@@ -2052,6 +2134,14 @@
             setError(res.error.message || 'Could not sign in.');
             return;
           }
+          var signedUser = res.data && res.data.user;
+          if (signedUser && signedUser.email && !signedUser.email_confirmed_at) {
+            try {
+              await supabase.auth.signOut();
+            } catch (_) {}
+            setError('Confirm your email before signing in. Use the link we sent to your inbox (check spam).');
+            return;
+          }
           try {
             if (typeof window.setBizdashScreenshotNoCloud === 'function') {
               window.setBizdashScreenshotNoCloud(false);
@@ -2069,6 +2159,7 @@
       btnSignup.addEventListener('click', async function () {
         if (!signupMode) {
           setSignupMode(true);
+          setSignupEmailDeliverabilityHint(false);
           setError('Confirm your password to create an account.');
           if (confirmInput) confirmInput.focus();
           return;
@@ -2089,13 +2180,31 @@
           return;
         }
         setError('');
+        setSignupEmailDeliverabilityHint(false);
         try {
-          var res = await supabase.auth.signUp({ email: email, password: password });
+          var res = await supabase.auth.signUp({
+            email: email,
+            password: password,
+            options: { emailRedirectTo: authEmailRedirectTo() },
+          });
           if (res.error) {
             setError(res.error.message || 'Could not sign up.');
             return;
           }
-          setError('Check your email to confirm your account, then sign in.');
+          var newUser = res.data && res.data.user;
+          var newSession = res.data && res.data.session;
+          if (newSession) {
+            try {
+              await supabase.auth.signOut();
+            } catch (_) {}
+          }
+          if (newUser && newUser.email_confirmed_at) {
+            setError('Account created. Sign in with your email and password.');
+            setSignupEmailDeliverabilityHint(false);
+          } else {
+            setError('Check your email to confirm your account, then sign in.');
+            setSignupEmailDeliverabilityHint(true);
+          }
           setSignupMode(false);
         } catch (err) {
           console.error('signUp error', err);
@@ -2104,17 +2213,47 @@
       });
     }
 
+    var btnResendConfirm = $('gate-resend-confirm');
+    if (btnResendConfirm) {
+      btnResendConfirm.addEventListener('click', async function () {
+        var email = emailInput && emailInput.value ? emailInput.value.trim() : '';
+        if (!email) {
+          setError('Enter the email you signed up with, then click Resend confirmation email.');
+          return;
+        }
+        setError('');
+        try {
+          var out = await supabase.auth.resend({
+            type: 'signup',
+            email: email,
+            options: { emailRedirectTo: authEmailRedirectTo() },
+          });
+          if (out.error) {
+            setError(out.error.message || 'Could not resend confirmation email.');
+            return;
+          }
+          setError('If this address can receive mail from your project, another confirmation message was sent. Check spam.');
+          setSignupEmailDeliverabilityHint(true);
+        } catch (errRes) {
+          console.error('resend confirmation', errRes);
+          setError('Unexpected error resending confirmation email.');
+        }
+      });
+    }
+
     if (btnForgot) {
       btnForgot.addEventListener('click', async function () {
         setSignupMode(false);
+        setSignupEmailDeliverabilityHint(false);
         var email = emailInput && emailInput.value ? emailInput.value.trim() : '';
         if (!email) {
           setError('Enter your email, then click Forgot password again.');
           return;
         }
         setError('');
+        setSignupEmailDeliverabilityHint(false);
         try {
-          var redirectTo = window.location.origin + (window.location.pathname || '/');
+          var redirectTo = authEmailRedirectTo();
           var reset = await supabase.auth.resetPasswordForEmail(email, { redirectTo: redirectTo });
           if (reset.error) {
             setError(reset.error.message || 'Could not send reset email.');
@@ -2137,6 +2276,9 @@
 
     if (btnGithub) {
       btnGithub.addEventListener('click', async function () {
+        setSignupMode(false);
+        setSignupEmailDeliverabilityHint(false);
+        setError('');
         try {
           var path = window.location.pathname || '/';
           var search = window.location.search || '';

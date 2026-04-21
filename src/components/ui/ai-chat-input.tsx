@@ -1,3 +1,5 @@
+'use client';
+
 import { useState, useEffect, useRef, type FormEvent, type KeyboardEvent } from 'react';
 import { AnimatePresence, motion } from 'motion/react';
 import { Lightbulb, Mic, Globe, Paperclip, Send } from 'lucide-react';
@@ -22,8 +24,8 @@ type Props = {
 };
 
 /**
- * New Advisor composer. Tailwind is limited to `advisor-island.css` (preflight off).
- * Wired to window.bizDashAdvisorGetComposerApi() from legacy dashboard-assistant.
+ * Advisor composer (shadcn-style layout). Tailwind via `advisor-island.css` (preflight off).
+ * Wired to window.bizDashAdvisorGetComposerApi() in dashboard-assistant.js.
  */
 function AIChatInput({ composerApi }: Props) {
   const [placeholderIndex, setPlaceholderIndex] = useState(0);
@@ -105,13 +107,13 @@ function AIChatInput({ composerApi }: Props) {
 
   const containerVariants = {
     collapsed: {
-      minHeight: 68,
-      boxShadow: '0 2px 12px 0 rgba(15, 23, 42, 0.08)',
+      height: 68,
+      boxShadow: '0 2px 8px 0 rgba(0, 0, 0, 0.08)',
       transition: { type: 'spring' as const, stiffness: 120, damping: 18 },
     },
     expanded: {
-      minHeight: 130,
-      boxShadow: '0 10px 36px 0 rgba(15, 23, 42, 0.12)',
+      height: 128,
+      boxShadow: '0 8px 32px 0 rgba(0, 0, 0, 0.16)',
       transition: { type: 'spring' as const, stiffness: 120, damping: 18 },
     },
   };
@@ -145,29 +147,26 @@ function AIChatInput({ composerApi }: Props) {
   };
 
   return (
-    <div className="w-full max-w-3xl mx-auto text-[var(--advisor-text)]" data-advisor-composer style={{ minHeight: 72 }}>
+    <div className="w-full max-w-3xl mx-auto text-zinc-950" data-advisor-composer>
       <motion.div
         ref={wrapperRef}
-        className="w-full"
+        className="w-full max-w-3xl"
         variants={containerVariants}
         animate={isActive || inputValue ? 'expanded' : 'collapsed'}
-        initial={false}
+        initial="collapsed"
         onClick={handleActivate}
         style={{
           overflow: 'hidden',
-          borderRadius: 28,
-          background: 'var(--advisor-surface)',
-          border: '1px solid var(--advisor-border)',
+          borderRadius: 32,
+          background: '#fff',
           boxSizing: 'border-box',
-          minHeight: 68,
         }}
       >
         <form className="flex flex-col h-full w-full" onSubmit={onSubmit}>
-          <div className="flex items-center gap-1 sm:gap-2 p-2 sm:p-3 w-full min-w-0 bg-[var(--advisor-surface)]">
+          <div className="flex items-center gap-2 p-3 rounded-full bg-white max-w-3xl w-full min-w-0">
             <button
-              className="p-2.5 sm:p-3 rounded-full transition shrink-0 hover:opacity-90"
-              style={{ color: 'var(--advisor-muted)' }}
-              title="Attach image"
+              className="p-3 rounded-full shrink-0 transition hover:bg-gray-100 text-zinc-700"
+              title="Attach file"
               type="button"
               tabIndex={-1}
               onClick={(e) => {
@@ -187,18 +186,18 @@ function AIChatInput({ composerApi }: Props) {
                 onChange={(e) => setInputValue(e.target.value)}
                 onFocus={handleActivate}
                 onKeyDown={onKeyDown}
-                className="w-full min-w-0 border-0 outline-0 rounded-md py-2 text-sm sm:text-base bg-transparent font-normal"
-                style={{ position: 'relative', zIndex: 1, color: 'var(--advisor-text)' }}
+                className="flex-1 min-w-0 border-0 outline-0 rounded-md py-2 text-base bg-transparent w-full font-normal text-zinc-900"
+                style={{ position: 'relative', zIndex: 1 }}
                 maxLength={2000}
                 autoComplete="off"
                 aria-label="Message Advisor"
               />
-              <div className="absolute left-0 top-0 w-full h-full flex items-center px-2 sm:px-3 py-2 pointer-events-none min-w-0">
+              <div className="absolute left-0 top-0 w-full h-full pointer-events-none flex items-center px-3 py-2 min-w-0">
                 <AnimatePresence mode="wait">
                   {showPlaceholder && !isActive && !inputValue && (
                     <motion.span
                       key={placeholderIndex}
-                      className="left-0 top-1/2 -translate-y-1/2 text-[var(--advisor-muted)] select-none min-w-0 w-full"
+                      className="absolute left-0 top-1/2 -translate-y-1/2 text-gray-400 select-none min-w-0"
                       style={{
                         whiteSpace: 'nowrap',
                         overflow: 'hidden',
@@ -226,17 +225,15 @@ function AIChatInput({ composerApi }: Props) {
             </div>
 
             <button
-              className="p-2.5 sm:p-3 rounded-full transition shrink-0"
-              style={{ color: 'var(--advisor-muted)' }}
-              title="Voice input isn’t available in this browser"
+              className="p-3 rounded-full shrink-0 transition hover:bg-gray-100 text-zinc-700"
+              title="Voice input"
               type="button"
               tabIndex={-1}
             >
               <Mic size={20} />
             </button>
             <button
-              className="flex items-center text-white p-2.5 sm:p-3 rounded-full font-medium justify-center shrink-0"
-              style={{ background: 'var(--advisor-accent)' }}
+              className="flex items-center gap-1 bg-black hover:bg-zinc-800 text-white p-3 rounded-full font-medium justify-center shrink-0"
               title="Send"
               type="button"
               tabIndex={-1}
@@ -254,7 +251,7 @@ function AIChatInput({ composerApi }: Props) {
           </div>
 
           <motion.div
-            className="w-full flex justify-start px-3 sm:px-4 items-center text-sm"
+            className="w-full flex justify-start px-4 items-center text-sm"
             variants={{
               hidden: {
                 opacity: 0,
@@ -271,9 +268,9 @@ function AIChatInput({ composerApi }: Props) {
             }}
             initial="hidden"
             animate={isActive || inputValue ? 'visible' : 'hidden'}
-            style={{ marginTop: 2 }}
+            style={{ marginTop: 8 }}
           >
-            <div className="flex gap-2 sm:gap-3 items-center flex-wrap">
+            <div className="flex gap-3 items-center flex-wrap">
               <button
                 type="button"
                 onClick={(e) => {
@@ -284,19 +281,15 @@ function AIChatInput({ composerApi }: Props) {
                     return n;
                   });
                 }}
-                className="flex items-center gap-1 px-3 sm:px-4 py-2 rounded-full font-medium"
-                style={
-                  thinkActive
-                    ? {
-                        background: 'var(--advisor-tint)',
-                        color: 'var(--advisor-text)',
-                        boxShadow: 'inset 0 0 0 1px var(--advisor-tint-border)',
-                      }
-                    : { background: 'var(--advisor-elevated)', color: 'var(--advisor-muted)' }
+                className={
+                  'flex items-center gap-1 px-4 py-2 rounded-full transition-all font-medium group ' +
+                  (thinkActive
+                    ? 'bg-blue-600/10 outline outline-blue-600/60 text-blue-950'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200')
                 }
-                title="Think for longer (maps to tool)"
+                title="Think"
               >
-                <Lightbulb size={18} />
+                <Lightbulb className="group-hover:fill-yellow-300 transition-all" size={18} />
                 Think
               </button>
 
@@ -310,30 +303,24 @@ function AIChatInput({ composerApi }: Props) {
                     return n;
                   });
                 }}
-                className="flex items-center py-2 rounded-full font-medium whitespace-nowrap min-h-[40px]"
-                style={
-                  deepSearchActive
-                    ? {
-                        background: 'var(--advisor-tint)',
-                        color: 'var(--advisor-text)',
-                        boxShadow: 'inset 0 0 0 1px var(--advisor-tint-border)',
-                        padding: '0 0.5rem 0 0.25rem',
-                      }
-                    : { background: 'var(--advisor-elevated)', color: 'var(--advisor-muted)', padding: '0 0.5rem' }
+                className={
+                  'flex items-center px-4 gap-1 py-2 rounded-full transition font-medium whitespace-nowrap overflow-hidden justify-start ' +
+                  (deepSearchActive
+                    ? 'bg-blue-600/10 outline outline-blue-600/60 text-blue-950'
+                    : 'bg-gray-100 text-gray-700 hover:bg-gray-200')
                 }
                 initial={false}
-                animate={{ width: deepSearchActive ? 128 : 36 }}
-                title="Deep research"
+                animate={{
+                  width: deepSearchActive ? 125 : 36,
+                  paddingLeft: deepSearchActive ? 8 : 9,
+                }}
+                title="Deep Search"
               >
                 <div className="flex-1 flex justify-center">
                   <Globe size={18} />
                 </div>
-                <motion.span
-                  className="pb-0.5 pl-0.5 text-left"
-                  initial={false}
-                  animate={{ opacity: deepSearchActive ? 1 : 0, width: deepSearchActive ? 'auto' : 0 }}
-                >
-                  Deep
+                <motion.span className="pb-[2px]" initial={false} animate={{ opacity: deepSearchActive ? 1 : 0 }}>
+                  Deep Search
                 </motion.span>
               </motion.button>
             </div>
