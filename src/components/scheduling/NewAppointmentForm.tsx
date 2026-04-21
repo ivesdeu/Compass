@@ -131,7 +131,7 @@ export function NewAppointmentForm ({ clientOptions, demoMode, initial, onSubmit
         <label className="block text-xs font-semibold uppercase text-[var(--sched-muted)]">
           Title
           <input
-            className="mt-1 w-full rounded-lg border border-[var(--sched-border)] px-3 py-2 text-sm disabled:opacity-60"
+            className="mt-1 w-full rounded-md border border-[var(--sched-border)] px-3 py-2 text-sm disabled:opacity-60"
             value={title}
             onChange={(e) => setTitle (e.target.value)}
             disabled={demoMode}
@@ -141,7 +141,7 @@ export function NewAppointmentForm ({ clientOptions, demoMode, initial, onSubmit
         <label className="block text-xs font-semibold uppercase text-[var(--sched-muted)]">
           Client
           <select
-            className="mt-1 w-full rounded-lg border border-[var(--sched-border)] px-3 py-2 text-sm disabled:opacity-60"
+            className="mt-1 w-full rounded-md border border-[var(--sched-border)] px-3 py-2 text-sm disabled:opacity-60"
             value={clientId}
             onChange={(e) => setClientId (e.target.value)}
             disabled={demoMode}
@@ -159,7 +159,7 @@ export function NewAppointmentForm ({ clientOptions, demoMode, initial, onSubmit
             Date
             <input
               type="date"
-              className="mt-1 w-full rounded-lg border border-[var(--sched-border)] px-3 py-2 text-sm disabled:opacity-60"
+              className="mt-1 w-full rounded-md border border-[var(--sched-border)] px-3 py-2 text-sm disabled:opacity-60"
               value={dateStr}
               onChange={(e) => setDateStr (e.target.value)}
               disabled={demoMode}
@@ -170,7 +170,7 @@ export function NewAppointmentForm ({ clientOptions, demoMode, initial, onSubmit
             Start
             <input
               type="time"
-              className="mt-1 w-full rounded-lg border border-[var(--sched-border)] px-3 py-2 text-sm disabled:opacity-60"
+              className="mt-1 w-full rounded-md border border-[var(--sched-border)] px-3 py-2 text-sm disabled:opacity-60"
               value={startT}
               onChange={(e) => setStartT (e.target.value)}
               disabled={demoMode}
@@ -181,7 +181,7 @@ export function NewAppointmentForm ({ clientOptions, demoMode, initial, onSubmit
             End
             <input
               type="time"
-              className="mt-1 w-full rounded-lg border border-[var(--sched-border)] px-3 py-2 text-sm disabled:opacity-60"
+              className="mt-1 w-full rounded-md border border-[var(--sched-border)] px-3 py-2 text-sm disabled:opacity-60"
               value={endT}
               onChange={(e) => setEndT (e.target.value)}
               disabled={demoMode}
@@ -192,7 +192,7 @@ export function NewAppointmentForm ({ clientOptions, demoMode, initial, onSubmit
         <label className="block text-xs font-semibold uppercase text-[var(--sched-muted)]">
           Location <span className="font-normal">(optional)</span>
           <input
-            className="mt-1 w-full rounded-lg border border-[var(--sched-border)] px-3 py-2 text-sm disabled:opacity-60"
+            className="mt-1 w-full rounded-md border border-[var(--sched-border)] px-3 py-2 text-sm disabled:opacity-60"
             value={location}
             onChange={(e) => setLocation (e.target.value)}
             disabled={demoMode}
@@ -201,7 +201,7 @@ export function NewAppointmentForm ({ clientOptions, demoMode, initial, onSubmit
         <label className="block text-xs font-semibold uppercase text-[var(--sched-muted)]">
           Notes
           <textarea
-            className="mt-1 w-full rounded-lg border border-[var(--sched-border)] px-3 py-2 text-sm disabled:opacity-60"
+            className="mt-1 w-full rounded-md border border-[var(--sched-border)] px-3 py-2 text-sm disabled:opacity-60"
             rows={3}
             value={notes}
             onChange={(e) => setNotes (e.target.value)}
@@ -214,7 +214,7 @@ export function NewAppointmentForm ({ clientOptions, demoMode, initial, onSubmit
         </label>
         <button
           type="submit"
-          className="w-full rounded-lg bg-[var(--sched-accent,#0a0a0a)] py-2.5 text-sm font-semibold text-white disabled:opacity-50"
+          className="h-10 w-full rounded-md bg-[var(--sched-accent,#0a0a0a)] text-sm font-medium text-white hover:opacity-95 disabled:opacity-50"
           disabled={demoMode || submitting}
         >
           {submitting ? 'Saving…' : initial ? 'Update appointment' : 'Create appointment'}

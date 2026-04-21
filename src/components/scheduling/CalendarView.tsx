@@ -102,10 +102,10 @@ export function CalendarView ({ appointments, onSelect }: Props) {
   return (
     <div className="border border-[var(--sched-border,#e2e8f0)] bg-[var(--sched-surface,#fff)] p-4">
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
+        <div className="flex flex-wrap items-center gap-2">
           <button
             type="button"
-            className="rounded-lg border border-[var(--sched-border)] px-3 py-1.5 text-sm font-medium hover:bg-black/[0.03]"
+            className="inline-flex h-9 items-center rounded-md border border-[var(--sched-border)] bg-[var(--sched-surface,#fff)] px-3.5 text-sm font-medium text-[var(--sched-text,#0f172a)] hover:bg-neutral-50"
             onClick={() => {
               const n = new Date (cursor);
               if (mode === 'month') n.setMonth (n.getMonth () - 1);
@@ -117,7 +117,7 @@ export function CalendarView ({ appointments, onSelect }: Props) {
           </button>
           <button
             type="button"
-            className="rounded-lg border border-[var(--sched-border)] px-3 py-1.5 text-sm font-medium hover:bg-black/[0.03]"
+            className="inline-flex h-9 items-center rounded-md border border-[var(--sched-border)] bg-[var(--sched-surface,#fff)] px-3.5 text-sm font-medium text-[var(--sched-text,#0f172a)] hover:bg-neutral-50"
             onClick={() => {
               const n = new Date (cursor);
               if (mode === 'month') n.setMonth (n.getMonth () + 1);
@@ -129,24 +129,32 @@ export function CalendarView ({ appointments, onSelect }: Props) {
           </button>
           <button
             type="button"
-            className="rounded-lg px-3 py-1.5 text-sm font-medium text-[var(--sched-accent,#0a0a0a)] hover:underline"
+            className="inline-flex h-9 items-center rounded-md px-3.5 text-sm font-medium text-[var(--sched-accent,#0a0a0a)] hover:bg-neutral-50"
             onClick={() => setCursor (new Date ())}
           >
             Today
           </button>
         </div>
         <div className="text-center text-base font-semibold text-[var(--sched-text,#0f172a)]">{mode === 'month' ? label : weekLabel}</div>
-        <div className="flex rounded-lg border border-[var(--sched-border)] p-0.5">
+        <div className="flex rounded-md border border-[var(--sched-border)] p-0.5">
           <button
             type="button"
-            className={`rounded-md px-3 py-1.5 text-sm font-medium ${mode === 'month' ? 'bg-[var(--sched-accent,#0a0a0a)] text-white' : 'hover:bg-black/[0.03]'}`}
+            className={`inline-flex h-8 items-center rounded-[5px] px-3 text-sm font-medium transition-colors ${
+              mode === 'month'
+                ? 'bg-[var(--sched-accent,#0a0a0a)] text-white'
+                : 'text-[var(--sched-text,#0f172a)] hover:bg-neutral-50'
+            }`}
             onClick={() => setMode ('month')}
           >
             Month
           </button>
           <button
             type="button"
-            className={`rounded-md px-3 py-1.5 text-sm font-medium ${mode === 'week' ? 'bg-[var(--sched-accent,#0a0a0a)] text-white' : 'hover:bg-black/[0.03]'}`}
+            className={`inline-flex h-8 items-center rounded-[5px] px-3 text-sm font-medium transition-colors ${
+              mode === 'week'
+                ? 'bg-[var(--sched-accent,#0a0a0a)] text-white'
+                : 'text-[var(--sched-text,#0f172a)] hover:bg-neutral-50'
+            }`}
             onClick={() => setMode ('week')}
           >
             Week

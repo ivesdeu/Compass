@@ -150,7 +150,7 @@ function SignupModal({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md">
+      <DialogContent className="max-w-md rounded-lg border-neutral-200/90 shadow-none ring-1 ring-black/[0.06] sm:rounded-lg">
         <DialogHeader>
           <DialogTitle>Create your account</DialogTitle>
           <DialogDescription>
@@ -200,8 +200,8 @@ function SignupModal({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="gate-signup-modal-email">Email</Label>
-            <div className="flex h-12 items-center gap-2 rounded-lg border border-input px-3 focus-within:ring-2 focus-within:ring-ring">
-              <Mail className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
+            <div className="flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-2.5 focus-within:border-neutral-400 focus-within:ring-1 focus-within:ring-neutral-900/5">
+              <Mail className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
               <Input
                 id="gate-signup-modal-email"
                 type="email"
@@ -209,14 +209,14 @@ function SignupModal({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="you@company.com"
-                className="h-10 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+                className="h-9 border-0 bg-transparent px-0 text-[15px] shadow-none focus-visible:ring-0"
               />
             </div>
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="gate-signup-modal-password">Password</Label>
-            <div className="flex h-12 items-center gap-2 rounded-lg border border-input px-3 focus-within:ring-2 focus-within:ring-ring">
-              <Lock className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
+            <div className="flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-2.5 focus-within:border-neutral-400 focus-within:ring-1 focus-within:ring-neutral-900/5">
+              <Lock className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
               <Input
                 id="gate-signup-modal-password"
                 type="password"
@@ -224,14 +224,14 @@ function SignupModal({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="••••••••"
-                className="h-10 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+                className="h-9 border-0 bg-transparent px-0 text-[15px] shadow-none focus-visible:ring-0"
               />
             </div>
           </div>
           <div className="flex flex-col gap-2">
             <Label htmlFor="gate-signup-modal-confirm">Confirm password</Label>
-            <div className="flex h-12 items-center gap-2 rounded-lg border border-input px-3 focus-within:ring-2 focus-within:ring-ring">
-              <Lock className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
+            <div className="flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-2.5 focus-within:border-neutral-400 focus-within:ring-1 focus-within:ring-neutral-900/5">
+              <Lock className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
               <Input
                 id="gate-signup-modal-confirm"
                 type="password"
@@ -239,15 +239,21 @@ function SignupModal({ open, onOpenChange }: { open: boolean; onOpenChange: (ope
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 placeholder="••••••••"
-                className="h-10 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+                className="h-9 border-0 bg-transparent px-0 text-[15px] shadow-none focus-visible:ring-0"
               />
             </div>
           </div>
           <div className="mt-2 flex flex-col-reverse gap-2 sm:flex-row sm:justify-end">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)} disabled={submitting}>
+            <Button
+              type="button"
+              variant="outline"
+              className="rounded-md border-neutral-200/90 shadow-none hover:bg-neutral-50"
+              onClick={() => onOpenChange(false)}
+              disabled={submitting}
+            >
               Cancel
             </Button>
-            <Button type="submit" disabled={submitting}>
+            <Button type="submit" className="rounded-md bg-neutral-900 shadow-none hover:bg-neutral-800" disabled={submitting}>
               {submitting ? 'Creating account…' : 'Create account'}
             </Button>
           </div>
@@ -265,15 +271,15 @@ export function SignInForm() {
   const [signupOpen, setSignupOpen] = useState(false);
 
   return (
-    <div className="auth-gate-tw w-full max-w-md">
+    <div className="auth-gate-tw w-full max-w-[400px]">
       <SignupModal open={signupOpen} onOpenChange={setSignupOpen} />
-      <Card className="w-full rounded-2xl border bg-background shadow-md">
-        <CardContent className="flex flex-col gap-6 p-6">
-          <div>
-            <h1 id="gate-auth-heading" className="text-2xl font-semibold tracking-tight text-foreground">
+      <Card className="w-full rounded-lg border border-neutral-200/90 bg-white shadow-none ring-1 ring-black/[0.04]">
+        <CardContent className="flex flex-col gap-5 px-8 py-8">
+          <div className="space-y-1">
+            <h1 id="gate-auth-heading" className="text-lg font-semibold tracking-tight text-foreground">
               Sign in
             </h1>
-            <p id="gate-auth-subtitle" className="mt-2 text-sm leading-relaxed text-muted-foreground">
+            <p id="gate-auth-subtitle" className="text-[13px] leading-relaxed text-muted-foreground">
               Sign in to use the dashboard.
             </p>
           </div>
@@ -309,7 +315,7 @@ export function SignInForm() {
             type="button"
             id="gate-resend-confirm"
             variant="outline"
-            className="h-10 w-full text-sm"
+            className="h-9 w-full rounded-md border-neutral-200/90 text-[13px] font-normal shadow-none hover:bg-neutral-50"
             style={{ display: 'none' }}
           >
             Resend confirmation email
@@ -317,64 +323,81 @@ export function SignInForm() {
 
           <div
             id="gate-invite-hint"
-            className="rounded-xl border border-border bg-muted/40 p-3 text-sm leading-snug text-muted-foreground"
+            className="rounded-md border border-neutral-200/80 bg-neutral-50/80 p-3 text-[13px] leading-snug text-muted-foreground"
             style={{ display: 'none' }}
           />
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="gate-email">Email</Label>
-            <div className="flex h-12 items-center gap-2 rounded-lg border border-input px-3 focus-within:ring-2 focus-within:ring-ring">
-              <Mail className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
+            <div className="flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-2.5 transition-colors focus-within:border-neutral-400 focus-within:ring-1 focus-within:ring-neutral-900/5">
+              <Mail className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
               <Input
                 id="gate-email"
                 type="email"
                 autoComplete="email"
                 placeholder="Enter your email"
-                className="h-10 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+                className="h-9 border-0 bg-transparent px-0 text-[15px] shadow-none focus-visible:ring-0"
               />
             </div>
           </div>
 
           <div className="flex flex-col gap-2">
             <Label htmlFor="gate-password">Password</Label>
-            <div className="flex h-12 items-center gap-2 rounded-lg border border-input px-3 focus-within:ring-2 focus-within:ring-ring">
-              <Lock className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />
+            <div className="flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-2.5 transition-colors focus-within:border-neutral-400 focus-within:ring-1 focus-within:ring-neutral-900/5">
+              <Lock className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
               <Input
                 id="gate-password"
                 type="password"
                 autoComplete="current-password"
                 placeholder="Enter your password"
-                className="h-10 border-0 bg-transparent px-0 shadow-none focus-visible:ring-0"
+                className="h-9 border-0 bg-transparent px-0 text-[15px] shadow-none focus-visible:ring-0"
               />
             </div>
           </div>
 
           <div className="flex items-center justify-between gap-3">
-            <div className="flex items-center space-x-2">
-              <Checkbox id="gate-remember" />
-              <Label htmlFor="gate-remember" className="text-sm font-normal text-muted-foreground">
+            <div className="flex items-center gap-2">
+              <Checkbox
+                id="gate-remember"
+                className="size-[15px] rounded border-neutral-300 shadow-none data-[state=checked]:border-neutral-900 data-[state=checked]:bg-neutral-900"
+              />
+              <Label htmlFor="gate-remember" className="text-[13px] font-normal text-muted-foreground">
                 Remember me
               </Label>
             </div>
             <button
               type="button"
               id="gate-forgot-password"
-              className="text-sm text-primary hover:underline"
+              className="rounded-md px-2 py-1 text-[13px] text-muted-foreground transition-colors hover:bg-black/[0.04] hover:text-foreground"
             >
               Forgot password?
             </button>
           </div>
 
-          <Button type="button" id="gate-signin" variant="default" className="h-12 w-full rounded-lg text-base font-medium">
-            Sign In
+          <Button
+            type="button"
+            id="gate-signin"
+            variant="default"
+            className="h-9 w-full rounded-md bg-neutral-900 text-[14px] font-medium shadow-none hover:bg-neutral-800"
+          >
+            Sign in
           </Button>
 
-          <div id="gate-oauth-stack" className="mt-2 flex flex-col gap-3">
+          <div className="relative py-1">
+            <div className="absolute inset-0 flex items-center" aria-hidden>
+              <span className="w-full border-t border-neutral-200" />
+            </div>
+            <div className="relative flex justify-center text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+              <span className="bg-white px-2">Or continue with</span>
+            </div>
+          </div>
+
+          <div id="gate-oauth-stack" className="flex flex-col gap-2">
             <Button
               type="button"
               id="gate-google"
               variant="outline"
-              className="flex h-12 w-full items-center justify-center gap-3 rounded-lg"
+              className="flex h-9 w-full items-center justify-center gap-2 rounded-md border-neutral-200/90 bg-white text-[14px] font-normal shadow-none hover:bg-neutral-50"
             >
               <img
                 src="https://www.svgrepo.com/show/355037/google.svg"
@@ -392,7 +415,7 @@ export function SignInForm() {
               type="button"
               id="gate-apple"
               variant="outline"
-              className="flex h-12 w-full items-center justify-center gap-3 rounded-lg"
+              className="flex h-9 w-full items-center justify-center gap-2 rounded-md border-neutral-200/90 bg-white text-[14px] font-normal shadow-none hover:bg-neutral-50"
             >
               <img
                 src="https://upload.wikimedia.org/wikipedia/commons/f/fa/Apple_logo_black.svg"
@@ -410,7 +433,7 @@ export function SignInForm() {
               type="button"
               id="gate-github"
               variant="outline"
-              className="flex h-12 w-full items-center justify-center gap-3 rounded-lg"
+              className="flex h-9 w-full items-center justify-center gap-2 rounded-md border-neutral-200/90 bg-white text-[14px] font-normal shadow-none hover:bg-neutral-50"
             >
               <img
                 src="https://www.svgrepo.com/show/303615/github-icon-1-logo.svg"
@@ -425,14 +448,24 @@ export function SignInForm() {
             </Button>
           </div>
 
-          <Button type="button" id="gate-view-demo" variant="secondary" className="h-11 w-full rounded-lg">
+          <Button
+            type="button"
+            id="gate-view-demo"
+            variant="secondary"
+            className="h-9 w-full rounded-md border border-transparent bg-neutral-100 text-[14px] font-normal text-foreground shadow-none hover:bg-neutral-200/70"
+          >
             View Demo
           </Button>
 
-          <p className="mt-1 text-center text-sm text-muted-foreground">
+          <p className="text-center text-[13px] text-muted-foreground">
             Don&apos;t have an account?{' '}
-            <button type="button" id="gate-signup" className="text-primary hover:underline" onClick={() => setSignupOpen(true)}>
-              Sign Up
+            <button
+              type="button"
+              id="gate-signup"
+              className="font-medium text-foreground underline decoration-neutral-300 underline-offset-4 hover:decoration-neutral-400"
+              onClick={() => setSignupOpen(true)}
+            >
+              Sign up
             </button>
           </p>
         </CardContent>

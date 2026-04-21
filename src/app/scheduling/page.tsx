@@ -16,6 +16,15 @@ import { rowToSchedulingAppointment } from '@/lib/scheduling/supabase';
 
 type SubView = 'calendar' | 'list' | 'new';
 
+/** Outline vs solid accent — matches product-style “Manage statuses” / “+ Add” controls. */
+function schedSegmentClass (active: boolean): string {
+  const base =
+    'inline-flex h-9 shrink-0 items-center gap-2 rounded-md border px-3.5 text-sm font-medium transition-colors';
+  return active
+    ? `${base} border-[var(--sched-accent,#0a0a0a)] bg-[var(--sched-accent,#0a0a0a)] text-white hover:opacity-95`
+    : `${base} border-[var(--sched-border,#e2e8f0)] bg-[var(--sched-surface,#fff)] text-[var(--sched-text,#0f172a)] hover:bg-neutral-50`;
+}
+
 function getSupabase (): SupabaseClient | null {
   if (typeof window === 'undefined') return null;
   const c = (window as unknown as { supabaseClient?: SupabaseClient }).supabaseClient;
@@ -387,51 +396,31 @@ export function SchedulingPage () {
         </div>
         <button
           type="button"
-          className="shrink-0 border border-[var(--sched-border,#e2e8f0)] bg-transparent px-3 py-1.5 text-sm font-medium text-[var(--sched-accent,#0a0a0a)] hover:bg-black/[0.03]"
+          className="inline-flex h-9 shrink-0 items-center rounded-md border border-[var(--sched-border,#e2e8f0)] bg-[var(--sched-surface,#fff)] px-3.5 text-sm font-medium text-[var(--sched-text,#0f172a)] hover:bg-neutral-50"
           onClick={() => setConnectOpen (true)}
         >
           Connect Google Calendar
         </button>
       </header>
 
-      <nav className="mb-6 flex flex-wrap gap-4 border-b border-[var(--sched-border,#e2e8f0)]" aria-label="Scheduling views">
-        <button
-          type="button"
-          className={`-mb-px inline-flex items-center gap-1.5 border-b-2 pb-2.5 pt-0.5 text-sm font-medium transition-colors ${
-            subView === 'calendar'
-              ? 'border-[var(--sched-accent,#0a0a0a)] text-[var(--sched-text,#0f172a)]'
-              : 'border-transparent text-[var(--sched-muted,#64748b)] hover:text-[var(--sched-text,#0f172a)]'
-          }`}
-          onClick={() => setSubView ('calendar')}
-        >
-          <CalendarIcon className="h-4 w-4 opacity-70" strokeWidth={2} />
+      <nav className="mb-6 flex flex-wrap items-center gap-2" aria-label="Scheduling views">
+        <button type="button" className={schedSegmentClass (subView === 'calendar')} onClick={() => setSubView ('calendar')}>
+          <CalendarIcon className="h-4 w-4 shrink-0" strokeWidth={2} />
           Calendar
         </button>
-        <button
-          type="button"
-          className={`-mb-px inline-flex items-center gap-1.5 border-b-2 pb-2.5 pt-0.5 text-sm font-medium transition-colors ${
-            subView === 'list'
-              ? 'border-[var(--sched-accent,#0a0a0a)] text-[var(--sched-text,#0f172a)]'
-              : 'border-transparent text-[var(--sched-muted,#64748b)] hover:text-[var(--sched-text,#0f172a)]'
-          }`}
-          onClick={() => setSubView ('list')}
-        >
-          <LayoutList className="h-4 w-4 opacity-70" strokeWidth={2} />
+        <button type="button" className={schedSegmentClass (subView === 'list')} onClick={() => setSubView ('list')}>
+          <LayoutList className="h-4 w-4 shrink-0" strokeWidth={2} />
           Appointments
         </button>
         <button
           type="button"
-          className={`-mb-px inline-flex items-center gap-1.5 border-b-2 pb-2.5 pt-0.5 text-sm font-medium transition-colors ${
-            subView === 'new'
-              ? 'border-[var(--sched-accent,#0a0a0a)] text-[var(--sched-text,#0f172a)]'
-              : 'border-transparent text-[var(--sched-muted,#64748b)] hover:text-[var(--sched-text,#0f172a)]'
-          }`}
+          className={schedSegmentClass (subView === 'new')}
           onClick={() => {
             setEditTarget (null);
             setSubView ('new');
           }}
         >
-          <PlusCircle className="h-4 w-4 opacity-70" strokeWidth={2} />
+          <PlusCircle className="h-4 w-4 shrink-0" strokeWidth={2} />
           New appointment
         </button>
       </nav>
