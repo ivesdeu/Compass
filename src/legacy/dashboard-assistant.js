@@ -10,20 +10,9 @@
   /** Minimum time to show the “thinking” state before revealing the reply (ms). */
   var THINKING_MIN_MS = 2000;
 
-  var WELCOME =
-    'Hi — I am your business copilot for this dashboard.\n\n' +
-    'I help turn your numbers into clear next steps, not just answers.\n\n' +
-    'Use Advisor to:\n' +
-    '• Prioritize today\'s most important actions\n' +
-    '• Follow up on overdue invoices and client outreach\n' +
-    '• Understand profit or expense changes over time\n' +
-    '• See a live business recap on the dashboard (Personable CRM)\n' +
-    '• Create follow-up tasks or log notes on clients (you confirm before anything is saved)\n\n' +
-    'Advisor uses your dashboard data and signed-in session context to provide focused recommendations and drafts. You stay in control of final decisions and actions.';
-  var WELCOME_MOBILE =
-    'Hi — I am your business copilot.\n\n' +
-    'I turn dashboard numbers into prioritized next steps.\n\n' +
-    'Use the task chips for Daily brief, Follow-up draft, Variance explanation, and Weekly recap.';
+  /** Empty: no seeded assistant bubble on first open (see `seedWelcome`). */
+  var WELCOME = '';
+  var WELCOME_MOBILE = '';
 
   var TOOL_META = {
     createImage: { short: 'Image' },
@@ -685,6 +674,8 @@
       try {
         isMobile = !!(window.matchMedia && window.matchMedia('(max-width: 960px)').matches);
       } catch (_) {}
+      var msg = (isMobile ? WELCOME_MOBILE : WELCOME).trim();
+      if (!msg) return;
       appendBubble(logEl, 'asst', isMobile ? WELCOME_MOBILE : WELCOME);
     }
 

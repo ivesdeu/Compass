@@ -118,34 +118,6 @@ function AIChatInput({ composerApi }: Props) {
     },
   };
 
-  const letterVariants = {
-    initial: {
-      opacity: 0,
-      filter: 'blur(12px)',
-      y: 10,
-    },
-    animate: {
-      opacity: 1,
-      filter: 'blur(0px)',
-      y: 0,
-      transition: {
-        opacity: { duration: 0.25 },
-        filter: { duration: 0.4 },
-        y: { type: 'spring' as const, stiffness: 80, damping: 20 },
-      },
-    },
-    exit: {
-      opacity: 0,
-      filter: 'blur(12px)',
-      y: -10,
-      transition: {
-        opacity: { duration: 0.2 },
-        filter: { duration: 0.3 },
-        y: { type: 'spring' as const, stiffness: 80, damping: 20 },
-      },
-    },
-  };
-
   return (
     <div className="w-full max-w-3xl mx-auto text-zinc-950" data-advisor-composer>
       <motion.div
@@ -157,15 +129,16 @@ function AIChatInput({ composerApi }: Props) {
         onClick={handleActivate}
         style={{
           overflow: 'hidden',
-          borderRadius: 32,
+          /* Full pill — matches inner row so overflow:hidden does not clip circular buttons */
+          borderRadius: 9999,
           background: '#fff',
           boxSizing: 'border-box',
         }}
       >
         <form className="flex flex-col h-full w-full" onSubmit={onSubmit}>
-          <div className="flex items-center gap-2 p-3 rounded-full bg-white max-w-3xl w-full min-w-0">
+          <div className="flex items-center gap-2 p-3 rounded-full bg-white max-w-3xl w-full min-w-0 shadow-[0_1px_3px_rgba(0,0,0,0.06)]">
             <button
-              className="p-3 rounded-full shrink-0 transition hover:bg-gray-100 text-zinc-700"
+              className="p-3 rounded-full shrink-0 overflow-hidden transition hover:bg-gray-100 text-zinc-700"
               title="Attach file"
               type="button"
               tabIndex={-1}
@@ -192,32 +165,18 @@ function AIChatInput({ composerApi }: Props) {
                 autoComplete="off"
                 aria-label="Message Advisor"
               />
-              <div className="absolute left-0 top-0 w-full h-full pointer-events-none flex items-center px-3 py-2 min-w-0">
+              <div className="absolute inset-0 pointer-events-none flex items-center justify-center px-14 sm:px-16 py-2 min-w-0">
                 <AnimatePresence mode="wait">
                   {showPlaceholder && !isActive && !inputValue && (
                     <motion.span
                       key={placeholderIndex}
-                      className="absolute left-0 top-1/2 -translate-y-1/2 text-gray-400 select-none min-w-0"
-                      style={{
-                        whiteSpace: 'nowrap',
-                        overflow: 'hidden',
-                        textOverflow: 'ellipsis',
-                        zIndex: 0,
-                      }}
-                      initial="initial"
-                      animate="animate"
-                      exit="exit"
+                      className="block max-w-full truncate text-center text-sm text-gray-400 select-none sm:text-base"
+                      initial={{ opacity: 0 }}
+                      animate={{ opacity: 1 }}
+                      exit={{ opacity: 0 }}
+                      transition={{ duration: 0.2 }}
                     >
-                      {PLACEHOLDERS[placeholderIndex].split('').map((char, i) => (
-                        <motion.span
-                          // eslint-disable-next-line react/no-array-index-key -- per-letter animation
-                          key={i}
-                          variants={letterVariants}
-                          style={{ display: 'inline-block' }}
-                        >
-                          {char === ' ' ? '\u00A0' : char}
-                        </motion.span>
-                      ))}
+                      {PLACEHOLDERS[placeholderIndex]}
                     </motion.span>
                   )}
                 </AnimatePresence>
@@ -225,7 +184,7 @@ function AIChatInput({ composerApi }: Props) {
             </div>
 
             <button
-              className="p-3 rounded-full shrink-0 transition hover:bg-gray-100 text-zinc-700"
+              className="p-3 rounded-full shrink-0 overflow-hidden transition hover:bg-gray-100 text-zinc-700"
               title="Voice input"
               type="button"
               tabIndex={-1}
@@ -233,7 +192,7 @@ function AIChatInput({ composerApi }: Props) {
               <Mic size={20} />
             </button>
             <button
-              className="flex items-center gap-1 bg-black hover:bg-zinc-800 text-white p-3 rounded-full font-medium justify-center shrink-0"
+              className="flex items-center gap-1 overflow-hidden rounded-full bg-black p-3 font-medium text-white shrink-0 justify-center hover:bg-zinc-800"
               title="Send"
               type="button"
               tabIndex={-1}
