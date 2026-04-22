@@ -18212,6 +18212,15 @@ var incomePowerState = {
     }
   }
 
+  /** Optional list preview shell; safe no-op when `#listPreviewModal` is absent. */
+  function closeListPreviewModal() {
+    var modal = document.getElementById('listPreviewModal');
+    if (modal) {
+      modal.classList.remove('on');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+  }
+
   function closeListCustomizeModal() {
     var m = document.getElementById('listCustomizeModal');
     if (m) {
