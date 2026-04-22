@@ -205,20 +205,20 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, Props>(({ compose
 
   return (
     <div
-      className="flex w-full cursor-text flex-col rounded-[26px] border border-solid border-[#e5e5e5] bg-white p-2 shadow-[0_2px_12px_rgba(15,23,42,0.06)] transition-colors"
+      className="flex w-full cursor-text flex-col rounded-xl border border-border bg-background px-3 py-2.5 shadow-sm transition-[border-color,box-shadow] focus-within:border-neutral-300/90 focus-within:shadow-[0_1px_3px_rgba(15,23,42,0.06)]"
       data-advisor-composer
     >
       <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
 
       {imagePreview && (
         <Dialog open={isImageDialogOpen} onOpenChange={setIsImageDialogOpen}>
-          <div className="relative mb-1 w-fit rounded-[1rem] px-1 pt-1">
-            <button type="button" className="transition-transform" onClick={() => setIsImageDialogOpen(true)}>
-              <img src={imagePreview} alt="Image preview" className="h-14 w-14 rounded-[1rem] object-cover" />
+          <div className="relative mb-2 w-fit">
+            <button type="button" className="transition-opacity hover:opacity-95" onClick={() => setIsImageDialogOpen(true)}>
+              <img src={imagePreview} alt="Image preview" className="h-12 w-12 rounded-lg border border-border object-cover" />
             </button>
             <button
               onClick={handleRemoveImage}
-              className="absolute right-2 top-2 z-10 flex h-4 w-4 items-center justify-center rounded-full bg-white/70 text-black transition-colors hover:bg-white"
+              className="absolute -right-1 -top-1 z-10 flex h-5 w-5 items-center justify-center rounded-md border border-border bg-background text-foreground shadow-sm transition-colors hover:bg-accent"
               aria-label="Remove image"
               type="button"
             >
@@ -226,7 +226,7 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, Props>(({ compose
             </button>
           </div>
           <DialogContent>
-            <img src={imagePreview} alt="Full size preview" className="w-full max-h-[95vh] object-contain rounded-[24px]" />
+            <img src={imagePreview} alt="Full size preview" className="w-full max-h-[95vh] object-contain rounded-xl" />
           </DialogContent>
         </Dialog>
       )}
@@ -242,20 +242,21 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, Props>(({ compose
         maxLength={2000}
         autoComplete="off"
         aria-label="Message Advisor"
-        className="w-full resize-none border-0 bg-transparent p-3 text-[15px] leading-relaxed text-[#1a1a1a] outline-none placeholder:text-[#8e8e8e] focus:ring-0 min-h-[48px]"
+        className="w-full min-h-[44px] max-h-[200px] resize-none border-0 bg-transparent px-0.5 py-1.5 text-[15px] leading-relaxed text-foreground outline-none placeholder:text-muted-foreground focus:ring-0"
       />
 
-      <div className="mt-0.5 p-1 pt-0">
+      <div className="mt-1 flex items-center justify-between gap-3 border-t border-border/70 pt-2">
+        <p className="hidden text-[11px] text-muted-foreground sm:block">Shift+Enter for new line</p>
         <TooltipProvider delayDuration={100}>
-          <div className="flex items-center gap-1.5">
+          <div className="ml-auto flex items-center gap-1">
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
                   onClick={handlePlusClick}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-[#3a3a3a] transition-colors hover:bg-neutral-100 focus-visible:outline-none"
+                  className="inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-md border border-transparent text-foreground/80 transition-colors hover:border-border hover:bg-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
                 >
-                  <PlusIcon className="h-5 w-5" />
+                  <PlusIcon className="h-[18px] w-[18px]" />
                   <span className="sr-only">Attach image</span>
                 </button>
               </TooltipTrigger>
@@ -264,17 +265,15 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, Props>(({ compose
               </TooltipContent>
             </Tooltip>
 
-            <div className="min-w-2 flex-1" aria-hidden="true" />
-
             <Tooltip>
               <TooltipTrigger asChild>
                 <button
                   type="button"
                   disabled={!hasValue}
                   onClick={submit}
-                  className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full text-sm font-medium transition-colors focus-visible:outline-none disabled:pointer-events-none bg-[#0a0a0a] text-white hover:bg-[#2d2d33] disabled:bg-neutral-200 disabled:text-neutral-400"
+                  className="inline-flex h-8 min-w-[2.25rem] shrink-0 items-center justify-center rounded-md border border-transparent bg-foreground px-2.5 text-xs font-semibold text-background transition-colors focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 disabled:pointer-events-none disabled:bg-neutral-200 disabled:text-neutral-400"
                 >
-                  <SendIcon className="h-4 w-4" />
+                  <SendIcon className="h-3.5 w-3.5" aria-hidden />
                   <span className="sr-only">Send message</span>
                 </button>
               </TooltipTrigger>

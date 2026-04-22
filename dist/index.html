@@ -4792,6 +4792,205 @@
     color: var(--text);
     border-color: var(--text3);
   }
+
+  /* Workspace lists — select cells (rounded triggers + flyout; tones echo billable / non-billable pills) */
+  .lists-dt td,
+  .lists-notion-table td {
+    vertical-align: middle;
+  }
+  .lists-select-trigger {
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    width: 100%;
+    max-width: 100%;
+    margin: 0;
+    padding: 6px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+    background: var(--bg2);
+    color: var(--text);
+    font-size: 12px;
+    font-weight: 600;
+    text-align: left;
+    cursor: pointer;
+    line-height: 1.35;
+    transition: background 0.12s, border-color 0.12s, box-shadow 0.12s;
+  }
+  .lists-select-trigger:hover {
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+    border-color: rgba(0, 0, 0, 0.12);
+  }
+  .lists-select-trigger:focus-visible {
+    outline: 2px solid var(--coral-border-focus);
+    outline-offset: 1px;
+  }
+  .lists-select-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: currentColor;
+    opacity: 0.35;
+  }
+  .lists-sel-tone-neutral .lists-select-dot {
+    opacity: 0.22;
+  }
+  .lists-select-label {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    font-weight: 600;
+  }
+  .lists-select-chev {
+    width: 0;
+    height: 0;
+    border-left: 4px solid transparent;
+    border-right: 4px solid transparent;
+    border-top: 5px solid currentColor;
+    opacity: 0.45;
+    flex-shrink: 0;
+  }
+  .lists-sel-tone-green {
+    background: var(--green-bg);
+    color: var(--green);
+    border-color: rgba(22, 163, 74, 0.28);
+  }
+  .lists-sel-tone-rose {
+    background: var(--red-bg);
+    color: var(--red);
+    border-color: rgba(220, 38, 38, 0.28);
+  }
+  .lists-sel-tone-amber {
+    background: var(--amber-bg);
+    color: var(--amber);
+    border-color: rgba(234, 88, 12, 0.28);
+  }
+  .lists-sel-tone-blue {
+    background: rgba(59, 130, 246, 0.12);
+    color: #1d4ed8;
+    border-color: rgba(59, 130, 246, 0.28);
+  }
+  .lists-sel-tone-violet {
+    background: rgba(139, 92, 246, 0.12);
+    color: #5b21b6;
+    border-color: rgba(139, 92, 246, 0.28);
+  }
+  .lists-sel-tone-teal {
+    background: rgba(13, 148, 136, 0.12);
+    color: #0f766e;
+    border-color: rgba(13, 148, 136, 0.28);
+  }
+  .lists-sel-tone-slate {
+    background: var(--neutral-bg);
+    color: var(--neutral);
+    border-color: rgba(113, 113, 122, 0.25);
+  }
+  .lists-sel-tone-neutral {
+    background: var(--bg3);
+    color: var(--text2);
+    border-color: var(--border2);
+    font-weight: 500;
+  }
+  .lists-select-flyout {
+    position: fixed;
+    z-index: 140;
+    background: #fff;
+    border: 1px solid var(--border2);
+    border-radius: 10px;
+    box-shadow: 0 10px 36px rgba(15, 23, 42, 0.12);
+    padding: 6px 0;
+    max-height: min(70vh, 440px);
+    overflow-y: auto;
+    min-width: 200px;
+  }
+  .lists-select-sec + .lists-select-sec {
+    border-top: 1px solid var(--border);
+    margin-top: 4px;
+    padding-top: 4px;
+  }
+  .lists-select-sec-h {
+    font-size: 10px;
+    font-weight: 700;
+    color: var(--text3);
+    text-transform: uppercase;
+    letter-spacing: 0.06em;
+    padding: 6px 12px 4px;
+  }
+  .lists-select-menu-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    width: calc(100% - 8px);
+    margin: 2px 4px;
+    padding: 8px 10px;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 500;
+    text-align: left;
+    cursor: pointer;
+  }
+  .lists-select-menu-row:hover {
+    background: var(--bg3);
+  }
+  .lists-select-menu-label {
+    flex: 1;
+    min-width: 0;
+  }
+
+  /* Workspace lists — inline text edit (Notion-style) */
+  .lists-cell-edit {
+    display: block;
+    min-height: 28px;
+    padding: 6px 8px;
+    margin: -2px -4px;
+    border-radius: 6px;
+    cursor: text;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.45;
+    outline: none;
+    word-break: break-word;
+  }
+  .lists-cell-edit:hover {
+    background: var(--bg3);
+  }
+  .lists-cell-edit:focus-visible {
+    background: var(--bg3);
+    box-shadow: 0 0 0 2px var(--coral-border-focus);
+  }
+  .lists-cell-empty {
+    display: block;
+    min-height: 1.2em;
+  }
+  .lists-cell-input {
+    display: block;
+    width: 100%;
+    box-sizing: border-box;
+    margin: -2px -4px;
+    padding: 6px 8px;
+    border: 1px solid var(--border2);
+    border-radius: 6px;
+    background: #fff;
+    font-family: inherit;
+    font-size: 13px;
+    font-weight: 500;
+    line-height: 1.45;
+    color: var(--text);
+    box-shadow: 0 1px 4px rgba(15, 23, 42, 0.06);
+  }
+  .lists-cell-input:focus {
+    outline: none;
+    border-color: var(--coral-border-mid);
+    box-shadow: 0 0 0 2px var(--coral-border-soft);
+  }
+
   .lists-board {
     display: flex;
     gap: 12px;
@@ -5957,8 +6156,8 @@
     .spend-kpi-row { grid-template-columns: 1fr; }
   }
 </style>
-  <script type="module" crossorigin src="/assets/index-D8nnMHAP.js"></script>
-  <link rel="stylesheet" crossorigin href="/assets/index-CLmTdKIL.css">
+  <script type="module" crossorigin src="/assets/index-COSuWPbP.js"></script>
+  <link rel="stylesheet" crossorigin href="/assets/index-B9j0FUT5.css">
 </head>
 <body>
 
