@@ -1859,136 +1859,97 @@
   .conn-detail-pane[hidden] {
     display: none !important;
   }
-  /* Chat — flat workspace with docked composer */
+  /* Chat — Claude/ChatGPT-style: flat #fafafa page, transcript scrolls above a fixed bottom-centered composer */
   #page-chat.pg.on {
     display: flex;
     flex-direction: column;
     align-items: stretch;
-    padding-top: clamp(10px, 2vh, 18px);
+    padding: 12px 16px max(12px, env(safe-area-inset-bottom, 0px));
     min-height: calc(100dvh - 72px);
     box-sizing: border-box;
+    background: #fafafa;
   }
-  /* Advisor: center React composer in the main viewport when there is no user message yet */
-  .chat-advisor-center-wrap {
-    display: contents;
-  }
-  #page-chat.chat-advisor-centered .chat-shell {
-    flex: 1;
-    min-height: calc(100dvh - 96px);
-  }
-  #page-chat.chat-advisor-centered .chat-transcript {
-    flex: 0 1 auto;
-    max-height: min(220px, 32vh);
+  #page-chat.pg.on > .chat-shell {
+    flex: 1 1 auto;
     min-height: 0;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    max-width: 100%;
+    background: transparent;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
   }
-  #page-chat.chat-advisor-centered .chat-advisor-center-wrap {
+  .chat-advisor-center-wrap {
+    flex-shrink: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
-    justify-content: center;
-    flex: 1 1 auto;
-    min-height: min(360px, 48vh);
     width: 100%;
     box-sizing: border-box;
-  }
-  #page-chat.chat-advisor-centered .chat-composer-stack {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    width: 100%;
-    max-width: 44rem;
-    margin-left: auto;
-    margin-right: auto;
-    padding-left: 0;
-    padding-right: 0;
+    padding-top: 8px;
   }
   .advisor-chat-aux {
     width: 100%;
-    max-width: 48rem;
+    max-width: 42rem;
     margin: 0 auto;
-    padding: 0 8px;
+    padding: 0 4px 4px;
     box-sizing: border-box;
+    flex-shrink: 0;
   }
   .chat-shell {
     width: 100%;
     max-width: 100%;
     display: flex;
     flex-direction: column;
-    min-height: calc(100dvh - 170px);
+    min-height: 0;
     max-height: none;
     background: transparent;
     border: none;
     border-radius: 0;
     box-shadow: none;
   }
-  .chat-shell-header {
-    flex-shrink: 0;
-    padding: 4px 2px 18px;
-    text-align: left;
-    border-bottom: none;
-    background: transparent;
-  }
-  .chat-shell-header-row {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 12px;
-    flex-wrap: wrap;
-  }
-  .chat-shell-title {
-    font-size: 0.75rem;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    color: var(--text3);
-    margin: 0;
-  }
-  #btn-chat-new-thread {
-    flex-shrink: 0;
-    font-size: 12px;
-    padding: 6px 12px;
-    white-space: nowrap;
-  }
   .chat-transcript {
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 0;
     display: flex;
     flex-direction: column;
-    background: var(--bg);
+    background: #fafafa;
+    overflow: hidden;
   }
   .chat-log {
-    flex: 1;
+    flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
     overflow-anchor: none;
-    padding: 14px 2px 12px;
+    padding: 8px 4px 16px;
     display: flex;
     flex-direction: column;
-    gap: 12px;
+    gap: 10px;
     background: transparent;
   }
   .chat-log::-webkit-scrollbar { width: 6px; }
-  .chat-log::-webkit-scrollbar-thumb { background: var(--bg4); border-radius: 3px; }
+  .chat-log::-webkit-scrollbar-thumb { background: #e4e4e7; border-radius: 3px; }
   .chat-msg {
-    max-width: 92%;
-    padding: 12px 14px;
-    border-radius: 12px;
+    max-width: min(92%, 34rem);
+    padding: 10px 14px;
+    border-radius: 14px;
     font-size: 0.875rem;
     line-height: 1.55;
-    color: var(--text2);
+    color: #3f3f46;
   }
   .chat-msg.user {
     align-self: flex-end;
-    background: var(--coral-bg);
-    border: 1px solid var(--coral-border-soft);
-    color: var(--text);
+    background: #f0f0f0;
+    border: 1px solid #e5e5e5;
+    color: #18181b;
     font-weight: 500;
   }
   .chat-msg.asst {
     align-self: flex-start;
-    background: var(--bg2);
-    border: 1px solid var(--border);
+    background: #f4f4f5;
+    border: 1px solid #ececec;
     white-space: pre-wrap;
     word-break: break-word;
   }
@@ -2027,21 +1988,28 @@
   }
   .chat-composer-stack {
     flex-shrink: 0;
-    padding: 10px 0 6px;
+    width: 100%;
+    max-width: 40rem;
+    margin: 0 auto;
+    padding: 0 0 4px;
     background: transparent;
     border-top: none;
+    display: flex;
+    flex-direction: column;
+    align-items: stretch;
+    box-sizing: border-box;
   }
   .advisor-react-composer-root {
     width: 100%;
-    max-width: 48rem;
-    margin: 0 auto 20px;
-    min-height: 200px;
+    max-width: 40rem;
+    margin: 0 auto;
+    min-height: 0;
     position: relative;
     z-index: 2;
     flex: 0 0 auto;
     display: block;
     box-sizing: border-box;
-    padding: 0 8px;
+    padding: 0;
   }
   .chat-file-input-hidden { position: absolute; width: 0; height: 0; opacity: 0; pointer-events: none; }
   .chat-image-preview-wrap {
@@ -2075,7 +2043,7 @@
     justify-content: center;
     box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
   }
-  .chat-image-preview-remove:hover { background: var(--bg3); }
+  .chat-image-preview-remove:hover { background: #f4f4f5; }
   .chat-lightbox {
     position: fixed;
     inset: 0;
@@ -2112,54 +2080,19 @@
     cursor: pointer;
   }
   .chat-lightbox-close:hover { background: rgba(255, 255, 255, 0.22); }
-  /* Typing mode: dock composer near viewport bottom */
-  #page-chat.chat-compose-docked .chat-shell {
-    padding-bottom: 170px;
-  }
-  #page-chat.chat-compose-docked .chat-composer-stack {
-    position: fixed;
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: max(10px, env(safe-area-inset-bottom, 0px));
-    width: min(44rem, calc(100vw - 28px));
-    z-index: 130;
-    border: 1px solid var(--border);
-    border-radius: 20px;
-    background: var(--bg2);
-    box-shadow: 0 12px 36px rgba(0, 0, 0, 0.14);
-    padding: 14px 14px 10px;
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    box-sizing: border-box;
-  }
-  #page-chat.chat-compose-docked .advisor-chat-aux {
-    position: fixed;
-    left: 50%;
-    transform: translateX(-50%);
-    bottom: calc(max(10px, env(safe-area-inset-bottom, 0px)) + 168px);
-    width: min(44rem, calc(100vw - 28px));
-    z-index: 129;
-    padding: 0 14px;
-  }
 
   @media (max-width: 960px) {
     #page-chat.pg.on {
-      padding-left: 14px;
-      padding-right: 14px;
+      padding-left: 12px;
+      padding-right: 12px;
       min-height: calc(100dvh - 112px);
     }
-    .chat-shell {
-      max-height: none;
-      border-radius: 0;
-      min-height: calc(100dvh - 170px);
+    .chat-composer-stack,
+    .advisor-react-composer-root {
+      max-width: 100%;
     }
-    .chat-shell-header { padding: 4px 0 12px; }
-    #page-chat.chat-advisor-centered .chat-advisor-center-wrap {
-      min-height: min(280px, 42vh);
-    }
-    .chat-log { padding: 10px 0; }
-    .chat-composer-stack { padding: 8px 0 4px; }
+    .chat-log { padding: 8px 0 12px; }
+    .chat-composer-stack { padding: 0 0 2px; }
   }
 
   /* BTN */
@@ -4138,6 +4071,713 @@
     min-height: 380px;
     max-height: calc(90vh - 130px);
   }
+  .list-tmpl-mo .list-tmpl-body-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+    padding: 18px 22px 22px;
+    max-height: calc(90vh - 88px);
+    overflow-y: auto;
+    min-height: 360px;
+  }
+  .list-tmpl-md-wide {
+    width: min(960px, 96vw);
+  }
+  .list-tmpl-topcards {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 12px;
+  }
+  @media (max-width: 640px) {
+    .list-tmpl-topcards { grid-template-columns: 1fr; }
+  }
+  .list-tmpl-bigcard {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-start;
+    text-align: left;
+    gap: 6px;
+    padding: 16px 18px;
+    border-radius: 12px;
+    border: 1px solid var(--lt-border);
+    background: #fff;
+    cursor: pointer;
+    transition: border-color 0.15s, box-shadow 0.15s;
+  }
+  .list-tmpl-bigcard:hover {
+    border-color: var(--lt-blue);
+    box-shadow: 0 0 0 1px var(--lt-blue-soft);
+  }
+  .list-tmpl-bigcard-ico { font-size: 20px; color: #64748b; }
+  .list-tmpl-bigcard-t { font-size: 15px; font-weight: 700; color: #0f172a; }
+  .list-tmpl-bigcard-d { font-size: 12px; color: #64748b; line-height: 1.4; }
+  .list-tmpl-sec-lbl {
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.06em;
+    color: #94a3b8;
+    margin: 4px 0 0;
+  }
+  .list-tmpl-suggested,
+  .list-tmpl-grid {
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
+  @media (min-width: 900px) {
+    .list-tmpl-suggested,
+    .list-tmpl-grid { grid-template-columns: repeat(4, 1fr); }
+  }
+  .list-tmpl-card-compact {
+    grid-template-columns: 52px 1fr !important;
+    padding: 12px !important;
+  }
+  .list-tmpl-card-compact .list-tmpl-thumb { min-height: 52px; font-size: 18px; }
+  .list-tmpl-card-compact .list-tmpl-desc { -webkit-line-clamp: 2; }
+  .list-tmpl-cats-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+  }
+  .lists-sb-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    max-width: 100%;
+  }
+  .lists-sb-item-main { flex: 1; min-width: 0; }
+  .lists-sb-menu {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: var(--text3);
+    cursor: pointer;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 14px;
+    line-height: 1;
+  }
+  .lists-sb-menu:hover { background: var(--bg3); color: var(--text); }
+
+  /* Lists sidebar — Notion-style row (hover reveals chevron / ⋯ / +) */
+  .lists-sb-entry {
+    position: relative;
+    max-width: 100%;
+  }
+  .lists-sb-bar {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    padding: 2px 4px;
+    border-radius: 8px;
+    max-width: 100%;
+  }
+  .lists-sb-entry:hover .lists-sb-bar,
+  .lists-sb-entry.expanded .lists-sb-bar {
+    background: var(--bg3);
+  }
+  .lists-sb-ico {
+    flex: 0 0 18px;
+    width: 18px;
+    text-align: center;
+    font-size: 13px;
+    line-height: 1;
+    opacity: 0.85;
+  }
+  .lists-sb-chev {
+    flex: 0 0 22px;
+    width: 22px;
+    height: 24px;
+    border: none;
+    background: transparent;
+    color: var(--text3);
+    cursor: pointer;
+    border-radius: 4px;
+    font-size: 13px;
+    line-height: 1;
+    padding: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease, transform 0.12s ease;
+  }
+  .lists-sb-entry:hover .lists-sb-chev,
+  .lists-sb-entry.expanded .lists-sb-chev {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .lists-sb-entry.expanded .lists-sb-chev {
+    transform: rotate(90deg);
+    color: var(--text2);
+  }
+  .lists-sb-chev:hover {
+    background: var(--bg2);
+    color: var(--text);
+  }
+  .lists-sb-title {
+    flex: 1;
+    min-width: 0;
+    border: none;
+    background: transparent;
+    text-align: left;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text2);
+    cursor: pointer;
+    padding: 4px 2px;
+    border-radius: 4px;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+  .lists-sb-title:hover {
+    color: var(--text);
+  }
+  .lists-sb-acts {
+    display: flex;
+    align-items: center;
+    flex-shrink: 0;
+    opacity: 0;
+    pointer-events: none;
+    transition: opacity 0.12s ease;
+  }
+  .lists-sb-entry:hover .lists-sb-acts,
+  .lists-sb-entry.expanded .lists-sb-acts {
+    opacity: 1;
+    pointer-events: auto;
+  }
+  .lists-sb-mini {
+    flex-shrink: 0;
+    border: none;
+    background: transparent;
+    color: var(--text3);
+    cursor: pointer;
+    padding: 2px 5px;
+    border-radius: 4px;
+    font-size: 15px;
+    line-height: 1;
+    font-weight: 500;
+  }
+  .lists-sb-mini:hover {
+    background: var(--bg2);
+    color: var(--text);
+  }
+  .lists-sb-views {
+    display: none;
+    flex-direction: column;
+    gap: 1px;
+    padding: 2px 0 6px 22px;
+    margin: 0;
+  }
+  .lists-sb-entry.expanded .lists-sb-views {
+    display: flex;
+  }
+  .lists-sb-view {
+    position: relative;
+    display: block;
+    width: 100%;
+    text-align: left;
+    padding: 5px 8px 5px 12px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text2);
+    cursor: pointer;
+  }
+  .lists-sb-view::before {
+    content: '';
+    position: absolute;
+    left: 2px;
+    top: 50%;
+    width: 4px;
+    height: 4px;
+    margin-top: -2px;
+    border-radius: 50%;
+    background: var(--text3);
+    opacity: 0.55;
+  }
+  .lists-sb-view:hover {
+    background: var(--bg2);
+    color: var(--text);
+  }
+  .lists-sb-view.on {
+    background: var(--bg3);
+    color: var(--text);
+    font-weight: 600;
+  }
+
+  /* Lists sidebar — database context menu */
+  .lists-sb-ctx {
+    display: none;
+    position: fixed;
+    z-index: 120;
+    min-width: 240px;
+    max-width: min(280px, 96vw);
+    padding: 6px 0;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12);
+    font-size: 12px;
+    color: var(--text);
+  }
+  .lists-sb-ctx.on {
+    display: block;
+  }
+  .lists-sb-ctx-h {
+    padding: 4px 12px 8px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text3);
+    letter-spacing: 0.02em;
+  }
+  .lists-sb-ctx-div {
+    height: 1px;
+    margin: 4px 8px;
+    background: var(--border);
+  }
+  .lists-sb-ctx-item {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 8px;
+    width: 100%;
+    padding: 7px 12px;
+    border: none;
+    background: transparent;
+    font-size: 12px;
+    color: var(--text2);
+    text-align: left;
+    cursor: pointer;
+  }
+  .lists-sb-ctx-item:hover {
+    background: var(--bg3);
+    color: var(--text);
+  }
+  .lists-sb-ctx-item kbd {
+    font-size: 10px;
+    color: var(--text3);
+    font-family: ui-monospace, monospace;
+  }
+  .lists-sb-ctx-dup-wrap {
+    position: relative;
+  }
+  .lists-sb-ctx-dup-wrap:hover .lists-sb-ctx-sub,
+  .lists-sb-ctx-dup-wrap:focus-within .lists-sb-ctx-sub {
+    display: block;
+  }
+  .lists-sb-ctx-sub {
+    display: none;
+    position: absolute;
+    left: calc(100% - 2px);
+    top: 0;
+    min-width: 200px;
+    padding: 6px 0;
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    box-shadow: 0 12px 40px rgba(15, 23, 42, 0.12);
+    z-index: 2;
+  }
+  .lists-sb-ctx-sub .lists-sb-ctx-item {
+    justify-content: flex-start;
+  }
+  .lists-sb-ctx-foot {
+    padding: 8px 12px 4px;
+    font-size: 10px;
+    line-height: 1.45;
+    color: var(--text3);
+    white-space: pre-line;
+  }
+  .lists-sb-ctx-sw {
+    position: relative;
+    width: 36px;
+    height: 20px;
+    border-radius: 999px;
+    background: var(--border);
+    flex-shrink: 0;
+  }
+  .lists-sb-ctx-sw::after {
+    content: '';
+    position: absolute;
+    top: 2px;
+    left: 2px;
+    width: 16px;
+    height: 16px;
+    border-radius: 50%;
+    background: #fff;
+    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+    transition: transform 0.15s ease;
+  }
+  .lists-sb-ctx-sw.on {
+    background: var(--coral, #f97316);
+  }
+  .lists-sb-ctx-sw.on::after {
+    transform: translateX(16px);
+  }
+
+  /* New list page modal (Notion-style) */
+  .list-page-mo {
+    z-index: 118;
+  }
+  .list-page-mo .list-page-md {
+    width: min(640px, 96vw);
+    max-height: 90vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    border-radius: 12px;
+    background: #fff;
+    border: 1px solid var(--border);
+    box-shadow: 0 24px 48px rgba(15, 23, 42, 0.14);
+  }
+  .list-page-mo .list-page-head {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+    flex-shrink: 0;
+  }
+  .list-page-mo .list-page-breadcrumb {
+    font-size: 12px;
+    color: var(--text2);
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .list-page-mo .list-page-head-actions {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .list-page-mo .list-page-body {
+    padding: 16px 18px 20px;
+    overflow-y: auto;
+    flex: 1;
+  }
+  .list-page-mo .list-page-title-input {
+    width: 100%;
+    border: none;
+    font-size: 1.35rem;
+    font-weight: 700;
+    color: var(--text);
+    padding: 4px 0 12px;
+    margin: 0 0 8px;
+    outline: none;
+    background: transparent;
+  }
+  .list-page-mo .list-page-title-input::placeholder {
+    color: var(--text3);
+  }
+  .list-page-mo .list-page-props {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px 12px;
+    margin-bottom: 16px;
+  }
+  @media (max-width: 560px) {
+    .list-page-mo .list-page-props {
+      grid-template-columns: 1fr;
+    }
+  }
+  .list-page-mo .list-page-prop label {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 11px;
+    font-weight: 600;
+    color: var(--text3);
+    margin-bottom: 4px;
+  }
+  .list-page-mo .list-page-prop .fi,
+  .list-page-mo .list-page-prop select.fi {
+    width: 100%;
+    font-size: 12px;
+  }
+  .list-page-mo .list-page-sec {
+    margin-top: 18px;
+  }
+  .list-page-mo .list-page-sec-h {
+    font-size: 12px;
+    font-weight: 700;
+    color: var(--text);
+    margin: 0 0 8px;
+  }
+  .list-page-mo .list-page-comments {
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 10px 12px;
+    font-size: 12px;
+    color: var(--text3);
+    background: var(--bg2);
+  }
+  .list-page-mo .list-page-subtasks {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .list-page-mo .list-page-subtask {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 12px;
+    color: var(--text2);
+  }
+  .list-page-mo .list-page-subtask input[type='text'] {
+    flex: 1;
+    border: none;
+    border-bottom: 1px solid var(--border);
+    background: transparent;
+    padding: 4px 0;
+    font-size: 12px;
+    outline: none;
+  }
+  .list-page-mo .list-page-embed-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    padding: 10px 12px;
+    margin-bottom: 8px;
+    border: none;
+    border-radius: 8px;
+    background: var(--bg2);
+    font-size: 12px;
+    color: var(--text2);
+    text-align: left;
+    cursor: pointer;
+  }
+  .list-page-mo .list-page-embed-row:hover {
+    background: var(--bg3);
+    color: var(--text);
+  }
+  .list-page-mo .list-page-embed-ico {
+    font-size: 18px;
+    flex-shrink: 0;
+  }
+
+  .list-card-wrap {
+    position: relative;
+    display: flex;
+    align-items: stretch;
+    padding: 0 !important;
+    overflow: hidden;
+  }
+  .list-card-wrap .list-card-main { flex: 1; padding: 16px; cursor: pointer; }
+  .list-card-menu {
+    border: none;
+    background: transparent;
+    padding: 8px 10px;
+    cursor: pointer;
+    color: var(--text3);
+    align-self: flex-start;
+  }
+  .list-card-menu:hover { color: var(--text); background: var(--bg3); }
+  .lists-detail-sh { align-items: flex-start; }
+  .lists-detail-actions { display: flex; gap: 8px; flex-shrink: 0; }
+  .lists-detail-tabs {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px;
+    margin: 0 0 8px;
+    padding: 0 2px;
+  }
+  .lists-detail-tab {
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    border-radius: 999px;
+    padding: 6px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    color: var(--text2);
+    cursor: pointer;
+  }
+  .lists-detail-tab.on {
+    background: var(--bg3);
+    color: var(--text);
+    border-color: var(--text3);
+  }
+  .lists-board {
+    display: flex;
+    gap: 12px;
+    overflow-x: auto;
+    padding-bottom: 8px;
+    min-height: 200px;
+  }
+  .lists-board-col {
+    flex: 0 0 220px;
+    background: var(--bg2);
+    border-radius: 10px;
+    padding: 8px;
+    border: 1px solid var(--border);
+  }
+  .lists-board-col-hdr {
+    font-size: 12px;
+    font-weight: 700;
+    margin-bottom: 8px;
+    color: var(--text2);
+  }
+  .lists-board-card {
+    background: #fff;
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    padding: 8px 10px;
+    margin-bottom: 8px;
+  }
+  .lists-board-card-title { font-size: 13px; font-weight: 600; color: var(--text); }
+  .lists-board-card-meta { font-size: 11px; color: var(--text3); margin-top: 4px; line-height: 1.35; }
+  .lists-cal-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text2); }
+  .lists-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 2px;
+    font-size: 11px;
+  }
+  .lists-cal-wh { text-align: center; color: var(--text3); font-weight: 600; padding: 4px 0; }
+  .lists-cal-cell {
+    min-height: 72px;
+    border: 1px solid var(--border);
+    border-radius: 6px;
+    padding: 4px;
+    background: var(--bg);
+  }
+  .lists-cal-muted { background: var(--bg2); opacity: 0.5; }
+  .lists-cal-today { outline: 2px solid var(--coral, #f97316); outline-offset: -1px; }
+  .lists-cal-day { font-weight: 700; color: var(--text2); margin-bottom: 4px; }
+  .lists-cal-item {
+    font-size: 10px;
+    padding: 2px 4px;
+    border-radius: 4px;
+    background: rgba(59, 130, 246, 0.12);
+    color: #1d4ed8;
+    margin-bottom: 2px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lists-cal-empty { font-size: 13px; color: var(--text3); padding: 16px; }
+  .lists-notion { padding: 4px 0 12px; }
+  .lists-notion-viewbar {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-bottom: 12px;
+  }
+  .lists-notion-tab {
+    font-size: 12px;
+    font-weight: 600;
+    padding: 5px 10px;
+    border-radius: 6px;
+    background: var(--bg3);
+    color: var(--text);
+  }
+  .lists-notion-tab-dis { color: var(--text3); font-size: 14px; }
+  .lists-notion-sp { flex: 1; }
+  .lists-notion-table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  .lists-notion-table th,
+  .lists-notion-table td { border: 1px solid var(--border); padding: 8px 10px; text-align: left; }
+  .lists-notion-table th { background: var(--bg2); color: var(--text3); font-weight: 600; }
+  .lists-th-icon { width: 36px; color: var(--text3); }
+  .lists-add-prop { color: var(--text3); font-size: 12px; }
+  .lists-notion-newpage {
+    margin-top: 10px;
+    border: none;
+    background: none;
+    color: var(--text3);
+    font-size: 13px;
+    font-weight: 600;
+    cursor: pointer;
+    padding: 4px 0;
+  }
+  .lists-notion-newpage:hover { color: var(--lt-blue); }
+  .list-cust-mo { z-index: 118; }
+  .list-cust-md {
+    width: min(1000px, 98vw);
+    max-height: 92vh;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border-radius: 14px;
+    background: #f1f5f9;
+    border: 1px solid #e2e8f0;
+    position: relative;
+    padding: 12px 12px 16px;
+  }
+  .list-cust-back {
+    position: absolute;
+    left: 14px;
+    top: 14px;
+    border: none;
+    background: #fff;
+    border-radius: 8px;
+    width: 36px;
+    height: 36px;
+    cursor: pointer;
+    font-size: 16px;
+    color: #64748b;
+    box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+  }
+  .list-cust-split {
+    display: grid;
+    grid-template-columns: minmax(260px, 320px) 1fr;
+    gap: 16px;
+    margin-top: 40px;
+    min-height: 420px;
+  }
+  @media (max-width: 800px) {
+    .list-cust-split { grid-template-columns: 1fr; }
+  }
+  .list-cust-aside {
+    background: #fff;
+    border-radius: 12px;
+    padding: 18px 16px;
+    border: 1px solid #e2e8f0;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  .list-cust-h2 { margin: 0; font-size: 1.1rem; font-weight: 700; color: #0f172a; }
+  .list-cust-sub { margin: 0; font-size: 13px; color: #64748b; }
+  .list-cust-chips { display: flex; flex-wrap: wrap; gap: 8px; flex: 1; align-content: flex-start; }
+  .list-cust-chip {
+    border: 1px solid #cbd5e1;
+    border-radius: 999px;
+    padding: 8px 12px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #fff;
+    color: #64748b;
+    cursor: pointer;
+  }
+  .list-cust-chip.on { border-color: #3b82f6; color: #1d4ed8; box-shadow: 0 0 0 1px rgba(59,130,246,0.2); }
+  .list-cust-ai { font-size: 9px; font-weight: 800; background: #e0e7ff; color: #4338ca; padding: 2px 5px; border-radius: 4px; margin-right: 4px; }
+  .list-cust-continue { width: 100%; margin-top: auto; }
+  .list-cust-preview {
+    background: #fff;
+    border-radius: 12px;
+    border: 1px solid #e2e8f0;
+    padding: 16px;
+    overflow: auto;
+    min-height: 360px;
+  }
+  .list-cust-phdr { font-size: 16px; margin-bottom: 10px; color: #0f172a; }
+  .list-cust-preview-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+  .list-cust-ptab {
+    border: 1px solid #e2e8f0;
+    border-radius: 999px;
+    padding: 5px 11px;
+    font-size: 12px;
+    font-weight: 600;
+    background: #f8fafc;
+    color: #475569;
+    cursor: pointer;
+  }
+  .list-cust-ptab.on { background: #e2e8f0; color: #0f172a; }
+  .list-cust-hidden { text-align: right; font-size: 11px; color: #94a3b8; margin-top: 10px; }
   @media (max-width: 720px) {
     .list-tmpl-mo .list-tmpl-body {
       grid-template-columns: 1fr;
@@ -6005,7 +6645,7 @@
     <div class="ph">
       <div>
         <div class="pt" id="lists-page-title">Lists</div>
-        <div class="ps" id="lists-page-sub">Create lists from templates or start blank. Data is stored in this browser for this workspace (test run).</div>
+        <div class="ps" id="lists-page-sub">Create lists from templates, customize columns, or start with an empty database. Lists are saved in this browser for this workspace.</div>
       </div>
       <div class="hr">
         <button type="button" class="btn btn-p" id="lists-btn-page-new">+ New list</button>
@@ -6022,10 +6662,12 @@
         <button type="button" class="btn" id="lists-btn-back">← Back to lists</button>
       </div>
       <div class="card">
-        <div class="sh">
+        <div class="sh lists-detail-sh">
           <div><div class="st" id="lists-detail-title">—</div><div class="ss" id="lists-detail-sub"></div></div>
+          <div class="lists-detail-actions" id="lists-detail-actions"></div>
         </div>
-        <div id="lists-detail-table-wrap" style="overflow:auto;margin-top:8px;"></div>
+        <div id="lists-detail-tabs" class="lists-detail-tabs" style="display:none;"></div>
+        <div id="lists-detail-table-wrap" class="lists-detail-body" style="overflow:auto;margin-top:8px;"></div>
       </div>
     </div>
   </div>
@@ -6052,15 +6694,9 @@
     <div class="ui-internal-facing card"><div style="font-size:13px;color:var(--text2);line-height:1.55;">No marketing data yet. Use Dashboard and Revenue for operational numbers.</div></div>
   </div>
 
-  <!-- CHAT: React composer (AIChatInput) + transcript; image attach/lightbox for legacy assistant flow -->
+  <!-- CHAT: React composer + transcript; image attach/lightbox for legacy assistant flow -->
   <div class="pg" id="page-chat">
     <div class="chat-shell">
-      <header class="chat-shell-header" aria-label="Advisor chat">
-        <div class="chat-shell-header-row">
-          <p class="chat-shell-title" aria-hidden="true"></p>
-          <button type="button" class="btn btn-p" id="btn-chat-new-thread" aria-label="Start a new chat">New chat</button>
-        </div>
-      </header>
       <div class="chat-transcript">
         <div id="chat-log" class="chat-log" role="log" aria-live="polite" aria-relevant="additions"></div>
       </div>
@@ -7642,58 +8278,140 @@
 
 <!-- List templates picker -->
 <div class="mo list-tmpl-mo" id="listTemplatesModal" aria-hidden="true">
-  <div class="md list-tmpl-md">
+  <div class="md list-tmpl-md list-tmpl-md-wide">
     <div class="list-tmpl-head">
-      <h2>Templates</h2>
+      <h2>New list</h2>
       <button type="button" class="list-tmpl-close" id="list-tmpl-close" aria-label="Close">×</button>
     </div>
-    <div class="list-tmpl-body">
-      <aside class="list-tmpl-aside">
-        <p class="list-tmpl-aside-lbl">USE CASES</p>
-        <div id="list-tmpl-cats"></div>
-      </aside>
-      <div class="list-tmpl-main">
-        <input type="search" class="list-tmpl-search" id="list-tmpl-search" placeholder="Search for templates, topics, goals…" autocomplete="off" />
-        <div class="list-tmpl-scroll" id="list-tmpl-cards"></div>
+    <div class="list-tmpl-body list-tmpl-body-stack">
+      <div class="list-tmpl-topcards">
+        <button type="button" class="list-tmpl-bigcard" id="list-tmpl-empty-db">
+          <span class="list-tmpl-bigcard-ico" aria-hidden="true">▦</span>
+          <span class="list-tmpl-bigcard-t">Empty database</span>
+          <span class="list-tmpl-bigcard-d">Start with a blank Notion-style table</span>
+        </button>
+        <button type="button" class="list-tmpl-bigcard" id="list-tmpl-ai-build">
+          <span class="list-tmpl-bigcard-ico" aria-hidden="true">✦</span>
+          <span class="list-tmpl-bigcard-t">Build with AI</span>
+          <span class="list-tmpl-bigcard-d">Describe the list in Advisor and apply the draft</span>
+        </button>
       </div>
+      <p class="list-tmpl-sec-lbl">Suggested</p>
+      <div class="list-tmpl-suggested" id="list-tmpl-suggested"></div>
+      <p class="list-tmpl-sec-lbl">More templates</p>
+      <div class="list-tmpl-cats-row" id="list-tmpl-cats"></div>
+      <input type="search" class="list-tmpl-search" id="list-tmpl-search" placeholder="Search templates…" autocomplete="off" />
+      <div class="list-tmpl-scroll list-tmpl-grid" id="list-tmpl-cards"></div>
     </div>
-    <div class="list-tmpl-foot">
-      <span class="list-tmpl-hint">↑ ↓ Navigate</span>
-      <div class="list-tmpl-actions">
-        <button type="button" class="list-tmpl-btn-ghost" id="list-tmpl-scratch">Start from scratch</button>
-        <button type="button" class="list-tmpl-btn-primary" id="list-tmpl-preview" disabled>Preview template</button>
+  </div>
+</div>
+
+<!-- Customize template -->
+<div class="mo list-cust-mo" id="listCustomizeModal" aria-hidden="true">
+  <div class="md list-cust-md">
+    <button type="button" class="list-cust-back" id="list-cust-back" aria-label="Back">←</button>
+    <div class="list-cust-split">
+      <aside class="list-cust-aside">
+        <h2 class="list-cust-h2" id="list-cust-heading">Customize</h2>
+        <p class="list-cust-sub">Select features to turn on or off.</p>
+        <div class="list-cust-chips" id="list-cust-chips"></div>
+        <button type="button" class="btn btn-p list-cust-continue" id="list-cust-continue">Continue</button>
+      </aside>
+      <div class="list-cust-preview">
+        <div id="list-cust-preview-inner"></div>
+        <p class="list-cust-hidden" id="list-cust-hidden-count"></p>
       </div>
     </div>
   </div>
 </div>
 
-<!-- Template preview -->
-<div class="mo list-prev-mo" id="listPreviewModal" aria-hidden="true">
-  <div class="md list-prev-md">
-    <div class="list-prev-head">
-      <div>
-        <div class="list-prev-title-row">
-          <h2 class="list-prev-title" id="list-prev-title">—</h2>
-          <span class="list-prev-entity" id="list-prev-entity">People</span>
+<!-- New page inside a workspace list (sidebar +) -->
+<div class="mo list-page-mo" id="listNewPageModal" aria-hidden="true">
+  <div class="md list-page-md" role="dialog" aria-modal="true" aria-label="New page">
+    <div class="list-page-head">
+      <div class="list-page-breadcrumb" id="list-newpage-breadcrumb">Add to list</div>
+      <div class="list-page-head-actions">
+        <button type="button" class="btn" id="list-newpage-close" aria-label="Close">Close</button>
+      </div>
+    </div>
+    <div class="list-page-body">
+      <input type="text" class="list-page-title-input" id="list-newpage-title" placeholder="New task" autocomplete="off" />
+      <div class="list-page-props">
+        <div class="list-page-prop">
+          <label>Assignee</label>
+          <input type="text" class="fi" id="list-newpage-assignee" placeholder="Empty" autocomplete="off" />
+        </div>
+        <div class="list-page-prop">
+          <label>Status</label>
+          <select class="fi" id="list-newpage-status">
+            <option value="Not started">Not started</option>
+            <option value="In progress">In progress</option>
+            <option value="Done">Done</option>
+            <option value="In review">In review</option>
+          </select>
+        </div>
+        <div class="list-page-prop">
+          <label>Due date</label>
+          <input type="date" class="fi" id="list-newpage-due" />
         </div>
       </div>
-      <button type="button" class="list-tmpl-close" id="list-prev-close" aria-label="Close">×</button>
+      <div class="list-page-sec">
+        <div class="list-page-sec-h">Comments</div>
+        <div class="list-page-comments">Add a comment…</div>
+      </div>
+      <div class="list-page-sec">
+        <div class="list-page-sec-h">Task description</div>
+        <textarea class="fi" id="list-newpage-desc" rows="3" placeholder="Provide an overview of the task and related details." style="resize:vertical;min-height:72px;"></textarea>
+      </div>
+      <div class="list-page-sec">
+        <div class="list-page-sec-h">Sub-tasks</div>
+        <div class="list-page-subtasks">
+          <label class="list-page-subtask"><input type="checkbox" disabled /><input type="text" class="list-newpage-sub" placeholder="To-do" /></label>
+          <label class="list-page-subtask"><input type="checkbox" disabled /><input type="text" class="list-newpage-sub" placeholder="To-do" /></label>
+          <label class="list-page-subtask"><input type="checkbox" disabled /><input type="text" class="list-newpage-sub" placeholder="To-do" /></label>
+        </div>
+      </div>
+      <div class="list-page-sec">
+        <div class="list-page-sec-h">Supporting files</div>
+        <button type="button" class="list-page-embed-row" id="list-newpage-embed-pdf"><span class="list-page-embed-ico" aria-hidden="true">📄</span> Embed a PDF</button>
+        <button type="button" class="list-page-embed-row" id="list-newpage-embed-gdrive"><span class="list-page-embed-ico" aria-hidden="true">▲</span> Connect Google Drive to embed a file</button>
+        <button type="button" class="list-page-embed-row" id="list-newpage-embed-figma"><span class="list-page-embed-ico" aria-hidden="true">◆</span> Embed Figma</button>
+      </div>
     </div>
-    <div class="list-prev-body">
-      <p class="list-prev-meta" id="list-prev-desc"></p>
-      <div class="list-prev-table-wrap">
-        <table class="dt" id="list-prev-table">
-          <thead id="list-prev-thead"></thead>
-          <tbody id="list-prev-tbody"></tbody>
-        </table>
-      </div>
-      <div class="list-prev-attrs" id="list-prev-attrs"></div>
-      <div class="mf" style="border-top:none;padding-top:16px;margin-top:8px;">
-        <button type="button" class="btn" id="list-prev-back">Back</button>
-        <button type="button" class="btn btn-p" id="list-prev-use">Use this template</button>
-      </div>
+    <div class="mf" style="border-top: 1px solid var(--border); padding: 12px 16px; margin: 0;">
+      <button type="button" class="btn" id="list-newpage-cancel">Cancel</button>
+      <button type="button" class="btn btn-p" id="list-newpage-save">Save</button>
     </div>
   </div>
+</div>
+
+<!-- Lists sidebar database menu (⋯) -->
+<div id="listsSbContextMenu" class="lists-sb-ctx" aria-hidden="true" role="menu">
+  <div class="lists-sb-ctx-h">Database</div>
+  <button type="button" class="lists-sb-ctx-item" data-ctx="fav" role="menuitem"><span data-ctx-fav-lbl>Add to Favorites</span></button>
+  <button type="button" class="lists-sb-ctx-item" data-ctx="offline" role="menuitem">
+    <span>Available offline</span>
+    <span class="lists-sb-ctx-sw" data-ctx-off-sw aria-hidden="true"></span>
+  </button>
+  <div class="lists-sb-ctx-div"></div>
+  <button type="button" class="lists-sb-ctx-item" data-ctx="copylink" role="menuitem">Copy link <kbd>⌘L</kbd></button>
+  <div class="lists-sb-ctx-dup-wrap">
+    <button type="button" class="lists-sb-ctx-item" data-ctx="dup-hover" role="menuitem">Duplicate <span style="margin-left:auto;color:var(--text3)">›</span></button>
+    <div class="lists-sb-ctx-sub" role="menu">
+      <button type="button" class="lists-sb-ctx-item" data-ctx="dup-full" role="menuitem">Duplicate with content <kbd>⌘D</kbd></button>
+      <button type="button" class="lists-sb-ctx-item" data-ctx="dup-empty" role="menuitem">Duplicate without content <kbd>⇧⌘D</kbd></button>
+    </div>
+  </div>
+  <button type="button" class="lists-sb-ctx-item" data-ctx="rename" role="menuitem">Rename <kbd>⌘R</kbd></button>
+  <button type="button" class="lists-sb-ctx-item" data-ctx="moveto" role="menuitem">Move to <kbd>⌘P</kbd></button>
+  <button type="button" class="lists-sb-ctx-item" data-ctx="trash" role="menuitem">Move to Trash</button>
+  <div class="lists-sb-ctx-div"></div>
+  <button type="button" class="lists-sb-ctx-item" data-ctx="tab" role="menuitem">Open in new tab <kbd>⌘⇧↵</kbd></button>
+  <button type="button" class="lists-sb-ctx-item" data-ctx="win" role="menuitem">Open in new window <kbd>⌘↵</kbd></button>
+  <button type="button" class="lists-sb-ctx-item" data-ctx="peek" role="menuitem">Open in side peek <kbd>⌥Click</kbd></button>
+  <div class="lists-sb-ctx-div"></div>
+  <div class="lists-sb-ctx-foot" id="lists-sb-ctx-meta">Last edited —</div>
+  <button type="button" class="lists-sb-ctx-item" data-ctx="help" role="menuitem">Learn about databases</button>
 </div>
 
 <!-- Quick actions (command palette — dashboard-only actions) -->

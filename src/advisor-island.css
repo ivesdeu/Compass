@@ -32,9 +32,11 @@
   box-shadow: none !important;
 }
 
-/* Hide the greeting once the chat has messages (docked composer mode) */
-#page-chat.chat-compose-docked .advisor-greeting {
-  display: none;
+/* Flat toolbar: no embossed / default button chrome inside the composer island */
+#advisor-react-composer-root button {
+  -webkit-appearance: none;
+  appearance: none;
+  box-shadow: none !important;
 }
 
 /* Popover and tooltip use Tailwind utility classes from the component; ensure

@@ -5,6 +5,7 @@
 import './telemetry-init.js';
 import './supabase-vendor.js';
 import './chart-setup.js';
+import '../legacy/workspace-list-templates.js';
 import '../legacy/financial-core.js';
 import { mountAuthLoginGate } from './auth-login-react-mount.tsx';
 import '../legacy/supabase-auth.js';

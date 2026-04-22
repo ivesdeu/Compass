@@ -5435,9 +5435,7 @@
     if (!container || prefersReducedMotion()) return;
     /** Advisor: stagger header → transcript → composer (same motion tokens as other pages). */
     if (container.id === 'page-chat') {
-      var chatParts = container.querySelectorAll(
-        '.chat-shell-header, .chat-transcript, .chat-composer-stack'
-      );
+      var chatParts = container.querySelectorAll('.chat-transcript, .chat-advisor-center-wrap');
       for (var c = 0; c < chatParts.length; c += 1) {
         var ch = chatParts[c];
         ch.classList.remove('motion-in');
@@ -16920,6 +16918,8 @@ var incomePowerState = {
 
   // ---------- Workspace lists (sidebar + templates modals; localStorage test) ----------
   var listsFeatureWired = false;
+  var listsSbNewPageTargetId = null;
+  var listsSbCtxWired = false;
   var listsUi = { selectedTplId: null, activeCat: 'content', search: '' };
 
   var LIST_CATEGORIES = [
@@ -16928,87 +16928,10 @@ var incomePowerState = {
     { id: 'sales', label: 'Sales' },
   ];
 
-  var LIST_TEMPLATES = [
-    {
-      id: 'tpl-content',
-      category: 'content',
-      emoji: '🎨',
-      title: 'Content co-creation',
-      dataType: 'People',
-      desc:
-        'Manage your content pipeline and streamline outreach to co-creators. Organize podcasts, interviews, and published pieces.',
-      tags: [
-        { label: 'Content', tone: 'amber' },
-        { label: 'PR', tone: 'mint' },
-      ],
-      columns: [
-        { id: 'c1', name: 'Person' },
-        { id: 'c2', name: 'Content piece' },
-        { id: 'c3', name: 'Topics' },
-      ],
-      rows: [
-        { c1: 'Steven Walsh', c2: 'Blogpost', c3: 'Startups' },
-        { c1: 'Lori Simpson', c2: 'Customer Story', c3: 'Investing' },
-        { c1: 'Alex Kim', c2: 'Tutorial', c3: 'Product' },
-      ],
-    },
-    {
-      id: 'tpl-editorial',
-      category: 'content',
-      emoji: '📝',
-      title: 'Editorial calendar',
-      dataType: 'People',
-      desc: 'Track drafts, reviews, and publish dates across channels in one lightweight list.',
-      tags: [{ label: 'Content', tone: 'amber' }],
-      columns: [
-        { id: 'c1', name: 'Title' },
-        { id: 'c2', name: 'Channel' },
-        { id: 'c3', name: 'Status' },
-      ],
-      rows: [
-        { c1: 'Q2 launch post', c2: 'Blog', c3: 'Draft' },
-        { c1: 'Customer webinar', c2: 'Email', c3: 'Scheduled' },
-      ],
-    },
-    {
-      id: 'tpl-rollout',
-      category: 'operations',
-      emoji: '🚀',
-      title: 'Weekly rollout checklist',
-      dataType: 'Tasks',
-      desc: 'Ship checklist for releases: owners, blockers, and sign-off in one view.',
-      tags: [{ label: 'Operations', tone: 'blue' }],
-      columns: [
-        { id: 'c1', name: 'Task' },
-        { id: 'c2', name: 'Owner' },
-        { id: 'c3', name: 'Status' },
-      ],
-      rows: [
-        { c1: 'Freeze dependencies', c2: 'Eng', c3: 'Done' },
-        { c1: 'Staging smoke test', c2: 'QA', c3: 'In progress' },
-        { c1: 'Announce in Slack', c2: 'PM', c3: 'Todo' },
-      ],
-    },
-    {
-      id: 'tpl-pipeline',
-      category: 'sales',
-      emoji: '📈',
-      title: 'Deal pipeline',
-      dataType: 'Companies',
-      desc: 'Lightweight pipeline: company, stage, and amount for quick reviews.',
-      tags: [{ label: 'Sales', tone: 'blue' }],
-      columns: [
-        { id: 'c1', name: 'Company' },
-        { id: 'c2', name: 'Stage' },
-        { id: 'c3', name: 'Amount' },
-      ],
-      rows: [
-        { c1: 'Northwind', c2: 'Proposal', c3: '$24k' },
-        { c1: 'Acme Co', c2: 'Discovery', c3: '$8k' },
-        { c1: 'Contoso', c2: 'Closed won', c3: '$42k' },
-      ],
-    },
-  ];
+  var LIST_TEMPLATES =
+    window.__BIZDASH_LIST_TEMPLATES__ && window.__BIZDASH_LIST_TEMPLATES__.length
+      ? window.__BIZDASH_LIST_TEMPLATES__
+      : [];
 
   function listsStorageKey() {
     var u = window.currentUser && window.currentUser.id ? String(window.currentUser.id) : 'guest';
@@ -17054,35 +16977,200 @@ var incomePowerState = {
     return null;
   }
 
-  function listInstanceFromTemplate(tpl) {
+  var listsCustomizeState = { template: null, enabledFeatures: {}, previewTab: '' };
+
+  function tplDefaultEnabledMap(tpl) {
+    var m = {};
+    if (!tpl || !Array.isArray(tpl.columnDefs)) return m;
+    tpl.columnDefs.forEach(function (d) {
+      if (!d.required && d.featureId) m[d.featureId] = d.defaultOn !== false;
+    });
+    return m;
+  }
+
+  function tplColumnsForEnabled(tpl, enabledMap) {
+    var cols = [];
+    (tpl.columnDefs || []).forEach(function (d) {
+      if (d.required) cols.push({ id: d.id, name: d.name });
+      else if (d.featureId && enabledMap[d.featureId]) cols.push({ id: d.id, name: d.name });
+    });
+    return cols;
+  }
+
+  function shrinkRowToColumns(row, colIds) {
+    var o = {};
+    colIds.forEach(function (id) {
+      o[id] = row[id] != null ? row[id] : '';
+    });
+    return o;
+  }
+
+  function materializeListFromTemplateSelection(tpl, enabledMap) {
+    var cols = tplColumnsForEnabled(tpl, enabledMap);
+    var ids = cols.map(function (c) {
+      return c.id;
+    });
+    var rows = (tpl.rows || []).map(function (r) {
+      return shrinkRowToColumns(r, ids);
+    });
+    var av = 'table';
+    if (tpl.previewKind === 'board') av = 'board';
+    else if (tpl.previewKind === 'calendar' || tpl.supportsCalendarView) av = 'calendar';
     return {
       id: newListId(),
       title: tpl.title,
       templateId: tpl.id,
       category: tpl.category,
       dataType: tpl.dataType,
-      columns: JSON.parse(JSON.stringify(tpl.columns)),
-      rows: JSON.parse(JSON.stringify(tpl.rows)),
+      columns: cols,
+      rows: rows,
+      layout: tpl.layout || 'standard',
+      supportsCalendarView: !!tpl.supportsCalendarView,
+      calendarDateColumnId: tpl.calendarDateColumnId || null,
+      boardGroupColumnId: tpl.boardGroupColumnId || null,
+      previewKind: tpl.previewKind || 'table',
+      previewTabs: tpl.previewTabs || [],
+      enabledFeatureIds: JSON.parse(JSON.stringify(enabledMap)),
+      activeView: av,
+      updatedAt: new Date().toISOString(),
+    };
+  }
+
+  function listInstanceFromTemplate(tpl) {
+    return materializeListFromTemplateSelection(tpl, tplDefaultEnabledMap(tpl));
+  }
+
+  function blankNotionWorkspaceList() {
+    return {
+      id: newListId(),
+      title: 'New database',
+      templateId: null,
+      category: 'operations',
+      dataType: 'Table',
+      layout: 'notion',
+      columns: [{ id: 'c1', name: 'Name' }],
+      rows: [],
+      supportsCalendarView: false,
+      activeView: 'table',
+      updatedAt: new Date().toISOString(),
     };
   }
 
   function blankWorkspaceList(title) {
-    return {
+    var L = blankNotionWorkspaceList();
+    if (title) L.title = String(title).trim() || L.title;
+    return L;
+  }
+
+  function findWorkspaceListIndexById(id) {
+    var lists = loadWorkspaceLists();
+    for (var i = 0; i < lists.length; i++) {
+      if (String(lists[i].id) === String(id)) return i;
+    }
+    return -1;
+  }
+
+  function updateWorkspaceListById(id, mutator) {
+    var lists = loadWorkspaceLists();
+    var idx = findWorkspaceListIndexById(id);
+    if (idx < 0) return null;
+    mutator(lists[idx]);
+    lists[idx].updatedAt = new Date().toISOString();
+    saveWorkspaceLists(lists);
+    renderListsSidebar();
+    renderListsPageGrid();
+    var det = document.getElementById('lists-view-detail');
+    if (det && det.getAttribute('data-active-list') === String(id)) openListDetailView(id);
+    return lists[idx];
+  }
+
+  function renameWorkspaceList(id, title) {
+    var t = String(title || '').trim();
+    if (!t) return false;
+    updateWorkspaceListById(id, function (L) {
+      L.title = t;
+    });
+    return true;
+  }
+
+  function deleteWorkspaceList(id) {
+    var lists = loadWorkspaceLists();
+    var next = lists.filter(function (L) {
+      return String(L.id) !== String(id);
+    });
+    if (next.length === lists.length) return false;
+    saveWorkspaceLists(next);
+    var det = document.getElementById('lists-view-detail');
+    if (det && det.getAttribute('data-active-list') === String(id)) closeListDetailView();
+    renderListsSidebar();
+    renderListsPageGrid();
+    return true;
+  }
+
+  window.bizDashApplyWorkspaceListProposal = function (prop) {
+    var p = prop && typeof prop === 'object' ? prop : null;
+    if (!p || !String(p.title || '').trim()) return { ok: false, error: 'Invalid list proposal.' };
+    var title = String(p.title).trim();
+    var colsIn = Array.isArray(p.columns) ? p.columns : [];
+    var cols = [];
+    for (var i = 0; i < Math.min(colsIn.length, 12); i++) {
+      var nm = colsIn[i] && String(colsIn[i].name != null ? colsIn[i].name : colsIn[i]).trim();
+      if (!nm) continue;
+      cols.push({ id: 'c' + (cols.length + 1), name: nm });
+    }
+    if (!cols.length) cols.push({ id: 'c1', name: 'Name' });
+    var colIds = cols.map(function (c) {
+      return c.id;
+    });
+    var rowsIn = Array.isArray(p.rows) ? p.rows : [];
+    var rows = [];
+    for (var r = 0; r < Math.min(rowsIn.length, 50); r++) {
+      var src = rowsIn[r];
+      var row = {};
+      if (src && typeof src === 'object' && !Array.isArray(src)) {
+        colIds.forEach(function (cid, j) {
+          var key = cols[j] && cols[j].name ? cols[j].name : cid;
+          row[cid] = src[cid] != null ? src[cid] : src[key] != null ? src[key] : '';
+        });
+      } else {
+        colIds.forEach(function (cid) {
+          row[cid] = '';
+        });
+      }
+      rows.push(row);
+    }
+    if (!rows.length) {
+      var empty = {};
+      colIds.forEach(function (cid) {
+        empty[cid] = '';
+      });
+      rows.push(empty);
+    }
+    var L = {
       id: newListId(),
-      title: title || 'Untitled list',
+      title: title,
       templateId: null,
       category: 'operations',
-      dataType: 'Rows',
-      columns: [
-        { id: 'c1', name: 'Name' },
-        { id: 'c2', name: 'Notes' },
-      ],
-      rows: [
-        { c1: '', c2: '' },
-        { c1: '', c2: '' },
-      ],
+      dataType: p.dataType ? String(p.dataType) : 'List',
+      columns: cols,
+      rows: rows,
+      layout: 'standard',
+      supportsCalendarView: !!p.supportsCalendarView,
+      calendarDateColumnId: p.calendarDateColumnId ? String(p.calendarDateColumnId) : null,
+      boardGroupColumnId: null,
+      previewKind: p.supportsCalendarView ? 'calendar' : 'table',
+      previewTabs: [],
+      activeView: p.supportsCalendarView ? 'calendar' : 'table',
+      updatedAt: new Date().toISOString(),
     };
-  }
+    if (L.supportsCalendarView && !L.calendarDateColumnId) {
+      L.calendarDateColumnId = colIds.length > 1 ? colIds[1] : colIds[0];
+    }
+    pushWorkspaceList(L);
+    window.nav('lists', document.querySelector('.ni[data-nav="lists"]'));
+    openListDetailView(L.id);
+    return { ok: true, listId: L.id };
+  };
 
   function pushWorkspaceList(L) {
     var arr = loadWorkspaceLists();
@@ -17092,7 +17180,363 @@ var incomePowerState = {
     renderListsPageGrid();
   }
 
+  function wireListRowMenu(ev, listId, action) {
+    ev.preventDefault();
+    ev.stopPropagation();
+    if (action === 'open') {
+      openListDetailView(listId);
+      window.nav('lists', document.querySelector('.ni[data-nav="lists"]'));
+      document.body.classList.remove('mobile-nav-open');
+      return;
+    }
+    if (action === 'rename') {
+      var lists = loadWorkspaceLists();
+      var cur = null;
+      for (var i = 0; i < lists.length; i++) {
+        if (String(lists[i].id) === String(listId)) cur = lists[i];
+      }
+      var nm = window.prompt('Rename list', cur ? cur.title : '');
+      if (nm != null && String(nm).trim()) renameWorkspaceList(listId, nm);
+      return;
+    }
+    if (action === 'delete') {
+      if (!window.confirm('Delete this list? This cannot be undone.')) return;
+      deleteWorkspaceList(listId);
+    }
+  }
+
+  function listsSbGetListById(id) {
+    var lists = loadWorkspaceLists();
+    for (var i = 0; i < lists.length; i++) {
+      if (String(lists[i].id) === String(id)) return lists[i];
+    }
+    return null;
+  }
+
+  function listsSbHideContextMenu() {
+    var m = document.getElementById('listsSbContextMenu');
+    if (!m) return;
+    m.classList.remove('on');
+    m.setAttribute('aria-hidden', 'true');
+    m.removeAttribute('data-list-id');
+  }
+
+  function listsSbFormatEdited(at) {
+    var d = at ? new Date(at) : null;
+    if (!d || isNaN(d.getTime())) return '—';
+    try {
+      return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    } catch (_) {
+      return String(at);
+    }
+  }
+
+  function listsSbSyncContextMenuLabels(L) {
+    var fav = document.querySelector('[data-ctx-fav-lbl]');
+    if (fav) fav.textContent = L && L.favorite ? 'Remove from Favorites' : 'Add to Favorites';
+    var sw = document.querySelector('[data-ctx-off-sw]');
+    if (sw) sw.classList.toggle('on', !!(L && L.offlinePreferred));
+    var meta = document.getElementById('lists-sb-ctx-meta');
+    if (meta) {
+      var who =
+        (window.currentUser && (window.currentUser.email || window.currentUser.name || '').trim()) || 'You';
+      meta.textContent = 'Last edited by ' + who + '\n' + listsSbFormatEdited(L && L.updatedAt);
+    }
+  }
+
+  function listsSbPositionContextMenu(anchor) {
+    var m = document.getElementById('listsSbContextMenu');
+    if (!m || !anchor) return;
+    var r = anchor.getBoundingClientRect();
+    m.style.left = Math.max(8, r.left) + 'px';
+    var top = r.bottom + 4;
+    m.classList.add('on');
+    m.setAttribute('aria-hidden', 'false');
+    var mh = m.offsetHeight || 360;
+    if (top + mh > window.innerHeight - 8) top = Math.max(8, window.innerHeight - mh - 8);
+    m.style.top = top + 'px';
+  }
+
+  function listsSbOpenContextMenu(listId, anchorEl) {
+    listsSbHideContextMenu();
+    var L = listsSbGetListById(listId);
+    if (!L) return;
+    var m = document.getElementById('listsSbContextMenu');
+    if (!m) return;
+    m.setAttribute('data-list-id', String(listId));
+    normalizeListForUi(L);
+    listsSbSyncContextMenuLabels(L);
+    listsSbPositionContextMenu(anchorEl);
+  }
+
+  function listsSbCloseAllViewDropdowns() {
+    document.querySelectorAll('.lists-sb-entry.expanded').forEach(function (el) {
+      el.classList.remove('expanded');
+    });
+    document.querySelectorAll('.lists-sb-chev').forEach(function (b) {
+      b.setAttribute('aria-expanded', 'false');
+    });
+  }
+
+  function duplicateWorkspaceList(id, keepRows) {
+    var L = listsSbGetListById(id);
+    if (!L) return null;
+    var copy;
+    try {
+      copy = JSON.parse(JSON.stringify(L));
+    } catch (_) {
+      return null;
+    }
+    copy.id = newListId();
+    copy.title = 'Copy of ' + String(L.title || 'List');
+    copy.favorite = false;
+    if (!keepRows) copy.rows = [];
+    copy.updatedAt = new Date().toISOString();
+    var lists = loadWorkspaceLists();
+    lists.unshift(copy);
+    saveWorkspaceLists(lists);
+    renderListsSidebar();
+    renderListsPageGrid();
+    return copy;
+  }
+
+  function listRowApplyModalFields(L, draft) {
+    var cols = Array.isArray(L.columns) && L.columns.length ? L.columns : [{ id: 'c1', name: 'Name' }];
+    var row = {};
+    cols.forEach(function (c) {
+      row[c.id] = '';
+    });
+    var titleCol = cols[0].id;
+    row[titleCol] = draft.title || 'New task';
+
+    function matchCol(pred) {
+      for (var i = 0; i < cols.length; i++) {
+        if (pred(cols[i])) return cols[i].id;
+      }
+      return null;
+    }
+    var sid = matchCol(function (c) {
+      return /status/i.test(String(c.name || ''));
+    });
+    if (sid && draft.status != null && String(draft.status).trim() !== '') row[sid] = draft.status;
+    var aid = matchCol(function (c) {
+      return /assignee|owner|people/i.test(String(c.name || ''));
+    });
+    if (aid && draft.assignee) row[aid] = draft.assignee;
+    var did = matchCol(function (c) {
+      return /due|deadline/i.test(String(c.name || ''));
+    });
+    if (did && draft.due) row[did] = draft.due;
+    var nid = matchCol(function (c) {
+      return /desc|note|detail/i.test(String(c.name || ''));
+    });
+    if (nid && draft.description) row[nid] = draft.description;
+    return row;
+  }
+
+  function openListNewPageModal(listId) {
+    listsSbNewPageTargetId = String(listId || '');
+    var L = listsSbGetListById(listsSbNewPageTargetId);
+    var modal = document.getElementById('listNewPageModal');
+    var bc = document.getElementById('list-newpage-breadcrumb');
+    var ti = document.getElementById('list-newpage-title');
+    var as = document.getElementById('list-newpage-assignee');
+    var st = document.getElementById('list-newpage-status');
+    var du = document.getElementById('list-newpage-due');
+    var de = document.getElementById('list-newpage-desc');
+    if (ti) ti.value = '';
+    if (as) as.value = '';
+    if (st) st.value = 'Not started';
+    if (du) du.value = '';
+    if (de) de.value = '';
+    document.querySelectorAll('.list-newpage-sub').forEach(function (inp) {
+      inp.value = '';
+    });
+    if (bc) bc.textContent = 'Add to ' + (L && L.title ? String(L.title) : 'list');
+    if (modal) {
+      modal.classList.add('on');
+      modal.setAttribute('aria-hidden', 'false');
+    }
+    listsSbCloseAllViewDropdowns();
+    listsSbHideContextMenu();
+    if (ti)
+      setTimeout(function () {
+        try {
+          ti.focus();
+        } catch (_) {}
+      }, 50);
+  }
+
+  function closeListNewPageModal() {
+    var modal = document.getElementById('listNewPageModal');
+    if (modal) {
+      modal.classList.remove('on');
+      modal.setAttribute('aria-hidden', 'true');
+    }
+    listsSbNewPageTargetId = null;
+  }
+
+  function saveListNewPageFromModal() {
+    var id = listsSbNewPageTargetId;
+    if (!id) return;
+    var ti = document.getElementById('list-newpage-title');
+    var as = document.getElementById('list-newpage-assignee');
+    var st = document.getElementById('list-newpage-status');
+    var du = document.getElementById('list-newpage-due');
+    var de = document.getElementById('list-newpage-desc');
+    var title = (ti && ti.value ? String(ti.value).trim() : '') || 'New task';
+    var draft = {
+      title: title,
+      assignee: as && as.value != null ? String(as.value).trim() : '',
+      status: st && st.value != null ? String(st.value).trim() : '',
+      due: du && du.value != null ? String(du.value).trim() : '',
+      description: de && de.value != null ? String(de.value).trim() : '',
+    };
+    updateWorkspaceListById(id, function (X) {
+      X.rows = (X.rows || []).concat([listRowApplyModalFields(X, draft)]);
+    });
+    closeListNewPageModal();
+    window.nav('lists', document.querySelector('.ni[data-nav="lists"]'));
+    openListDetailView(id);
+  }
+
+  function wireListsSidebarMenusOnce() {
+    if (listsSbCtxWired) return;
+    listsSbCtxWired = true;
+    var ctx = document.getElementById('listsSbContextMenu');
+    if (ctx) {
+      ctx.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+      });
+      ctx.addEventListener('click', function (ev) {
+        var t = ev.target && ev.target.closest ? ev.target.closest('[data-ctx]') : null;
+        if (!t) return;
+        var act = t.getAttribute('data-ctx');
+        if (act === 'dup-hover') return;
+        var lid = ctx.getAttribute('data-list-id');
+        if (!lid) return;
+        if (act === 'fav') {
+          updateWorkspaceListById(lid, function (X) {
+            X.favorite = !X.favorite;
+          });
+          listsSbSyncContextMenuLabels(listsSbGetListById(lid));
+          return;
+        }
+        if (act === 'offline') {
+          updateWorkspaceListById(lid, function (X) {
+            X.offlinePreferred = !X.offlinePreferred;
+          });
+          listsSbSyncContextMenuLabels(listsSbGetListById(lid));
+          return;
+        }
+        if (act === 'copylink') {
+          var url = window.location.origin + window.location.pathname + '?list=' + encodeURIComponent(lid);
+          try {
+            navigator.clipboard.writeText(url);
+          } catch (_) {}
+          listsSbHideContextMenu();
+          return;
+        }
+        if (act === 'dup-full') {
+          var dup1 = duplicateWorkspaceList(lid, true);
+          listsSbHideContextMenu();
+          if (dup1) {
+            window.nav('lists', document.querySelector('.ni[data-nav="lists"]'));
+            openListDetailView(dup1.id);
+          }
+          return;
+        }
+        if (act === 'dup-empty') {
+          var dup2 = duplicateWorkspaceList(lid, false);
+          listsSbHideContextMenu();
+          if (dup2) {
+            window.nav('lists', document.querySelector('.ni[data-nav="lists"]'));
+            openListDetailView(dup2.id);
+          }
+          return;
+        }
+        if (act === 'rename') {
+          listsSbHideContextMenu();
+          wireListRowMenu(ev, lid, 'rename');
+          return;
+        }
+        if (act === 'moveto') {
+          listsSbHideContextMenu();
+          window.alert('Move to is not available yet.');
+          return;
+        }
+        if (act === 'trash') {
+          listsSbHideContextMenu();
+          wireListRowMenu(ev, lid, 'delete');
+          return;
+        }
+        if (act === 'tab' || act === 'win') {
+          listsSbHideContextMenu();
+          var u = window.location.origin + window.location.pathname + '?list=' + encodeURIComponent(lid);
+          window.open(u, '_blank', 'noopener,noreferrer');
+          return;
+        }
+        if (act === 'peek') {
+          listsSbHideContextMenu();
+          window.alert('Side peek is not available in this build.');
+          return;
+        }
+        if (act === 'help') {
+          listsSbHideContextMenu();
+          window.alert('Lists are saved in this browser for the current workspace.');
+        }
+      });
+    }
+    document.addEventListener(
+      'mousedown',
+      function (ev) {
+        var c = document.getElementById('listsSbContextMenu');
+        if (!c || !c.classList.contains('on')) return;
+        if (c.contains(ev.target)) return;
+        if (ev.target.closest && ev.target.closest('.lists-sb-more')) return;
+        listsSbHideContextMenu();
+      },
+      true,
+    );
+    document.addEventListener(
+      'mousedown',
+      function (ev) {
+        if (!ev.target.closest) return;
+        var ent = ev.target.closest('.lists-sb-entry');
+        document.querySelectorAll('.lists-sb-entry.expanded').forEach(function (ex) {
+          if (ex !== ent) {
+            ex.classList.remove('expanded');
+            var ch = ex.querySelector('.lists-sb-chev');
+            if (ch) ch.setAttribute('aria-expanded', 'false');
+          }
+        });
+      },
+      true,
+    );
+
+    var npm = document.getElementById('listNewPageModal');
+    if (npm) {
+      npm.addEventListener('click', function (ev) {
+        if (ev.target === npm) closeListNewPageModal();
+      });
+    }
+    var nc = document.getElementById('list-newpage-close');
+    var nx = document.getElementById('list-newpage-cancel');
+    if (nc) nc.addEventListener('click', closeListNewPageModal);
+    if (nx) nx.addEventListener('click', closeListNewPageModal);
+    var ns = document.getElementById('list-newpage-save');
+    if (ns) ns.addEventListener('click', saveListNewPageFromModal);
+    function stubEmb() {
+      window.alert('Coming soon — link or upload files from the full list view.');
+    }
+    ['list-newpage-embed-pdf', 'list-newpage-embed-gdrive', 'list-newpage-embed-figma'].forEach(function (id) {
+      var b = document.getElementById(id);
+      if (b) b.addEventListener('click', stubEmb);
+    });
+  }
+
   function renderListsSidebar() {
+    wireListsSidebarMenusOnce();
     var host = document.getElementById('lists-sb-items');
     if (!host) return;
     var lists = loadWorkspaceLists();
@@ -17103,21 +17547,105 @@ var incomePowerState = {
     host.innerHTML = lists
       .slice(0, 8)
       .map(function (L) {
+        normalizeListForUi(L);
+        var tpl = L.templateId ? findListTemplate(L.templateId) : null;
+        var ico = tpl && tpl.emoji ? tpl.emoji : L.layout === 'notion' ? '▦' : '▤';
+        var tabs = listDetailEffectiveTabs(L);
+        var activeTab = L.activeTabId && tabs.some(function (t) { return t.id === L.activeTabId; }) ? L.activeTabId : tabs[0] ? tabs[0].id : 'all';
+        var viewsHtml = tabs
+          .map(function (t) {
+            return (
+              '<button type="button" class="lists-sb-view' +
+              (t.id === activeTab ? ' on' : '') +
+              '" data-list-id="' +
+              escList(L.id) +
+              '" data-tab="' +
+              escList(t.id) +
+              '">' +
+              escList(t.label) +
+              '</button>'
+            );
+          })
+          .join('');
         return (
-          '<button type="button" class="lists-sb-item" data-list-id="' +
+          '<div class="lists-sb-entry" data-list-id="' +
+          escList(L.id) +
+          '">' +
+          '<div class="lists-sb-bar">' +
+          '<span class="lists-sb-ico" aria-hidden="true">' +
+          escList(ico) +
+          '</span>' +
+          '<button type="button" class="lists-sb-chev" aria-expanded="false" aria-label="Views">' +
+          '›' +
+          '</button>' +
+          '<button type="button" class="lists-sb-title" data-list-open="' +
           escList(L.id) +
           '">' +
           escList(L.title) +
-          '</button>'
+          '</button>' +
+          '<span class="lists-sb-acts">' +
+          '<button type="button" class="lists-sb-mini lists-sb-more" data-list-more="' +
+          escList(L.id) +
+          '" aria-label="Database options">⋯</button>' +
+          '<button type="button" class="lists-sb-mini lists-sb-add" data-list-add="' +
+          escList(L.id) +
+          '" aria-label="New page">+</button>' +
+          '</span></div>' +
+          '<div class="lists-sb-views">' +
+          viewsHtml +
+          '</div></div>'
         );
       })
       .join('');
-    host.querySelectorAll('.lists-sb-item').forEach(function (btn) {
-      btn.addEventListener('click', function () {
-        var id = btn.getAttribute('data-list-id');
-        openListDetailView(id);
-        window.nav('lists', document.querySelector('.ni[data-nav="lists"]'));
-        document.body.classList.remove('mobile-nav-open');
+    host.querySelectorAll('.lists-sb-title[data-list-open]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        wireListRowMenu(e, btn.getAttribute('data-list-open'), 'open');
+      });
+    });
+    host.querySelectorAll('.lists-sb-add').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        openListNewPageModal(btn.getAttribute('data-list-add'));
+      });
+    });
+    host.querySelectorAll('.lists-sb-more').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        listsSbOpenContextMenu(btn.getAttribute('data-list-more'), btn);
+      });
+    });
+    host.querySelectorAll('.lists-sb-chev').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var ent = btn.closest('.lists-sb-entry');
+        if (!ent) return;
+        var now = ent.classList.toggle('expanded');
+        btn.setAttribute('aria-expanded', now ? 'true' : 'false');
+        document.querySelectorAll('.lists-sb-entry').forEach(function (ex) {
+          if (ex !== ent) {
+            ex.classList.remove('expanded');
+            var ch = ex.querySelector('.lists-sb-chev');
+            if (ch) ch.setAttribute('aria-expanded', 'false');
+          }
+        });
+        listsSbHideContextMenu();
+      });
+    });
+    host.querySelectorAll('.lists-sb-view').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var lid = btn.getAttribute('data-list-id');
+        var tid = btn.getAttribute('data-tab');
+        updateWorkspaceListById(lid, function (X) {
+          X.activeTabId = tid;
+          X.activeView = listDetailTabToView(X, tid);
+        });
+        listsSbCloseAllViewDropdowns();
+        wireListRowMenu(e, lid, 'open');
       });
     });
   }
@@ -17275,58 +17803,27 @@ var incomePowerState = {
     renderChatsSidebar();
   };
 
-  function renderListsPageGrid() {
-    var grid = document.getElementById('lists-grid');
-    var empty = document.getElementById('lists-empty-hint');
-    if (!grid || !empty) return;
-    var lists = loadWorkspaceLists();
-    if (!lists.length) {
-      empty.style.display = 'block';
-      grid.style.display = 'none';
-      return;
-    }
-    empty.style.display = 'none';
-    grid.style.display = 'grid';
-    grid.innerHTML = lists
-      .map(function (L) {
-        return (
-          '<div class="card list-card" data-list-id="' +
-          escList(L.id) +
-          '" style="cursor:pointer;padding:16px;border-radius:10px;">' +
-          '<div style="font-weight:600;font-size:15px;margin-bottom:6px;">' +
-          escList(L.title) +
-          '</div>' +
-          '<div style="font-size:12px;color:var(--text3);">' +
-          escList(L.dataType || 'List') +
-          ' · ' +
-          (L.rows || []).length +
-          ' rows</div></div>'
-        );
-      })
-      .join('');
-    grid.querySelectorAll('.list-card').forEach(function (card) {
-      card.addEventListener('click', function () {
-        openListDetailView(card.getAttribute('data-list-id'));
-      });
+  function listDetailEffectiveTabs(L) {
+    var raw = Array.isArray(L.previewTabs) && L.previewTabs.length ? L.previewTabs : [{ id: 'all', label: 'All' }];
+    return raw.filter(function (t) {
+      if (t.id === 'cal') return !!L.supportsCalendarView;
+      return true;
     });
   }
 
-  function openListDetailView(listId) {
-    var lists = loadWorkspaceLists();
-    var L = null;
-    for (var i = 0; i < lists.length; i++) {
-      if (String(lists[i].id) === String(listId)) L = lists[i];
-    }
-    var main = document.getElementById('lists-view-main');
-    var det = document.getElementById('lists-view-detail');
-    var title = document.getElementById('lists-detail-title');
-    var sub = document.getElementById('lists-detail-sub');
-    var wrap = document.getElementById('lists-detail-table-wrap');
-    if (!L || !main || !det || !wrap) return;
-    main.style.display = 'none';
-    det.style.display = 'block';
-    if (title) title.textContent = L.title;
-    if (sub) sub.textContent = (L.dataType || 'List') + (L.templateId ? ' · from template' : '');
+  function listDetailTabToView(L, tabId) {
+    if (tabId === 'cal' && L.supportsCalendarView) return 'calendar';
+    if (tabId === 'status' || tabId === 'byStage' || tabId === 'board' || tabId === 'gantt') return 'board';
+    return 'table';
+  }
+
+  function listsParseYmd(s) {
+    var m = String(s || '').match(/(\d{4})-(\d{2})-(\d{2})/);
+    if (!m) return null;
+    return { y: +m[1], mo: +m[2], d: +m[3] };
+  }
+
+  function listsTableHtml(L) {
     var cols = L.columns || [];
     var thead =
       '<tr>' +
@@ -17350,8 +17847,334 @@ var incomePowerState = {
         );
       })
       .join('');
-    wrap.innerHTML = '<table class="dt"><thead>' + thead + '</thead><tbody>' + tb + '</tbody></table>';
+    return '<div class="lists-dt-wrap"><table class="dt lists-dt"><thead>' + thead + '</thead><tbody>' + tb + '</tbody></table></div>';
+  }
+
+  function listsBoardHtml(L) {
+    var cols = L.columns || [];
+    var gid = L.boardGroupColumnId || (cols[1] ? cols[1].id : null) || (cols[0] ? cols[0].id : 'c1');
+    var buckets = {};
+    (L.rows || []).forEach(function (r) {
+      var k = String(r[gid] != null ? r[gid] : '').trim() || '—';
+      if (!buckets[k]) buckets[k] = [];
+      buckets[k].push(r);
+    });
+    var order = Object.keys(buckets);
+    var colHtml = order
+      .map(function (stage) {
+        var cards = buckets[stage]
+          .map(function (r) {
+            var titleCol = cols[0] ? cols[0].id : 'c1';
+            var title = String(r[titleCol] != null ? r[titleCol] : '').trim() || 'Item';
+            var meta = cols
+              .filter(function (c) {
+                return c.id !== gid && c.id !== titleCol;
+              })
+              .map(function (c) {
+                return escList(c.name) + ': ' + escList(r[c.id] != null ? r[c.id] : '');
+              })
+              .slice(0, 4)
+              .join(' · ');
+            return (
+              '<div class="lists-board-card"><div class="lists-board-card-title">' +
+              escList(title) +
+              '</div>' +
+              (meta ? '<div class="lists-board-card-meta">' + meta + '</div>' : '') +
+              '</div>'
+            );
+          })
+          .join('');
+        return (
+          '<div class="lists-board-col"><div class="lists-board-col-hdr">' +
+          escList(stage) +
+          '</div>' +
+          cards +
+          '</div>'
+        );
+      })
+      .join('');
+    return '<div class="lists-board">' + colHtml + '</div>';
+  }
+
+  function listsCalendarHtml(L) {
+    if (!L.supportsCalendarView) {
+      return '<p class="lists-cal-empty">Calendar view is available for Content Calendar and Social Media Planner lists.</p>';
+    }
+    var dateCol = L.calendarDateColumnId || (L.columns && L.columns[1] ? L.columns[1].id : 'c2');
+    var titleCol = L.columns && L.columns[0] ? L.columns[0].id : 'c1';
+    var now = new Date();
+    var y = now.getFullYear();
+    var mo = now.getMonth() + 1;
+    var first = new Date(y, mo - 1, 1);
+    var startPad = first.getDay();
+    var daysInMo = new Date(y, mo, 0).getDate();
+    var cells = [];
+    var i;
+    for (i = 0; i < startPad; i++) cells.push('<div class="lists-cal-cell lists-cal-muted"></div>');
+    for (i = 1; i <= daysInMo; i++) {
+      var items = [];
+      (L.rows || []).forEach(function (r) {
+        var p = listsParseYmd(r[dateCol]);
+        if (p && p.y === y && p.mo === mo && p.d === i) {
+          items.push('<div class="lists-cal-item">' + escList(r[titleCol] != null ? r[titleCol] : 'Item') + '</div>');
+        }
+      });
+      cells.push(
+        '<div class="lists-cal-cell' +
+        (i === now.getDate() && mo === now.getMonth() + 1 && y === now.getFullYear() ? ' lists-cal-today' : '') +
+        '"><div class="lists-cal-day">' +
+        i +
+        '</div>' +
+        items.join('') +
+        '</div>',
+      );
+    }
+    while (cells.length % 7 !== 0) cells.push('<div class="lists-cal-cell lists-cal-muted"></div>');
+    var wk = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+    var hdr = wk
+      .map(function (w) {
+        return '<div class="lists-cal-wh">' + w + '</div>';
+      })
+      .join('');
+    return (
+      '<div class="lists-cal"><div class="lists-cal-title">' +
+      y +
+      '–' +
+      (mo < 10 ? '0' : '') +
+      mo +
+      '</div><div class="lists-cal-grid">' +
+      hdr +
+      cells.join('') +
+      '</div></div>'
+    );
+  }
+
+  function listsNotionBlankHtml(L) {
+    var cols = L.columns && L.columns.length ? L.columns : [{ id: 'c1', name: 'Name' }];
+    var thead =
+      '<tr><th class="lists-th-icon">Aa</th>' +
+      cols
+        .map(function (c) {
+          return '<th>' + escList(c.name) + '</th>';
+        })
+        .join('') +
+      '<th class="lists-th-add"><span class="lists-add-prop">+ Add property</span></th></tr>';
+    var rows = L.rows || [];
+    var tb =
+      rows.length === 0
+        ? '<tr><td class="lists-td-check"></td><td colspan="' +
+          (cols.length + 1) +
+          '"></td></tr>'
+        : rows
+            .map(function (r) {
+              return (
+                '<tr><td class="lists-td-check"></td>' +
+                cols
+                  .map(function (c) {
+                    return '<td>' + escList(r[c.id] != null ? r[c.id] : '') + '</td>';
+                  })
+                  .join('') +
+                '<td></td></tr>'
+              );
+            })
+            .join('');
+    return (
+      '<div class="lists-notion"><div class="lists-notion-viewbar"><span class="lists-notion-tab on">Table</span><span class="lists-notion-tab-dis">+</span><span class="lists-notion-sp"></span><button type="button" class="btn btn-p lists-notion-new" data-notion-new="' +
+      escList(L.id) +
+      '">New</button></div><table class="lists-notion-table"><thead>' +
+      thead +
+      '</thead><tbody>' +
+      tb +
+      '</tbody></table><button type="button" class="lists-notion-newpage" data-notion-page="' +
+      escList(L.id) +
+      '">+ New page</button></div>'
+    );
+  }
+
+  function listRenderDetailBody(L) {
+    var wrap = document.getElementById('lists-detail-table-wrap');
+    if (!wrap) return;
+    if (L.layout === 'notion') {
+      wrap.innerHTML = listsNotionBlankHtml(L);
+      var nb = wrap.querySelector('[data-notion-new]');
+      if (nb)
+        nb.addEventListener('click', function () {
+          updateWorkspaceListById(L.id, function (X) {
+            var cids = (X.columns || [{ id: 'c1' }]).map(function (c) {
+              return c.id;
+            });
+            var row = {};
+            cids.forEach(function (cid) {
+              row[cid] = '';
+            });
+            X.rows = (X.rows || []).concat([row]);
+          });
+        });
+      var pg = wrap.querySelector('[data-notion-page]');
+      if (pg)
+        pg.addEventListener('click', function () {
+          updateWorkspaceListById(L.id, function (X) {
+            var cids = (X.columns || [{ id: 'c1' }]).map(function (c) {
+              return c.id;
+            });
+            var row = {};
+            cids.forEach(function (cid) {
+              row[cid] = '';
+            });
+            X.rows = (X.rows || []).concat([row]);
+          });
+        });
+      return;
+    }
+    var tabs = listDetailEffectiveTabs(L);
+    if (!L.activeTabId || !tabs.some(function (t) { return t.id === L.activeTabId; })) L.activeTabId = tabs[0] ? tabs[0].id : 'all';
+    var vType = listDetailTabToView(L, L.activeTabId);
+    if (vType === 'calendar') wrap.innerHTML = listsCalendarHtml(L);
+    else if (vType === 'board' && L.boardGroupColumnId) wrap.innerHTML = listsBoardHtml(L);
+    else wrap.innerHTML = listsTableHtml(L);
+  }
+
+  function normalizeListForUi(L) {
+    if (!L) return;
+    if (L.supportsCalendarView == null) L.supportsCalendarView = false;
+    if (!L.previewTabs && L.templateId) {
+      var t = findListTemplate(L.templateId);
+      if (t) {
+        if (t.previewTabs) L.previewTabs = JSON.parse(JSON.stringify(t.previewTabs));
+        if (t.boardGroupColumnId) L.boardGroupColumnId = t.boardGroupColumnId;
+        if (t.calendarDateColumnId) L.calendarDateColumnId = t.calendarDateColumnId;
+        if (t.supportsCalendarView) L.supportsCalendarView = true;
+      }
+    }
+  }
+
+  function openListDetailView(listId) {
+    var lists = loadWorkspaceLists();
+    var L = null;
+    for (var i = 0; i < lists.length; i++) {
+      if (String(lists[i].id) === String(listId)) L = lists[i];
+    }
+    var main = document.getElementById('lists-view-main');
+    var det = document.getElementById('lists-view-detail');
+    var title = document.getElementById('lists-detail-title');
+    var sub = document.getElementById('lists-detail-sub');
+    var wrap = document.getElementById('lists-detail-table-wrap');
+    var tabsHost = document.getElementById('lists-detail-tabs');
+    var actions = document.getElementById('lists-detail-actions');
+    if (!L || !main || !det || !wrap) return;
+    normalizeListForUi(L);
+    main.style.display = 'none';
+    det.style.display = 'block';
+    if (title) title.textContent = L.title;
+    if (sub) sub.textContent = (L.dataType || 'List') + (L.templateId ? ' · template' : '');
+    if (actions) {
+      actions.innerHTML =
+        '<button type="button" class="btn" data-list-rename="' +
+        escList(L.id) +
+        '">Rename</button><button type="button" class="btn" data-list-del="' +
+        escList(L.id) +
+        '">Delete</button>';
+      var rBtn = actions.querySelector('[data-list-rename]');
+      if (rBtn)
+        rBtn.addEventListener('click', function () {
+          var nm = window.prompt('List name', L.title);
+          if (nm != null && String(nm).trim()) {
+            renameWorkspaceList(L.id, nm);
+            if (title) title.textContent = String(nm).trim();
+          }
+        });
+      var dBtn = actions.querySelector('[data-list-del]');
+      if (dBtn)
+        dBtn.addEventListener('click', function () {
+          if (window.confirm('Delete this list?')) deleteWorkspaceList(L.id);
+        });
+    }
+    var effTabs = listDetailEffectiveTabs(L);
+    if (tabsHost && L.layout !== 'notion' && effTabs.length > 1) {
+      tabsHost.style.display = 'flex';
+      tabsHost.innerHTML = effTabs
+        .map(function (t) {
+          return (
+            '<button type="button" class="lists-detail-tab' +
+            (t.id === L.activeTabId ? ' on' : '') +
+            '" data-tab="' +
+            escList(t.id) +
+            '">' +
+            escList(t.label) +
+            '</button>'
+          );
+        })
+        .join('');
+      tabsHost.querySelectorAll('.lists-detail-tab').forEach(function (b) {
+        b.addEventListener('click', function () {
+          var tid = b.getAttribute('data-tab');
+          updateWorkspaceListById(L.id, function (X) {
+            X.activeTabId = tid;
+            X.activeView = listDetailTabToView(X, tid);
+          });
+        });
+      });
+    } else if (tabsHost) {
+      tabsHost.style.display = 'none';
+      tabsHost.innerHTML = '';
+    }
+    listRenderDetailBody(L);
     det.setAttribute('data-active-list', L.id);
+  }
+
+  function renderListsPageGrid() {
+    var grid = document.getElementById('lists-grid');
+    var empty = document.getElementById('lists-empty-hint');
+    if (!grid || !empty) return;
+    var lists = loadWorkspaceLists();
+    if (!lists.length) {
+      empty.style.display = 'block';
+      grid.style.display = 'none';
+      return;
+    }
+    empty.style.display = 'none';
+    grid.style.display = 'grid';
+    grid.innerHTML = lists
+      .map(function (L) {
+        return (
+          '<div class="card list-card-wrap" data-list-id="' +
+          escList(L.id) +
+          '">' +
+          '<div class="list-card list-card-main">' +
+          '<div style="font-weight:600;font-size:15px;margin-bottom:6px;">' +
+          escList(L.title) +
+          '</div>' +
+          '<div style="font-size:12px;color:var(--text3);">' +
+          escList(L.dataType || 'List') +
+          ' · ' +
+          (L.rows || []).length +
+          ' rows</div></div>' +
+          '<button type="button" class="list-card-menu" data-grid-menu="' +
+          escList(L.id) +
+          '" aria-label="List actions">⋯</button></div>'
+        );
+      })
+      .join('');
+    grid.querySelectorAll('.list-card-main').forEach(function (card) {
+      card.addEventListener('click', function () {
+        var w = card.closest('.list-card-wrap');
+        openListDetailView(w && w.getAttribute('data-list-id'));
+      });
+    });
+    grid.querySelectorAll('[data-grid-menu]').forEach(function (btn) {
+      btn.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var id = btn.getAttribute('data-grid-menu');
+        var choice = window.prompt('Type rename or delete', 'rename');
+        if (!choice) return;
+        if (String(choice).toLowerCase().indexOf('delete') === 0) {
+          if (window.confirm('Delete this list?')) deleteWorkspaceList(id);
+        } else {
+          var nm = window.prompt('Rename list', '');
+          if (nm != null && String(nm).trim()) renameWorkspaceList(id, nm);
+        }
+      });
+    });
   }
 
   function closeListDetailView() {
@@ -17376,9 +18199,9 @@ var incomePowerState = {
       modal.classList.add('on');
       modal.setAttribute('aria-hidden', 'false');
     }
+    renderListTemplateSuggested();
     renderListTemplateCategories();
     renderListTemplateCards();
-    syncListPreviewButton();
   }
 
   function closeListTemplatesModal() {
@@ -17387,6 +18210,156 @@ var incomePowerState = {
       modal.classList.remove('on');
       modal.setAttribute('aria-hidden', 'true');
     }
+  }
+
+  function closeListCustomizeModal() {
+    var m = document.getElementById('listCustomizeModal');
+    if (m) {
+      m.classList.remove('on');
+      m.setAttribute('aria-hidden', 'true');
+    }
+    listsCustomizeState.template = null;
+  }
+
+  function openListCustomizeModal(tplId) {
+    var tpl = findListTemplate(tplId);
+    if (!tpl) return;
+    listsCustomizeState.template = tpl;
+    listsCustomizeState.enabledFeatures = tplDefaultEnabledMap(tpl);
+    var tabs = listDetailEffectiveTabs(tpl);
+    listsCustomizeState.previewTab = (tabs[0] && tabs[0].id) || 'all';
+    closeListTemplatesModal();
+    var m = document.getElementById('listCustomizeModal');
+    var ht = document.getElementById('list-cust-heading');
+    if (ht) ht.textContent = 'Customize ' + tpl.title;
+    if (m) {
+      m.classList.add('on');
+      m.setAttribute('aria-hidden', 'false');
+    }
+    renderCustomizeChips();
+    renderCustomizePreview();
+  }
+
+  function renderCustomizeChips() {
+    var tpl = listsCustomizeState.template;
+    var host = document.getElementById('list-cust-chips');
+    if (!host || !tpl) return;
+    var feats = (tpl.columnDefs || []).filter(function (d) {
+      return d.featureId;
+    });
+    host.innerHTML = feats
+      .map(function (d) {
+        var on = !!listsCustomizeState.enabledFeatures[d.featureId];
+        return (
+          '<button type="button" class="list-cust-chip' +
+          (on ? ' on' : '') +
+          '" data-feat="' +
+          escList(d.featureId) +
+          '">' +
+          (d.isAi ? '<span class="list-cust-ai">AI</span> ' : '') +
+          escList(d.name) +
+          '</button>'
+        );
+      })
+      .join('');
+    host.querySelectorAll('.list-cust-chip').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        var fid = btn.getAttribute('data-feat');
+        listsCustomizeState.enabledFeatures[fid] = !listsCustomizeState.enabledFeatures[fid];
+        renderCustomizeChips();
+        renderCustomizePreview();
+      });
+    });
+  }
+
+  function renderCustomizePreview() {
+    var tpl = listsCustomizeState.template;
+    var inner = document.getElementById('list-cust-preview-inner');
+    var hid = document.getElementById('list-cust-hidden-count');
+    if (!inner || !tpl) return;
+    var L = materializeListFromTemplateSelection(tpl, listsCustomizeState.enabledFeatures);
+    L.activeTabId = listsCustomizeState.previewTab;
+    var totalOpt = (tpl.columnDefs || []).filter(function (d) {
+      return d.featureId;
+    }).length;
+    var onCount = Object.keys(listsCustomizeState.enabledFeatures).filter(function (k) {
+      return listsCustomizeState.enabledFeatures[k];
+    }).length;
+    if (hid) hid.textContent = Math.max(0, totalOpt - onCount) + ' hidden properties';
+    var tabs = listDetailEffectiveTabs(tpl);
+    var tabBar =
+      '<div class="list-cust-preview-tabs">' +
+      tabs
+        .map(function (t) {
+          return (
+            '<button type="button" class="list-cust-ptab' +
+            (t.id === listsCustomizeState.previewTab ? ' on' : '') +
+            '" data-ptab="' +
+            escList(t.id) +
+            '">' +
+            escList(t.label) +
+            '</button>'
+          );
+        })
+        .join('') +
+      '</div>';
+    inner.innerHTML =
+      '<div class="list-cust-phdr">' +
+      escList(tpl.emoji || '📋') +
+      ' <strong>' +
+      escList(tpl.title) +
+      '</strong></div>' +
+      tabBar +
+      '<div id="list-cust-preview-body"></div>';
+    inner.querySelectorAll('.list-cust-ptab').forEach(function (b) {
+      b.addEventListener('click', function () {
+        listsCustomizeState.previewTab = b.getAttribute('data-ptab') || 'all';
+        renderCustomizePreview();
+      });
+    });
+    var body = inner.querySelector('#list-cust-preview-body');
+    if (!body) return;
+    if (listDetailTabToView(L, listsCustomizeState.previewTab) === 'calendar') body.innerHTML = listsCalendarHtml(L);
+    else if (listDetailTabToView(L, listsCustomizeState.previewTab) === 'board' && L.boardGroupColumnId) body.innerHTML = listsBoardHtml(L);
+    else body.innerHTML = listsTableHtml(L);
+  }
+
+  function renderTemplateCardInner(t) {
+    var tags = (t.tags || [])
+      .map(function (g) {
+        var bg = '#93c5fd33';
+        if (g.tone === 'mint') bg = 'rgba(110,231,183,0.25)';
+        if (g.tone === 'amber') bg = 'rgba(252,211,77,0.35)';
+        return '<span class="list-tmpl-tag" style="background:' + bg + ';color:#334155;">' + escList(g.label) + '</span>';
+      })
+      .join('');
+    return (
+      '<button type="button" class="list-tmpl-card list-tmpl-card-compact" data-tpl-open="' +
+      escList(t.id) +
+      '"><div class="list-tmpl-thumb" aria-hidden="true">' +
+      escList(t.emoji || '📋') +
+      '</div><div><div class="list-tmpl-card-title">' +
+      escList(t.title) +
+      '</div><p class="list-tmpl-desc">' +
+      escList(t.desc) +
+      '</p><div class="list-tmpl-tags">' +
+      tags +
+      '</div></div></button>'
+    );
+  }
+
+  function renderListTemplateSuggested() {
+    var host = document.getElementById('list-tmpl-suggested');
+    if (!host) return;
+    var arr = LIST_TEMPLATES.filter(function (t) {
+      return t.suggested;
+    });
+    host.innerHTML = arr.map(renderTemplateCardInner).join('');
+    host.querySelectorAll('[data-tpl-open]').forEach(function (btn) {
+      btn.addEventListener('click', function () {
+        openListCustomizeModal(btn.getAttribute('data-tpl-open'));
+      });
+    });
   }
 
   function renderListTemplateCategories() {
@@ -17415,11 +18388,13 @@ var incomePowerState = {
   function filteredListTemplates() {
     var q = (listsUi.search || '').toLowerCase().trim();
     return LIST_TEMPLATES.filter(function (t) {
-      if (t.category !== listsUi.activeCat) return false;
+      if (t.suggested) return false;
+      if (!q && t.category !== listsUi.activeCat) return false;
       if (!q) return true;
       return (
         (t.title && t.title.toLowerCase().indexOf(q) !== -1) ||
-        (t.desc && t.desc.toLowerCase().indexOf(q) !== -1)
+        (t.desc && t.desc.toLowerCase().indexOf(q) !== -1) ||
+        (t.category && t.category.indexOf(q) !== -1)
       );
     });
   }
@@ -17432,110 +18407,12 @@ var incomePowerState = {
       host.innerHTML = '<p style="font-size:13px;color:#94a3b8;padding:12px;">No templates in this category.</p>';
       return;
     }
-    host.innerHTML = arr
-      .map(function (t) {
-        var tags = (t.tags || [])
-          .map(function (g) {
-            var bg = '#93c5fd33';
-            if (g.tone === 'mint') bg = 'rgba(110,231,183,0.25)';
-            if (g.tone === 'amber') bg = 'rgba(252,211,77,0.35)';
-            return (
-              '<span class="list-tmpl-tag" style="background:' +
-              bg +
-              ';color:#334155;">' +
-              escList(g.label) +
-              '</span>'
-            );
-          })
-          .join('');
-        return (
-          '<button type="button" class="list-tmpl-card' +
-          (t.id === listsUi.selectedTplId ? ' on' : '') +
-          '" data-tpl="' +
-          escList(t.id) +
-          '"><div class="list-tmpl-thumb" aria-hidden="true">' +
-          escList(t.emoji || '📋') +
-          '</div><div><div class="list-tmpl-card-title">' +
-          escList(t.title) +
-          '<span class="list-tmpl-badge">◎ ' +
-          escList(t.dataType) +
-          '</span></div><p class="list-tmpl-desc">' +
-          escList(t.desc) +
-          '</p><div class="list-tmpl-tags">' +
-          tags +
-          '</div></div></button>'
-        );
-      })
-      .join('');
-    host.querySelectorAll('.list-tmpl-card').forEach(function (btn) {
+    host.innerHTML = arr.map(renderTemplateCardInner).join('');
+    host.querySelectorAll('[data-tpl-open]').forEach(function (btn) {
       btn.addEventListener('click', function () {
-        listsUi.selectedTplId = btn.getAttribute('data-tpl');
-        renderListTemplateCards();
-        syncListPreviewButton();
+        openListCustomizeModal(btn.getAttribute('data-tpl-open'));
       });
     });
-  }
-
-  function syncListPreviewButton() {
-    var b = document.getElementById('list-tmpl-preview');
-    if (b) b.disabled = !listsUi.selectedTplId;
-  }
-
-  function openListPreviewModal(tplId) {
-    var tpl = findListTemplate(tplId);
-    if (!tpl) return;
-    var modal = document.getElementById('listPreviewModal');
-    var ti = document.getElementById('list-prev-title');
-    var ent = document.getElementById('list-prev-entity');
-    var desc = document.getElementById('list-prev-desc');
-    var thead = document.getElementById('list-prev-thead');
-    var tbody = document.getElementById('list-prev-tbody');
-    var attrs = document.getElementById('list-prev-attrs');
-    if (ti) ti.textContent = (tpl.emoji ? tpl.emoji + ' ' : '') + tpl.title;
-    if (ent) ent.textContent = tpl.dataType || 'List';
-    if (desc) desc.textContent = tpl.desc || '';
-    if (thead) {
-      thead.innerHTML =
-        '<tr>' +
-        tpl.columns
-          .map(function (c) {
-            return '<th>' + escList(c.name) + '</th>';
-          })
-          .join('') +
-        '</tr>';
-    }
-    if (tbody) {
-      tbody.innerHTML = (tpl.rows || [])
-        .map(function (r) {
-          return (
-            '<tr>' +
-            tpl.columns
-              .map(function (c) {
-                return '<td>' + escList(r[c.id] != null ? r[c.id] : '') + '</td>';
-              })
-              .join('') +
-            '</tr>'
-          );
-        })
-        .join('');
-    }
-    if (attrs) {
-      attrs.textContent = 'Columns: ' + tpl.columns.map(function (c) { return c.name; }).join(', ');
-    }
-    if (modal) {
-      modal.classList.add('on');
-      modal.setAttribute('aria-hidden', 'false');
-      modal.setAttribute('data-tpl', tplId);
-    }
-  }
-
-  function closeListPreviewModal() {
-    var modal = document.getElementById('listPreviewModal');
-    if (modal) {
-      modal.classList.remove('on');
-      modal.setAttribute('aria-hidden', 'true');
-      modal.removeAttribute('data-tpl');
-    }
   }
 
   function wireListsFeature() {
@@ -17591,35 +18468,37 @@ var incomePowerState = {
         document.body.classList.remove('mobile-nav-open');
       });
     }
-    var chatNewHeader = document.getElementById('btn-chat-new-thread');
-    if (chatNewHeader) {
-      chatNewHeader.addEventListener('click', function () {
-        if (typeof window.bizDashStartNewAdvisorSidebarThread === 'function') {
-          window.bizDashStartNewAdvisorSidebarThread();
-        }
-        document.body.classList.remove('mobile-nav-open');
-      });
-    }
-
     var closeT = document.getElementById('list-tmpl-close');
     if (closeT) closeT.addEventListener('click', closeListTemplatesModal);
-    var scratch = document.getElementById('list-tmpl-scratch');
-    if (scratch) {
-      scratch.addEventListener('click', function () {
+    var emptyDb = document.getElementById('list-tmpl-empty-db');
+    if (emptyDb) {
+      emptyDb.addEventListener('click', function () {
         closeListTemplatesModal();
-        var name = window.prompt('Name your list', 'Untitled list');
-        if (name === null) return;
-        pushWorkspaceList(blankWorkspaceList(String(name).trim() || 'Untitled list'));
+        pushWorkspaceList(blankNotionWorkspaceList());
         window.nav('lists', document.querySelector('.ni[data-nav="lists"]'));
         var first = loadWorkspaceLists()[0];
         if (first) openListDetailView(first.id);
       });
     }
-    var prevBtn = document.getElementById('list-tmpl-preview');
-    if (prevBtn) {
-      prevBtn.addEventListener('click', function () {
-        if (!listsUi.selectedTplId) return;
-        openListPreviewModal(listsUi.selectedTplId);
+    var aiBuild = document.getElementById('list-tmpl-ai-build');
+    if (aiBuild) {
+      aiBuild.addEventListener('click', function () {
+        closeListTemplatesModal();
+        if (typeof window.bizDashStartNewAdvisorSidebarThread === 'function') {
+          window.bizDashStartNewAdvisorSidebarThread();
+        }
+        window.nav('chat', document.querySelector('.ni[data-nav="chat"]'));
+        document.body.classList.remove('mobile-nav-open');
+        try {
+          window.dispatchEvent(
+            new CustomEvent('advisor-composer-prefill', {
+              detail: {
+                value: 'Create a workspace list for me: ',
+                focus: true,
+              },
+            }),
+          );
+        } catch (_) {}
       });
     }
     var tModal = document.getElementById('listTemplatesModal');
@@ -17637,29 +18516,32 @@ var incomePowerState = {
       });
     }
 
-    var prevClose = document.getElementById('list-prev-close');
-    if (prevClose) prevClose.addEventListener('click', closeListPreviewModal);
-    var prevBack = document.getElementById('list-prev-back');
-    if (prevBack) prevBack.addEventListener('click', closeListPreviewModal);
-    var pModal = document.getElementById('listPreviewModal');
-    if (pModal) {
-      pModal.addEventListener('click', function (ev) {
-        if (ev.target === pModal) closeListPreviewModal();
+    var custBack = document.getElementById('list-cust-back');
+    if (custBack) {
+      custBack.addEventListener('click', function () {
+        closeListCustomizeModal();
+        openListTemplatesModal();
       });
     }
-    var useTpl = document.getElementById('list-prev-use');
-    if (useTpl) {
-      useTpl.addEventListener('click', function () {
-        var modal = document.getElementById('listPreviewModal');
-        var tid = modal && modal.getAttribute('data-tpl');
-        if (!tid) return;
-        var tpl = findListTemplate(tid);
-        closeListPreviewModal();
-        closeListTemplatesModal();
-        if (tpl) pushWorkspaceList(listInstanceFromTemplate(tpl));
+    var custCont = document.getElementById('list-cust-continue');
+    if (custCont) {
+      custCont.addEventListener('click', function () {
+        var tpl = listsCustomizeState.template;
+        if (!tpl) return;
+        var L = materializeListFromTemplateSelection(tpl, listsCustomizeState.enabledFeatures);
+        var eff = listDetailEffectiveTabs(tpl);
+        L.activeTabId = (eff[0] && eff[0].id) || 'all';
+        L.activeView = listDetailTabToView(L, L.activeTabId);
+        closeListCustomizeModal();
+        pushWorkspaceList(L);
         window.nav('lists', document.querySelector('.ni[data-nav="lists"]'));
-        var first = loadWorkspaceLists()[0];
-        if (first) openListDetailView(first.id);
+        openListDetailView(L.id);
+      });
+    }
+    var cModal = document.getElementById('listCustomizeModal');
+    if (cModal) {
+      cModal.addEventListener('click', function (ev) {
+        if (ev.target === cModal) closeListCustomizeModal();
       });
     }
 
@@ -17667,10 +18549,12 @@ var incomePowerState = {
     if (backLists) backLists.addEventListener('click', closeListDetailView);
 
     document.addEventListener('keydown', function (ev) {
+      var c = document.getElementById('listCustomizeModal');
+      if (c && c.classList.contains('on') && ev.key === 'Escape') closeListCustomizeModal();
       var m = document.getElementById('listTemplatesModal');
       if (m && m.classList.contains('on') && ev.key === 'Escape') closeListTemplatesModal();
-      var p = document.getElementById('listPreviewModal');
-      if (p && p.classList.contains('on') && ev.key === 'Escape') closeListPreviewModal();
+      var np = document.getElementById('listNewPageModal');
+      if (np && np.classList.contains('on') && ev.key === 'Escape') closeListNewPageModal();
     });
 
     renderListsSidebar();

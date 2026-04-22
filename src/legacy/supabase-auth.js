@@ -389,6 +389,18 @@
     }
   }
 
+  /** Path slug for tenant URLs (`/:slug/…`). Exposed for Advisor org hydration. */
+  window.bizDashParseTenantSlug = parseTenantSlug;
+
+  /**
+   * Apply a workspace row from `resolve_session_workspace` or `my_organizations` so
+   * `window.currentOrganizationId` matches the active URL / membership.
+   */
+  window.bizDashApplyResolvedWorkspaceRow = function (row) {
+    if (!row || row.id == null) return;
+    setOrgContext(String(row.id), row.slug != null ? String(row.slug) : null, row.role != null ? String(row.role) : null);
+  };
+
   function escHtml(s) {
     return String(s || '')
       .replace(/&/g, '&amp;')

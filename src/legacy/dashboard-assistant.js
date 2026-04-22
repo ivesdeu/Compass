@@ -503,6 +503,99 @@
     } catch (_) {}
   }
 
+  function sleepMs(ms) {
+    return new Promise(function (resolve) {
+      setTimeout(resolve, ms);
+    });
+  }
+
+  function parseAdvisorTenantSlug() {
+    if (typeof window.bizDashParseTenantSlug === 'function') return window.bizDashParseTenantSlug();
+    var raw = (window.location.pathname || '/').replace(/\/+/g, '/');
+    if (raw !== '/' && raw.endsWith('/')) raw = raw.slice(0, -1);
+    var parts = raw.split('/').filter(Boolean);
+    if (!parts.length) return null;
+    var seg = parts[0];
+    if (seg === 'index.html' || seg === 'dist') return null;
+    if (/\.[a-z0-9]{1,8}$/i.test(seg)) return null;
+    var head = (seg || '').toLowerCase().split('.')[0];
+    var block = { login: 1, assets: 1, api: 1, favicon: 1, health: 1 };
+    if (block[head]) return null;
+    return String(seg).toLowerCase();
+  }
+
+  function readAdvisorOrgId() {
+    if (typeof window.bizDashGetCurrentOrgId === 'function') {
+      var a = window.bizDashGetCurrentOrgId();
+      if (a) return String(a).trim();
+    }
+    var w = window.currentOrganizationId;
+    return w && String(w).trim() ? String(w).trim() : null;
+  }
+
+  /**
+   * Ensures `currentOrganizationId` is set (poll + resolve_session_workspace + my_organizations)
+   * so Advisor can call `ai-assistant` with a valid organizationId.
+   */
+  async function ensureAdvisorOrganizationId() {
+    var existing = readAdvisorOrgId();
+    if (existing) return existing;
+
+    for (var i = 0; i < 32; i++) {
+      await sleepMs(100);
+      existing = readAdvisorOrgId();
+      if (existing) return existing;
+    }
+
+    var supabase = window.supabaseClient;
+    var user = window.currentUser;
+    if (!supabase || !user) return null;
+
+    var slug = parseAdvisorTenantSlug();
+
+    function applyRow(row) {
+      if (!row || row.id == null) return;
+      if (typeof window.bizDashApplyResolvedWorkspaceRow === 'function') {
+        window.bizDashApplyResolvedWorkspaceRow(row);
+      } else {
+        window.currentOrganizationId = String(row.id);
+        window.currentOrganizationSlug = row.slug != null ? String(row.slug) : null;
+        window.currentOrganizationRole = row.role != null ? String(row.role) : null;
+      }
+    }
+
+    try {
+      var wsRes = await supabase.rpc('resolve_session_workspace', { p_slug: slug || null });
+      if (!wsRes.error && wsRes.data && wsRes.data.length) {
+        applyRow(wsRes.data[0]);
+        existing = readAdvisorOrgId();
+        if (existing) return existing;
+      }
+    } catch (_) {}
+
+    try {
+      var listRes = await supabase.rpc('my_organizations');
+      if (!listRes.error && listRes.data && listRes.data.length) {
+        var pick = null;
+        if (slug) {
+          for (var j = 0; j < listRes.data.length; j++) {
+            var o = listRes.data[j];
+            if (String(o.slug || '').toLowerCase() === String(slug).toLowerCase()) {
+              pick = o;
+              break;
+            }
+          }
+        }
+        var org = pick || listRes.data[0];
+        if (org && org.id) applyRow(org);
+        existing = readAdvisorOrgId();
+        if (existing) return existing;
+      }
+    } catch (_) {}
+
+    return readAdvisorOrgId();
+  }
+
   async function invokeAdvisorTask(req) {
     var supabase = window.supabaseClient;
     var user = window.currentUser;
@@ -526,6 +619,22 @@
           response: { title: 'Sign in required', bullets: ['Your session expired or demo mode is active. Sign in to use Advisor.'] },
         };
       }
+      var oid =
+        req && req.organizationId && String(req.organizationId).trim() ? String(req.organizationId).trim() : null;
+      if (!oid) oid = await ensureAdvisorOrganizationId();
+      if (!oid) {
+        return {
+          ok: false,
+          error: 'organizationId missing',
+          response: {
+            title: 'Workspace required',
+            bullets: [
+              'Use your workspace URL (…/your-workspace-slug/…), or wait until the workspace finishes loading, then try again.',
+            ],
+          },
+        };
+      }
+      req = Object.assign({}, req, { organizationId: oid });
       var res = await supabase.functions.invoke('ai-assistant', {
         body: req,
         headers: {
@@ -570,19 +679,11 @@
     var imagePreview = null;
     var selectedTool = null;
 
-    function advisorHasUserMessages() {
-      return !!(logEl && logEl.querySelector('.chat-msg.user'));
-    }
-
     function syncAdvisorComposerLayout() {
       if (!pageChat) return;
-      if (advisorHasUserMessages()) {
-        pageChat.classList.remove('chat-advisor-centered');
-        pageChat.classList.add('chat-compose-docked');
-      } else {
-        pageChat.classList.add('chat-advisor-centered');
-        pageChat.classList.remove('chat-compose-docked');
-      }
+      /* Stable layout: composer stays bottom-centered; transcript scrolls above (no docked/fixed jump). */
+      pageChat.classList.add('chat-advisor-centered');
+      pageChat.classList.remove('chat-compose-docked');
     }
 
     window.bizDashSyncAdvisorComposerLayout = syncAdvisorComposerLayout;
@@ -881,6 +982,57 @@
       messageEl.appendChild(wrap);
     }
 
+    function appendWorkspaceListProposalControls(messageEl, usageMeta, listProposal) {
+      var prop = listProposal && typeof listProposal === 'object' ? listProposal : null;
+      if (!prop || !String(prop.title || '').trim() || !messageEl || !usageMeta || !usageMeta.usageEventId) return;
+      var wrap = document.createElement('div');
+      wrap.className = 'advisor-crm-proposal-actions';
+      wrap.style.marginTop = '10px';
+      var summary = document.createElement('div');
+      summary.style.fontSize = '12px';
+      summary.style.color = 'var(--text2)';
+      summary.style.marginBottom = '8px';
+      summary.style.lineHeight = '1.45';
+      var cols = Array.isArray(prop.columns) ? prop.columns : [];
+      summary.textContent =
+        String(prop.title).trim() +
+        (cols.length ? ' · ' + cols.map(function (c) { return c && c.name ? c.name : ''; }).filter(Boolean).join(', ') : '');
+      var row = document.createElement('div');
+      row.style.display = 'flex';
+      row.style.gap = '6px';
+      row.style.flexWrap = 'wrap';
+      var addBtn = document.createElement('button');
+      addBtn.type = 'button';
+      addBtn.className = 'btn btn-p';
+      addBtn.textContent = 'Create list';
+      addBtn.addEventListener('click', async function () {
+        if (typeof window.bizDashApplyWorkspaceListProposal !== 'function') return;
+        if (!window.confirm('Create this list in your workspace Lists tab?')) return;
+        addBtn.disabled = true;
+        try {
+          var res = window.bizDashApplyWorkspaceListProposal(prop);
+          await logAdvisorActionOutcome({
+            id: mkUuid(),
+            user_id: window.currentUser && window.currentUser.id ? window.currentUser.id : null,
+            organization_id: typeof window.bizDashGetCurrentOrgId === 'function' ? window.bizDashGetCurrentOrgId() : null,
+            usage_event_id: usageMeta.usageEventId,
+            task: usageMeta.task,
+            action_id: 'advisor-create-list',
+            action_label: 'Create list',
+            outcome: res && res.ok ? 'applied' : 'error',
+            details: { error: res && res.error ? res.error : null },
+            created_at: new Date().toISOString(),
+          });
+        } finally {
+          addBtn.disabled = false;
+        }
+      });
+      wrap.appendChild(summary);
+      row.appendChild(addBtn);
+      wrap.appendChild(row);
+      messageEl.appendChild(wrap);
+    }
+
     function appendCrmProposalControls(messageEl, usageMeta, crmProposal, contactRequestSnapshot) {
       if (!messageEl || !usageMeta || !usageMeta.usageEventId) return;
       var prop = crmProposal && typeof crmProposal === 'object' ? crmProposal : null;
@@ -993,7 +1145,9 @@
           typeof window.bizDashGetAdvisorContactContext === 'function' ? window.bizDashGetAdvisorContactContext() : null;
         var clientsDigest =
           typeof window.bizDashGetClientsDigestForAdvisor === 'function' ? window.bizDashGetClientsDigestForAdvisor() : [];
-        var orgId = typeof window.bizDashGetCurrentOrgId === 'function' ? window.bizDashGetCurrentOrgId() : window.currentOrganizationId;
+        var orgId = typeof window.bizDashGetCurrentOrgId === 'function' ? window.bizDashGetCurrentOrgId() : null;
+        if (!orgId && window.currentOrganizationId) orgId = String(window.currentOrganizationId).trim() || null;
+        if (!orgId) orgId = await ensureAdvisorOrganizationId();
         var request = {
           organizationId: orgId || undefined,
           task: task,
@@ -1046,6 +1200,9 @@
       }
       if (out && out.response && out.response.clientNoteProposal && usageMeta) {
         appendAdvisorClientNoteProposalControls(thinkingEl, usageMeta, out.response.clientNoteProposal);
+      }
+      if (out && out.response && out.response.workspaceListProposal && usageMeta) {
+        appendWorkspaceListProposalControls(thinkingEl, usageMeta, out.response.workspaceListProposal);
       }
       if (out && out.response && Array.isArray(out.response.actions) && usageMeta) {
         appendActionButtons(thinkingEl, usageMeta, out.response.actions);

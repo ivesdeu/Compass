@@ -25,11 +25,11 @@ export function mountAdvisorReactComposer() {
   );
 }
 
-/** Wrapper so heading + input render together, with heading hidden once typing starts (docked mode). */
+/** Wrapper: heading + composer; layout is fixed in page CSS (no docked mode). */
 function AdvisorComposerWrapper({ composerApi }: { composerApi: AdvisorComposerApi }) {
   return (
-    <div className="w-full flex flex-col items-center gap-6">
-      <h2 className="advisor-greeting text-center text-[#0a0a0a] text-xl sm:text-[1.65rem] font-semibold tracking-tight">
+    <div className="w-full flex max-w-full flex-col items-center gap-4">
+      <h2 className="advisor-greeting text-center text-lg font-bold tracking-tight text-neutral-900 sm:text-xl">
         How Can I Help You
       </h2>
       <PromptBox composerApi={composerApi} />

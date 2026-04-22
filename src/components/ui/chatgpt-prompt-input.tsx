@@ -52,7 +52,7 @@ const PopoverContent = React.forwardRef<
       align={align}
       sideOffset={sideOffset}
       className={cn(
-        'z-50 w-64 rounded-xl bg-popover p-2 text-popover-foreground shadow-md outline-none',
+        'z-50 w-64 rounded-xl border border-[#e5e5e5] bg-white p-2 text-neutral-900 shadow-[0_1px_4px_rgba(0,0,0,0.06)] outline-none',
         'animate-in data-[state=open]:fade-in-0 data-[state=closed]:fade-out-0',
         'data-[state=open]:zoom-in-95 data-[state=closed]:zoom-out-95',
         'data-[side=bottom]:slide-in-from-top-2 data-[side=left]:slide-in-from-right-2',
@@ -103,7 +103,7 @@ const DialogContent = React.forwardRef<
       )}
       {...props}
     >
-      <div className="relative bg-card rounded-[28px] overflow-hidden shadow-2xl p-1">
+      <div className="relative overflow-hidden rounded-2xl border border-[#e5e5e5] bg-white p-1 shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
         {children}
         <DialogPrimitive.Close className="absolute right-3 top-3 z-10 rounded-full bg-background/50 p-1 hover:bg-accent transition-all">
           <XIcon className="h-5 w-5 text-muted-foreground hover:text-foreground" />
@@ -299,7 +299,7 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, Props>(
 
     return (
       <div
-        className="flex flex-col rounded-[28px] p-2 shadow-[0_4px_28px_rgba(0,0,0,0.07)] transition-colors bg-white border border-[#e8e8e8] cursor-text w-full"
+        className="flex w-full cursor-text flex-col rounded-2xl border border-solid border-[#e5e5e5] bg-white p-2 shadow-[0_1px_4px_rgba(0,0,0,0.06)] transition-colors"
         data-advisor-composer
       >
         <input
@@ -398,7 +398,7 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, Props>(
                     <p>Explore Tools</p>
                   </TooltipContent>
                 </Tooltip>
-                <PopoverContent side="top" align="start" className="bg-white border border-[#e8e8e8] shadow-lg">
+                <PopoverContent side="top" align="start" className="border border-[#e5e5e5] bg-white shadow-[0_1px_4px_rgba(0,0,0,0.06)]">
                   <div className="flex flex-col gap-0.5">
                     {toolsList.map((tool) => (
                       <button
@@ -425,7 +425,7 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, Props>(
                   <button
                     type="button"
                     onClick={() => setSelectedTool(null)}
-                    className="flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium text-[#2294ff] hover:bg-blue-50 transition-colors"
+                    className="flex h-8 items-center gap-1.5 rounded-full px-2.5 text-[13px] font-medium text-neutral-700 transition-colors hover:bg-neutral-100"
                   >
                     {ActiveToolIcon && <ActiveToolIcon className="h-4 w-4" />}
                     <span>{activeTool.shortName}</span>
