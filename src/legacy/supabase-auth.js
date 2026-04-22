@@ -2270,8 +2270,7 @@
     await runAuthSessionFlow(session.user, session);
   });
 
-  var oauthDemoWired = false;
-  var emailAuthWired = false;
+  var authGateReactRootWired = false;
 
   function clearOAuthRelatedGateHints() {
     var hint = $('gate-signup-email-hint');
@@ -2284,97 +2283,27 @@
     if (confirmInput && !authRecoveryMode) confirmInput.value = '';
   }
 
-  /** Google + GitHub OAuth and View demo — does not wait for `#gate-email` (provider-first React gate). */
-  function wireAuthGateOauthAndDemo() {
-    if (!$('gate-google')) {
-      if (typeof requestAnimationFrame !== 'undefined') {
-        requestAnimationFrame(wireAuthGateOauthAndDemo);
-      } else {
-        setTimeout(wireAuthGateOauthAndDemo, 0);
-      }
-      return;
-    }
-    if (oauthDemoWired) return;
-    oauthDemoWired = true;
-
-    function setOauthError(msg) {
-      var errorBox = $('gate-auth-error');
-      if (errorBox) errorBox.textContent = msg || '';
-    }
-
-    function wireOAuthProvider(btnId, provider, label) {
-      var btn = $(btnId);
-      if (!btn) return;
-      btn.addEventListener('click', async function () {
-        clearOAuthRelatedGateHints();
-        setOauthError('');
-        try {
-          if (typeof window.setBizdashScreenshotNoCloud === 'function') {
-            window.setBizdashScreenshotNoCloud(false);
-          }
-        } catch (_) {}
-        try {
-          var path = window.location.pathname || '/';
-          var search = window.location.search || '';
-          var redirectTo = window.location.origin + path + search;
-          var res = await supabase.auth.signInWithOAuth({
-            provider: provider,
-            options: {
-              redirectTo: redirectTo,
-            },
-          });
-          if (res.error) {
-            setOauthError(res.error.message || label + ' sign-in failed.');
-          }
-        } catch (err) {
-          console.error(provider + ' auth error', err);
-          setOauthError('Unexpected error starting ' + label + ' sign-in.');
-        }
-      });
-    }
-
-    var btnViewDemo = $('gate-view-demo');
-    if (btnViewDemo) {
-      btnViewDemo.addEventListener('click', function () {
-        showDemoDashboard();
-      });
-    }
-
-    wireOAuthProvider('gate-github', 'github', 'GitHub');
-    wireOAuthProvider('gate-google', 'google', 'Google');
-
-    var btnWs = $('btn-open-workspaces');
-    if (btnWs) {
-      btnWs.addEventListener('click', function () {
-        if (typeof window.openWorkspaceSwitcherModal === 'function') {
-          window.openWorkspaceSwitcherModal();
-        }
-      });
-    }
-    wireWorkspaceModal();
+  function closestGateEl(target, id) {
+    if (!target || typeof target.closest !== 'function') return null;
+    return target.closest('#' + id);
   }
 
-  /** Email/password, forgot password, resend, recovery — wired when React mounts the email step (`bizdash-auth-email-mounted`). */
-  function wireAuthGateEmailFlow() {
-    if (emailAuthWired) return;
-    if (!$('gate-email')) {
+  /**
+   * OAuth, View demo, and email/password controls are delegated from `#auth-login-react-root` so
+   * React can remount provider/email steps without losing listeners (per-button wiring only ran once).
+   */
+  function wireAuthGateReactRootDelegated() {
+    if (authGateReactRootWired) return;
+    var root = $('auth-login-react-root');
+    if (!root) {
       if (typeof requestAnimationFrame !== 'undefined') {
-        requestAnimationFrame(wireAuthGateEmailFlow);
+        requestAnimationFrame(wireAuthGateReactRootDelegated);
       } else {
-        setTimeout(wireAuthGateEmailFlow, 0);
+        setTimeout(wireAuthGateReactRootDelegated, 0);
       }
       return;
     }
-    emailAuthWired = true;
-
-    captureInviteFromUrlToStorage();
-    updateGateInviteHint();
-
-    var emailInput = $('gate-email');
-    var passwordInput = $('gate-password');
-    var confirmWrap = $('gate-confirm-wrap');
-    var confirmInput = $('gate-confirm-password');
-    var errorBox = $('gate-auth-error');
+    authGateReactRootWired = true;
 
     function authEmailRedirectTo() {
       try {
@@ -2392,160 +2321,224 @@
       if (btnR) btnR.style.display = dis;
     }
 
-    function setError(msg) {
-      if (errorBox) errorBox.textContent = msg || '';
+    function setGateAuthError(msg) {
+      var ge = $('gate-auth-error');
+      if (ge) ge.textContent = msg || '';
     }
 
     /** Inline confirm row is for password recovery only (sign up is the inline React step in `auth-login-gate.tsx`). */
     function setSignupMode(_on) {
       void _on;
+      var confirmWrap = $('gate-confirm-wrap');
+      var confirmInput = $('gate-confirm-password');
       if (confirmWrap) confirmWrap.style.display = authRecoveryMode ? 'flex' : 'none';
       if (!authRecoveryMode && confirmInput) confirmInput.value = '';
     }
 
-    var btnSignin = $('gate-signin');
-    var btnForgot = $('gate-forgot-password');
+    async function handleOAuthClick(provider, label) {
+      clearOAuthRelatedGateHints();
+      setGateAuthError('');
+      try {
+        if (typeof window.setBizdashScreenshotNoCloud === 'function') {
+          window.setBizdashScreenshotNoCloud(false);
+        }
+      } catch (_) {}
+      try {
+        var path = window.location.pathname || '/';
+        var search = window.location.search || '';
+        var redirectTo = window.location.origin + path + search;
+        var res = await supabase.auth.signInWithOAuth({
+          provider: provider,
+          options: {
+            redirectTo: redirectTo,
+          },
+        });
+        if (res.error) {
+          setGateAuthError(res.error.message || label + ' sign-in failed.');
+        }
+      } catch (err) {
+        console.error(provider + ' auth error', err);
+        setGateAuthError('Unexpected error starting ' + label + ' sign-in.');
+      }
+    }
 
-    if (btnSignin) {
-      btnSignin.addEventListener('click', async function () {
-        if (!authRecoveryMode) setSignupMode(false);
-        var email = emailInput && emailInput.value.trim();
-        var password = passwordInput && passwordInput.value;
-        setError('');
-        setSignupEmailDeliverabilityHint(false);
-        if (authRecoveryMode) {
-          var confirmPasswordRecovery = confirmInput && confirmInput.value;
-          if (!password) {
-            setError('New password is required.');
-            return;
-          }
-          if (!confirmPasswordRecovery) {
-            setError('Please confirm your new password.');
-            return;
-          }
-          if (password !== confirmPasswordRecovery) {
-            setError('Passwords do not match.');
-            return;
-          }
-          try {
-            var upd = await supabase.auth.updateUser({ password: password });
-            if (upd.error) {
-              setError(upd.error.message || 'Could not update password.');
-              return;
-            }
-            setAuthRecoveryMode(false);
-            if (confirmInput) confirmInput.value = '';
-            if (passwordInput) passwordInput.value = '';
-            setError('Password updated. You can sign in with your new password.');
-            try {
-              await supabase.auth.signOut();
-            } catch (_) {}
-            showLogin();
-          } catch (errRecovery) {
-            console.error('password update error', errRecovery);
-            setError('Unexpected error updating password.');
-          }
+    async function handleGateSigninClick() {
+      var emailInput = $('gate-email');
+      var passwordInput = $('gate-password');
+      var confirmInput = $('gate-confirm-password');
+      if (!authRecoveryMode) setSignupMode(false);
+      var email = emailInput && emailInput.value.trim();
+      var password = passwordInput && passwordInput.value;
+      setGateAuthError('');
+      setSignupEmailDeliverabilityHint(false);
+      if (authRecoveryMode) {
+        var confirmPasswordRecovery = confirmInput && confirmInput.value;
+        if (!password) {
+          setGateAuthError('New password is required.');
           return;
         }
-        if (!email || !password) {
-          setError('Email and password are required.');
+        if (!confirmPasswordRecovery) {
+          setGateAuthError('Please confirm your new password.');
+          return;
+        }
+        if (password !== confirmPasswordRecovery) {
+          setGateAuthError('Passwords do not match.');
           return;
         }
         try {
-          var res = await supabase.auth.signInWithPassword({ email: email, password: password });
-          if (res.error) {
-            setError(res.error.message || 'Could not sign in.');
+          var upd = await supabase.auth.updateUser({ password: password });
+          if (upd.error) {
+            setGateAuthError(upd.error.message || 'Could not update password.');
             return;
           }
-          var signedUser = res.data && res.data.user;
-          if (signedUser && signedUser.email && !signedUser.email_confirmed_at) {
-            try {
-              await supabase.auth.signOut();
-            } catch (_) {}
-            setError('Confirm your email before signing in. Use the link we sent to your inbox (check spam).');
-            return;
-          }
+          setAuthRecoveryMode(false);
+          if (confirmInput) confirmInput.value = '';
+          if (passwordInput) passwordInput.value = '';
+          setGateAuthError('Password updated. You can sign in with your new password.');
           try {
-            if (typeof window.setBizdashScreenshotNoCloud === 'function') {
-              window.setBizdashScreenshotNoCloud(false);
-            }
+            await supabase.auth.signOut();
           } catch (_) {}
-          setCurrentUser(res.data.user);
-        } catch (err) {
-          console.error('signIn error', err);
-          setError('Unexpected error signing in.');
+          showLogin();
+        } catch (errRecovery) {
+          console.error('password update error', errRecovery);
+          setGateAuthError('Unexpected error updating password.');
         }
-      });
-    }
-
-    var btnResendConfirm = $('gate-resend-confirm');
-    if (btnResendConfirm) {
-      btnResendConfirm.addEventListener('click', async function () {
-        var email = emailInput && emailInput.value ? emailInput.value.trim() : '';
-        if (!email) {
-          setError('Enter the email you signed up with, then click Resend confirmation email.');
+        return;
+      }
+      if (!email || !password) {
+        setGateAuthError('Email and password are required.');
+        return;
+      }
+      try {
+        var res = await supabase.auth.signInWithPassword({ email: email, password: password });
+        if (res.error) {
+          setGateAuthError(res.error.message || 'Could not sign in.');
           return;
         }
-        setError('');
-        try {
-          var out = await supabase.auth.resend({
-            type: 'signup',
-            email: email,
-            options: { emailRedirectTo: authEmailRedirectTo() },
-          });
-          if (out.error) {
-            setError(out.error.message || 'Could not resend confirmation email.');
-            return;
-          }
-          setError('If this address can receive mail from your project, another confirmation message was sent. Check spam.');
-          setSignupEmailDeliverabilityHint(true);
-        } catch (errRes) {
-          console.error('resend confirmation', errRes);
-          setError('Unexpected error resending confirmation email.');
-        }
-      });
-    }
-
-    if (btnForgot) {
-      btnForgot.addEventListener('click', async function () {
-        setSignupMode(false);
-        setSignupEmailDeliverabilityHint(false);
-        var email = emailInput && emailInput.value ? emailInput.value.trim() : '';
-        if (!email) {
-          setError('Enter your email, then click Forgot password again.');
+        var signedUser = res.data && res.data.user;
+        if (signedUser && signedUser.email && !signedUser.email_confirmed_at) {
+          try {
+            await supabase.auth.signOut();
+          } catch (_) {}
+          setGateAuthError('Confirm your email before signing in. Use the link we sent to your inbox (check spam).');
           return;
         }
-        setError('');
-        setSignupEmailDeliverabilityHint(false);
         try {
-          var redirectTo = authEmailRedirectTo();
-          var reset = await supabase.auth.resetPasswordForEmail(email, { redirectTo: redirectTo });
-          if (reset.error) {
-            setError(reset.error.message || 'Could not send reset email.');
-            return;
+          if (typeof window.setBizdashScreenshotNoCloud === 'function') {
+            window.setBizdashScreenshotNoCloud(false);
           }
-          setError('Password reset email sent. Open the link in your email to set a new password.');
-        } catch (errForgot) {
-          console.error('reset password error', errForgot);
-          setError('Unexpected error sending reset email.');
+        } catch (_) {}
+        setCurrentUser(res.data.user);
+      } catch (err) {
+        console.error('signIn error', err);
+        setGateAuthError('Unexpected error signing in.');
+      }
+    }
+
+    async function handleGateResendClick() {
+      var emailInput = $('gate-email');
+      var email = emailInput && emailInput.value ? emailInput.value.trim() : '';
+      if (!email) {
+        setGateAuthError('Enter the email you signed up with, then click Resend confirmation email.');
+        return;
+      }
+      setGateAuthError('');
+      try {
+        var out = await supabase.auth.resend({
+          type: 'signup',
+          email: email,
+          options: { emailRedirectTo: authEmailRedirectTo() },
+        });
+        if (out.error) {
+          setGateAuthError(out.error.message || 'Could not resend confirmation email.');
+          return;
+        }
+        setGateAuthError('If this address can receive mail from your project, another confirmation message was sent. Check spam.');
+        setSignupEmailDeliverabilityHint(true);
+      } catch (errRes) {
+        console.error('resend confirmation', errRes);
+        setGateAuthError('Unexpected error resending confirmation email.');
+      }
+    }
+
+    async function handleGateForgotClick() {
+      var emailInput = $('gate-email');
+      setSignupMode(false);
+      setSignupEmailDeliverabilityHint(false);
+      var email = emailInput && emailInput.value ? emailInput.value.trim() : '';
+      if (!email) {
+        setGateAuthError('Enter your email, then click Forgot password again.');
+        return;
+      }
+      setGateAuthError('');
+      setSignupEmailDeliverabilityHint(false);
+      try {
+        var redirectTo = authEmailRedirectTo();
+        var reset = await supabase.auth.resetPasswordForEmail(email, { redirectTo: redirectTo });
+        if (reset.error) {
+          setGateAuthError(reset.error.message || 'Could not send reset email.');
+          return;
+        }
+        setGateAuthError('Password reset email sent. Open the link in your email to set a new password.');
+      } catch (errForgot) {
+        console.error('reset password error', errForgot);
+        setGateAuthError('Unexpected error sending reset email.');
+      }
+    }
+
+    root.addEventListener('click', function (ev) {
+      var t = ev.target;
+      if (closestGateEl(t, 'gate-view-demo')) {
+        showDemoDashboard();
+        return;
+      }
+      if (closestGateEl(t, 'gate-google')) {
+        void handleOAuthClick('google', 'Google');
+        return;
+      }
+      if (closestGateEl(t, 'gate-github')) {
+        void handleOAuthClick('github', 'GitHub');
+        return;
+      }
+      if (closestGateEl(t, 'gate-signin')) {
+        void handleGateSigninClick();
+        return;
+      }
+      if (closestGateEl(t, 'gate-resend-confirm')) {
+        void handleGateResendClick();
+        return;
+      }
+      if (closestGateEl(t, 'gate-forgot-password')) {
+        void handleGateForgotClick();
+        return;
+      }
+    });
+
+    var btnWs = $('btn-open-workspaces');
+    if (btnWs) {
+      btnWs.addEventListener('click', function () {
+        if (typeof window.openWorkspaceSwitcherModal === 'function') {
+          window.openWorkspaceSwitcherModal();
         }
       });
     }
+    wireWorkspaceModal();
   }
 
   window.addEventListener('bizdash-auth-email-mounted', function () {
-    wireAuthGateEmailFlow();
+    captureInviteFromUrlToStorage();
+    updateGateInviteHint();
   });
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', function () {
       captureInviteFromUrlToStorage();
       updateGateInviteHint();
-      wireAuthGateOauthAndDemo();
+      wireAuthGateReactRootDelegated();
     });
   } else {
     captureInviteFromUrlToStorage();
     updateGateInviteHint();
-    wireAuthGateOauthAndDemo();
+    wireAuthGateReactRootDelegated();
   }
 })();

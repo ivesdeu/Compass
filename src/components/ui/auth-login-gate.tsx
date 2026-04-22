@@ -1,19 +1,18 @@
 import { useCallback, useEffect, useLayoutEffect, useState } from 'react';
 import { ArrowLeft, Lock, Mail } from 'lucide-react';
 
-import {
-  AuthForm,
-  authFormDefaultGooglePrimary,
-  authFormDefaultSecondaryEmail,
-  authFormDefaultSecondaryGithub,
-} from '@/components/ui/sign-in-1';
+import { authFormDefaultGooglePrimary, authFormDefaultSecondaryGithub } from '@/components/ui/sign-in-1';
 import { Button } from '@/components/ui/button';
-import { Card, CardContent } from '@/components/ui/card';
+import { Card, CardContent, CardHeader } from '@/components/ui/card';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { cn } from '@/lib/utils';
 
-type Step = 'providers' | 'email' | 'signup';
+type Step = 'signin' | 'signup';
+
+const COMPASS_TERMS_URL = 'https://compass.ivesdeu.com/terms';
+const COMPASS_PRIVACY_URL = 'https://compass.ivesdeu.com/privacy';
 
 function authEmailRedirectTo() {
   try {
@@ -51,7 +50,7 @@ function syncSignupEmailToMainGate(email: string) {
 }
 
 export function AuthLoginGate() {
-  const [step, setStep] = useState<Step>('providers');
+  const [step, setStep] = useState<Step>('signin');
   const [recoveryMode, setRecoveryMode] = useState(readRecoveryFlag);
 
   const [signupFirst, setSignupFirst] = useState('');
@@ -64,13 +63,12 @@ export function AuthLoginGate() {
   const [signupSubmitting, setSignupSubmitting] = useState(false);
 
   useLayoutEffect(() => {
-    if (readRecoveryFlag()) setStep('email');
+    if (readRecoveryFlag()) setStep('signin');
   }, []);
 
   useLayoutEffect(() => {
-    if (step === 'email') {
-      window.dispatchEvent(new CustomEvent('bizdash-auth-email-mounted'));
-    }
+    if (step !== 'signin') return;
+    window.dispatchEvent(new CustomEvent('bizdash-auth-email-mounted'));
   }, [step]);
 
   useEffect(() => {
@@ -78,11 +76,11 @@ export function AuthLoginGate() {
       const ce = e as CustomEvent<{ on?: boolean }>;
       if (!ce.detail || typeof ce.detail.on !== 'boolean') return;
       setRecoveryMode(ce.detail.on);
-      if (ce.detail.on) setStep('email');
+      if (ce.detail.on) setStep('signin');
     };
     const onLoggedOut = () => {
       setRecoveryMode(false);
-      setStep('providers');
+      setStep('signin');
     };
     window.addEventListener('bizdash-auth-recovery-mode', onRecovery as EventListener);
     window.addEventListener('bizdash-auth-logged-out', onLoggedOut);
@@ -176,7 +174,7 @@ export function AuthLoginGate() {
         }
       }
       syncSignupEmailToMainGate(em);
-      setStep('email');
+      setStep('signin');
       setSignupEmailDeliverabilityHint(false);
       if (newUser?.email_confirmed_at) {
         setMainAuthError('Account created. Sign in with your email and password.');
@@ -199,19 +197,24 @@ export function AuthLoginGate() {
   }, [signupFirst, signupLast, signupCompany, signupEmail, signupPassword, signupConfirm]);
 
   const googlePrimary = authFormDefaultGooglePrimary();
+  const githubSecondary = authFormDefaultSecondaryGithub();
   const footerContent = (
     <>
       By continuing, you agree to our{' '}
       <a
         className="text-foreground underline decoration-neutral-300 underline-offset-4 hover:decoration-neutral-400"
-        href="#terms"
+        href={COMPASS_TERMS_URL}
+        target="_blank"
+        rel="noopener noreferrer"
       >
         Terms
       </a>{' '}
       and{' '}
       <a
         className="text-foreground underline decoration-neutral-300 underline-offset-4 hover:decoration-neutral-400"
-        href="#privacy"
+        href={COMPASS_PRIVACY_URL}
+        target="_blank"
+        rel="noopener noreferrer"
       >
         Privacy Policy
       </a>
@@ -232,51 +235,63 @@ export function AuthLoginGate() {
         className="mb-4 min-h-[1.25rem] text-sm text-destructive empty:min-h-0"
       />
 
-      {step === 'providers' ? (
-        <AuthForm
-          logoSrc="/idm-logo.png"
-          logoAlt="IDM"
-          title="Welcome back"
-          description="Sign in to your account to continue"
-          primaryAction={googlePrimary}
-          secondaryActions={[
-            authFormDefaultSecondaryEmail(() => setStep('email')),
-            authFormDefaultSecondaryGithub(),
-          ]}
-          skipAction={{
-            id: 'gate-view-demo',
-            label: 'View demo',
-            variant: 'secondary',
-          }}
-          footerContent={footerContent}
-        />
-      ) : null}
-
-      {step === 'email' ? (
-        <Card className="w-full rounded-lg border border-neutral-200/90 bg-white shadow-none ring-1 ring-black/[0.04]">
-          <CardContent className="flex flex-col gap-5 px-8 py-8">
-            <button
-              type="button"
-              className="inline-flex items-center gap-1 self-start rounded-md px-0 py-1 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
-              onClick={() => {
-                setStep('providers');
-                setRecoveryMode(readRecoveryFlag());
-              }}
-            >
-              <ArrowLeft className="h-4 w-4" aria-hidden />
-              Use another method
-            </button>
-
-            <div className="space-y-1">
-              <h1
-                id="gate-auth-heading"
-                className="text-lg font-semibold tracking-tight text-foreground"
+      <div hidden={step === 'signup'}>
+        <Card className="auth-form-enter w-full rounded-lg border border-neutral-200/90 bg-white shadow-none ring-1 ring-black/[0.04]">
+          <CardHeader className="space-y-1 px-8 pb-0 pt-8 text-center">
+            <div className="mx-auto mb-4 flex justify-center">
+              <img src="/idm-logo.png" alt="IDM" className="h-12 w-auto object-contain" width={120} height={48} />
+            </div>
+            <h1 id="gate-auth-heading" className="text-xl font-semibold tracking-tight text-foreground">
+              {recoveryMode ? 'Reset password' : 'Welcome back'}
+            </h1>
+            <p id="gate-auth-subtitle" className="text-[13px] leading-relaxed text-muted-foreground">
+              {recoveryMode
+                ? 'Set a new password for your account.'
+                : 'Sign in to your account to continue'}
+            </p>
+          </CardHeader>
+          <CardContent className="flex flex-col gap-3 px-8 pb-8 pt-6">
+            <div id="gate-oauth-stack" className="flex flex-col gap-2">
+              <Button
+                type="button"
+                id={googlePrimary.id}
+                variant={googlePrimary.variant ?? 'default'}
+                className={cn(
+                  'inline-flex h-10 w-full items-center justify-center gap-2 rounded-md text-[14px] font-medium shadow-none',
+                  googlePrimary.className,
+                )}
               >
-                {recoveryMode ? 'Reset password' : 'Sign in'}
-              </h1>
-              <p id="gate-auth-subtitle" className="text-[13px] leading-relaxed text-muted-foreground">
-                {recoveryMode ? 'Set a new password for your account.' : 'Sign in to use the dashboard.'}
-              </p>
+                {googlePrimary.icon ?? null}
+                {googlePrimary.label}
+              </Button>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="gate-email">Email</Label>
+              <div className="flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-2.5 transition-colors focus-within:border-neutral-400 focus-within:ring-1 focus-within:ring-neutral-900/5">
+                <Mail className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                <Input
+                  id="gate-email"
+                  type="email"
+                  autoComplete="email"
+                  placeholder="Enter your email"
+                  className="h-9 border-0 bg-transparent px-0 text-[15px] shadow-none focus-visible:ring-0"
+                />
+              </div>
+            </div>
+
+            <div className="flex flex-col gap-2">
+              <Label htmlFor="gate-password">Password</Label>
+              <div className="flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-2.5 transition-colors focus-within:border-neutral-400 focus-within:ring-1 focus-within:ring-neutral-900/5">
+                <Lock className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+                <Input
+                  id="gate-password"
+                  type="password"
+                  autoComplete={recoveryMode ? 'new-password' : 'current-password'}
+                  placeholder={recoveryMode ? 'New password' : 'Enter your password'}
+                  className="h-9 border-0 bg-transparent px-0 text-[15px] shadow-none focus-visible:ring-0"
+                />
+              </div>
             </div>
 
             <div
@@ -313,34 +328,6 @@ export function AuthLoginGate() {
             >
               Resend confirmation email
             </Button>
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="gate-email">Email</Label>
-              <div className="flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-2.5 transition-colors focus-within:border-neutral-400 focus-within:ring-1 focus-within:ring-neutral-900/5">
-                <Mail className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                <Input
-                  id="gate-email"
-                  type="email"
-                  autoComplete="email"
-                  placeholder="Enter your email"
-                  className="h-9 border-0 bg-transparent px-0 text-[15px] shadow-none focus-visible:ring-0"
-                />
-              </div>
-            </div>
-
-            <div className="flex flex-col gap-2">
-              <Label htmlFor="gate-password">Password</Label>
-              <div className="flex h-10 items-center gap-2 rounded-md border border-neutral-200 bg-white px-2.5 transition-colors focus-within:border-neutral-400 focus-within:ring-1 focus-within:ring-neutral-900/5">
-                <Lock className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
-                <Input
-                  id="gate-password"
-                  type="password"
-                  autoComplete={recoveryMode ? 'new-password' : 'current-password'}
-                  placeholder={recoveryMode ? 'New password' : 'Enter your password'}
-                  className="h-9 border-0 bg-transparent px-0 text-[15px] shadow-none focus-visible:ring-0"
-                />
-              </div>
-            </div>
 
             <div
               className="flex items-center justify-between gap-3"
@@ -387,9 +374,33 @@ export function AuthLoginGate() {
                 Create account
               </button>
             </p>
+
+            <Button
+              type="button"
+              id={githubSecondary.id}
+              variant={githubSecondary.variant ?? 'outline'}
+              className={cn(
+                'inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border-neutral-200/90 bg-white text-[14px] font-normal shadow-none hover:bg-neutral-50',
+                githubSecondary.className,
+              )}
+            >
+              {githubSecondary.icon}
+              {githubSecondary.label}
+            </Button>
+
+            <Button
+              type="button"
+              id="gate-view-demo"
+              variant="secondary"
+              className="inline-flex h-10 w-full items-center justify-center gap-2 rounded-md border border-transparent bg-neutral-100 text-[14px] font-normal text-foreground shadow-none hover:bg-neutral-200/70"
+            >
+              View demo
+            </Button>
+
+            <div className="mt-2 text-center text-[12px] leading-relaxed text-muted-foreground">{footerContent}</div>
           </CardContent>
         </Card>
-      ) : null}
+      </div>
 
       {step === 'signup' ? (
         <Card className="w-full rounded-lg border border-neutral-200/90 bg-white shadow-none ring-1 ring-black/[0.04]">
@@ -397,7 +408,7 @@ export function AuthLoginGate() {
             <button
               type="button"
               className="inline-flex items-center gap-1 self-start rounded-md px-0 py-1 text-[13px] text-muted-foreground transition-colors hover:text-foreground"
-              onClick={() => setStep('email')}
+              onClick={() => setStep('signin')}
             >
               <ArrowLeft className="h-4 w-4" aria-hidden />
               Back to sign in
@@ -501,7 +512,7 @@ export function AuthLoginGate() {
                   type="button"
                   variant="outline"
                   className="rounded-md border-neutral-200/90 shadow-none hover:bg-neutral-50"
-                  onClick={() => setStep('email')}
+                  onClick={() => setStep('signin')}
                   disabled={signupSubmitting}
                 >
                   Cancel

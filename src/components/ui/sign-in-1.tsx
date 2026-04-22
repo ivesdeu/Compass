@@ -1,5 +1,4 @@
 import * as React from 'react';
-import { Mail } from 'lucide-react';
 
 import { Button, type ButtonProps } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
@@ -157,14 +156,6 @@ export function authFormDefaultGooglePrimary(): AuthFormAction {
     id: 'gate-google',
     label: 'Continue with Google',
     icon: <GoogleMark />,
-  };
-}
-
-export function authFormDefaultSecondaryEmail(onPickEmail: () => void): AuthFormAction {
-  return {
-    label: 'Continue with Email',
-    icon: <Mail className="h-5 w-5 shrink-0 text-muted-foreground" aria-hidden />,
-    onClick: onPickEmail,
   };
 }
 
