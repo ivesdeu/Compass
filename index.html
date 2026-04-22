@@ -1864,19 +1864,19 @@
     display: flex;
     flex-direction: column;
     min-height: 0;
-    background: #e4e4e9;
+    background: #ffffff;
   }
-  /* Chat — distinct from dashboard: cool grey canvas, white transcript card, composer below */
+  /* Chat — ChatGPT-style: flat white column, centered transcript + docked composer (no in-page sidebar). */
   #page-chat.pg.on {
     display: flex;
     flex-direction: column;
     flex: 1 1 auto;
     min-height: 0;
     align-items: stretch;
-    padding: 12px 16px max(12px, env(safe-area-inset-bottom, 0px));
+    padding: 0 0 max(0px, env(safe-area-inset-bottom, 0px));
     min-height: calc(100dvh - 72px);
     box-sizing: border-box;
-    background: linear-gradient(180deg, #dfe0e6 0%, #e8e9ee 48%, #ececf1 100%);
+    background: #ffffff;
   }
   #page-chat.pg.on > .chat-shell {
     flex: 1 1 auto;
@@ -1885,25 +1885,52 @@
     flex-direction: column;
     width: 100%;
     max-width: 100%;
-    background: transparent;
+    background: #ffffff;
     border: none;
     border-radius: 0;
     box-shadow: none;
   }
-  .chat-advisor-center-wrap {
+  .chat-top-bar {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 48px;
+    padding: 10px 16px;
+    border-bottom: 1px solid #ececec;
+    background: #ffffff;
+  }
+  .chat-top-bar-title {
+    font-size: 14px;
+    font-weight: 600;
+    color: #1a1a1a;
+    letter-spacing: -0.01em;
+  }
+  .chat-composer-dock {
     flex-shrink: 0;
     display: flex;
     flex-direction: column;
     align-items: center;
     width: 100%;
     box-sizing: border-box;
-    padding-top: 8px;
+    padding: 12px 16px 16px;
+    background: #ffffff;
+    border-top: 1px solid #ececec;
+  }
+  .chat-composer-inner {
+    width: 100%;
+    max-width: 720px;
+    margin: 0 auto;
+    display: flex;
+    flex-direction: column;
+    gap: 8px;
+    box-sizing: border-box;
   }
   .advisor-chat-aux {
     width: 100%;
-    max-width: 42rem;
-    margin: 0 auto;
-    padding: 0 4px 4px;
+    max-width: 720px;
+    margin: 0;
+    padding: 0;
     box-sizing: border-box;
     flex-shrink: 0;
   }
@@ -1914,7 +1941,7 @@
     flex-direction: column;
     min-height: 0;
     max-height: none;
-    background: transparent;
+    background: #ffffff;
     border: none;
     border-radius: 0;
     box-shadow: none;
@@ -1924,41 +1951,45 @@
     min-height: 0;
     display: flex;
     flex-direction: column;
-    background: #fafafa;
+    background: #ffffff;
     overflow: hidden;
   }
   #page-chat.pg.on .chat-transcript {
     background: #ffffff;
-    border: 1px solid #d6d6dc;
-    border-radius: 16px;
-    box-shadow: 0 2px 12px rgba(15, 23, 42, 0.06);
-    margin: 0 0 14px;
+    border: none;
+    border-radius: 0;
+    box-shadow: none;
+    margin: 0;
     overflow: hidden;
   }
   #page-chat.pg.on .chat-log {
-    padding: 12px 12px 18px;
-    gap: 12px;
+    padding: 20px 16px 24px;
+    gap: 16px;
   }
   .chat-log {
     flex: 1 1 auto;
     min-height: 0;
     overflow-y: auto;
     overflow-anchor: none;
-    padding: 8px 4px 16px;
+    width: 100%;
+    max-width: 720px;
+    margin: 0 auto;
+    padding: 16px 16px 20px;
     display: flex;
     flex-direction: column;
-    gap: 10px;
+    gap: 16px;
     background: transparent;
+    box-sizing: border-box;
   }
   .chat-log::-webkit-scrollbar { width: 6px; }
   .chat-log::-webkit-scrollbar-thumb { background: #e4e4e7; border-radius: 3px; }
   .chat-msg {
     max-width: min(92%, 34rem);
     padding: 10px 14px;
-    border-radius: 14px;
-    font-size: 0.875rem;
-    line-height: 1.55;
-    color: #3f3f46;
+    border-radius: 18px;
+    font-size: 0.9375rem;
+    line-height: 1.5;
+    color: #1a1a1a;
   }
   .chat-msg.user {
     align-self: flex-end;
@@ -1968,14 +1999,67 @@
     font-weight: 500;
   }
   .chat-msg.asst {
-    align-self: flex-start;
-    background: #f4f4f6;
-    border: 1px solid #e4e4e9;
+    align-self: stretch;
+    max-width: 100%;
+    padding: 0;
+    border-radius: 0;
+    background: transparent;
+    border: none;
     white-space: pre-wrap;
     word-break: break-word;
+    color: #1a1a1a;
+  }
+  .chat-msg.asst .chat-asst-title {
+    font-weight: 600;
+    font-size: 0.8125rem;
+    margin-bottom: 6px;
+    color: #111827;
+  }
+  .chat-msg.asst ul {
+    margin: 0 0 8px 1.1rem;
+    padding: 0;
+    list-style: disc;
+    color: #27272a;
+    font-size: 0.9375rem;
+    line-height: 1.55;
+  }
+  .chat-msg.asst .chat-asst-draft {
+    margin-top: 8px;
+    padding: 10px 12px;
+    border: 1px solid var(--border);
+    border-radius: 10px;
+    background: var(--bg3);
+    font-size: 0.875rem;
+    white-space: pre-wrap;
+  }
+  .chat-feedback-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    margin-top: 10px;
+  }
+  .chat-feedback-btn {
+    padding: 6px 12px;
+    border-radius: 8px;
+    border: 1px solid #e5e5e5;
+    background: #ffffff;
+    color: #52525b;
+    font-size: 11px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: background 0.15s, border-color 0.15s;
+  }
+  .chat-feedback-btn:hover:not(:disabled) {
+    background: #f4f4f5;
+    border-color: #d4d4d8;
+  }
+  .chat-feedback-btn:disabled {
+    cursor: default;
+    opacity: 0.85;
   }
   .chat-msg-thinking {
     white-space: normal;
+    padding: 4px 0 0 !important;
   }
   .chat-thinking-inner {
     display: flex;
@@ -2007,23 +2091,10 @@
     0%, 70%, 100% { transform: translateY(0); opacity: 0.3; }
     35% { transform: translateY(-6px); opacity: 1; }
   }
-  .chat-composer-stack {
-    flex-shrink: 0;
-    width: 100%;
-    max-width: 40rem;
-    margin: 0 auto;
-    padding: 0 0 4px;
-    background: transparent;
-    border-top: none;
-    display: flex;
-    flex-direction: column;
-    align-items: stretch;
-    box-sizing: border-box;
-  }
   .advisor-react-composer-root {
     width: 100%;
-    max-width: 40rem;
-    margin: 0 auto;
+    max-width: 720px;
+    margin: 0;
     min-height: 0;
     position: relative;
     z-index: 2;
@@ -2104,20 +2175,16 @@
 
   @media (max-width: 960px) {
     #page-chat.pg.on {
-      padding-left: 12px;
-      padding-right: 12px;
       min-height: calc(100dvh - 112px);
     }
-    #page-chat.pg.on .chat-transcript {
-      border-radius: 12px;
-      margin-bottom: 10px;
+    .chat-composer-dock {
+      padding-left: 12px;
+      padding-right: 12px;
     }
-    .chat-composer-stack,
     .advisor-react-composer-root {
       max-width: 100%;
     }
-    .chat-log { padding: 8px 0 12px; }
-    .chat-composer-stack { padding: 0 0 2px; }
+    .chat-log { padding: 12px 12px 16px; }
   }
 
   /* BTN */
@@ -2367,7 +2434,6 @@
   .bizdash-ico-outlined .bizdash-ico-lucide { opacity: 0.86; }
   #customers-table tbody tr.crm-row:hover { background: var(--bg3, rgba(127,127,127,0.08)); }
   #customers-table tbody tr.crm-row-selected { background: var(--bg3, rgba(127,127,127,0.12)); }
-  #customers-table .crm-cell-editing { outline: 2px solid #2383e2; outline-offset: -2px; border-radius: 2px; }
   #customers-table .crm-cell-err { outline: 2px solid var(--red); outline-offset: -2px; }
   .crm-select-overlay {
     position: fixed;
@@ -4113,6 +4179,12 @@
   }
   .lists-sb-browse:hover {
     color: var(--coral);
+  }
+  .lists-sb-browse.active {
+    color: var(--coral);
+    font-weight: 600;
+    background: var(--coral-bg);
+    border-radius: var(--rs);
   }
 
   /* Lists page + template modals (blue accent, scoped) */
@@ -5974,9 +6046,6 @@
         <button type="button" class="lists-sb-browse" id="lists-sb-browse">Browse all</button>
       </div>
     </div>
-    <div class="ni" data-nav="lists" onclick="nav('lists',this)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>All lists
-    </div>
     <div class="nav-lbl" id="nav-lbl-chats">Chats</div>
     <div class="lists-sb-wrap" id="chats-sb-wrap">
       <button type="button" class="lists-sb-toggle" id="chats-sb-toggle" aria-expanded="true" aria-controls="chats-sb-panel">
@@ -6144,7 +6213,7 @@
     <div class="card">
       <div id="customers-empty" style="font-size:13px;color:var(--text3);padding:8px 0;">No customers yet.</div>
       <table class="dt" id="customers-table" style="display:none;">
-        <thead><tr><th>Company</th><th>Contact</th><th>Email</th><th>Phone</th><th>Preferred</th><th>Style</th><th>Status</th><th>Projects</th><th>Revenue</th><th>Allocated cost</th><th>Profit</th><th>Margin</th><th>ROI</th><th>Updated</th><th style="width:140px;">Actions</th></tr></thead>
+        <thead><tr><th>Company</th><th>Contact</th><th>Email</th><th>Phone</th><th>Preferred</th><th>Style</th><th>Status</th><th>Priority</th><th>Projects</th><th>Revenue</th><th>Allocated cost</th><th>Profit</th><th>Margin</th><th>ROI</th><th>Updated</th><th style="width:140px;">Actions</th></tr></thead>
         <tbody id="customers-tbody"></tbody>
       </table>
     </div>
@@ -6795,23 +6864,24 @@
   <!-- CHAT: React composer + transcript; image attach/lightbox for legacy assistant flow -->
   <div class="pg" id="page-chat">
     <div class="chat-shell">
+      <header class="chat-top-bar" role="banner"><span class="chat-top-bar-title">Advisor</span></header>
       <div class="chat-transcript">
         <div id="chat-log" class="chat-log" role="log" aria-live="polite" aria-relevant="additions"></div>
       </div>
-      <div class="chat-advisor-center-wrap">
-        <div class="chat-composer-stack">
+      <div class="chat-composer-dock">
+        <div class="chat-composer-inner">
+          <div class="advisor-chat-aux" aria-hidden="true">
+            <input type="file" id="chat-file-input" class="chat-file-input-hidden" accept="image/*" tabindex="-1" />
+            <div id="chat-image-preview-wrap" class="chat-image-preview-wrap" hidden>
+              <button type="button" id="chat-image-thumb-btn" class="chat-image-thumb-btn" style="border:none;padding:0;background:none;" aria-label="View full image">
+                <img id="chat-image-thumb" src="" alt="Attached preview" />
+              </button>
+              <button type="button" class="chat-image-preview-remove" id="chat-image-remove" aria-label="Remove image">
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+              </button>
+            </div>
+          </div>
           <div id="advisor-react-composer-root" class="advisor-react-composer-root"></div>
-        </div>
-      </div>
-      <div class="advisor-chat-aux" aria-hidden="true">
-        <input type="file" id="chat-file-input" class="chat-file-input-hidden" accept="image/*" tabindex="-1" />
-        <div id="chat-image-preview-wrap" class="chat-image-preview-wrap" hidden>
-          <button type="button" id="chat-image-thumb-btn" class="chat-image-thumb-btn" style="border:none;padding:0;background:none;" aria-label="View full image">
-            <img id="chat-image-thumb" src="" alt="Attached preview" />
-          </button>
-          <button type="button" class="chat-image-preview-remove" id="chat-image-remove" aria-label="Remove image">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
-          </button>
         </div>
       </div>
     </div>

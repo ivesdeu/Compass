@@ -1,6 +1,16 @@
 // financial-core.js
 // Standalone financial data layer: transactions are the single source of truth.
 
+import {
+  CUSTOMERS_COLUMN_DEFS,
+  CRM_PREF_CHANNEL_OPTS,
+  CRM_COMM_STYLE_OPTS,
+  CRM_PRIORITY_OPTS,
+  crmStatusSelectOptionsFromProjects,
+  defaultPillColorForOption,
+  selectOptionsForColumn,
+} from '../lib/crm-customers-schema.ts';
+
 (function () {
   'use strict';
 
@@ -183,6 +193,7 @@
       company_name: client.companyName,
       contact_name: client.contactName,
       status: client.status,
+      priority: client.priority || null,
       industry: client.industry,
       email: client.email,
       phone: client.phone,
@@ -478,44 +489,12 @@
     return out;
   }
 
-  var CUSTOMERS_COLUMN_DEFS = [
-    { id: 'company', label: 'Company', index: 1, cellType: 'title', fieldKey: 'companyName', editable: true },
-    { id: 'contact', label: 'Contact', index: 2, cellType: 'text', fieldKey: 'contactName', editable: true },
-    { id: 'email', label: 'Email', index: 3, cellType: 'text', fieldKey: 'email', editable: true },
-    { id: 'phone', label: 'Phone', index: 4, cellType: 'text', fieldKey: 'phone', editable: true },
-    { id: 'preferred', label: 'Preferred', index: 5, cellType: 'select', fieldKey: 'preferredChannel', editable: true, selectKey: 'preferred' },
-    { id: 'style', label: 'Style', index: 6, cellType: 'select', fieldKey: 'communicationStyle', editable: true, selectKey: 'style' },
-    { id: 'status', label: 'Status', index: 7, cellType: 'select', fieldKey: 'status', editable: true, selectKey: 'status' },
-    { id: 'projects', label: 'Projects', index: 8, cellType: 'readonly', fieldKey: null, editable: false },
-    { id: 'revenue', label: 'Revenue', index: 9, cellType: 'readonly', fieldKey: null, editable: false },
-    { id: 'allocated', label: 'Allocated cost', index: 10, cellType: 'readonly', fieldKey: null, editable: false },
-    { id: 'profit', label: 'Profit', index: 11, cellType: 'readonly', fieldKey: null, editable: false },
-    { id: 'margin', label: 'Margin', index: 12, cellType: 'readonly', fieldKey: null, editable: false },
-    { id: 'roi', label: 'ROI', index: 13, cellType: 'readonly', fieldKey: null, editable: false },
-    { id: 'updated', label: 'Updated', index: 14, cellType: 'readonly', fieldKey: 'updatedAt', editable: false },
-    { id: 'actions', label: 'Actions', index: 15, locked: true, cellType: 'readonly', fieldKey: null, editable: false },
-  ];
-
-  var CRM_PREF_CHANNEL_OPTS = ['Email', 'Phone', 'Slack', 'In-person', 'Text', 'Other'];
-  var CRM_COMM_STYLE_OPTS = ['Concise', 'Detailed', 'Formal', 'Casual', 'Direct'];
-
   function crmStatusSelectOptions() {
-    var seen = {};
-    var out = [];
-    ['Lead', 'Active', 'Inactive', 'Churned'].forEach(function (s) {
-      if (s && !seen[s]) {
-        seen[s] = true;
-        out.push(s);
-      }
-    });
-    (projectStatuses || []).forEach(function (s) {
-      if (s && !seen[s]) {
-        seen[s] = true;
-        out.push(s);
-      }
-    });
-    return out;
+    return crmStatusSelectOptionsFromProjects(projectStatuses || []);
   }
+
+  /** CRM select pill colors by selectKey → option label → palette key (hydrated from dashboard_settings). */
+  var crmOptionColorsStore = {};
 
   var crmInlineState = {
     selectedRowId: null,
@@ -3009,6 +2988,10 @@
       },
       budgetMonths: loadBudgetMonthSnapshots(),
       workspace: readWorkspacePrefsFromDom(),
+      crmOptionColors:
+        crmOptionColorsStore && typeof crmOptionColorsStore === 'object'
+          ? JSON.parse(JSON.stringify(crmOptionColorsStore))
+          : {},
     };
   }
 
@@ -3219,6 +3202,24 @@
     });
   }
 
+  function mergeCrmOptionColors(prev, next) {
+    var out = {};
+    if (prev && typeof prev === 'object') {
+      Object.keys(prev).forEach(function (sk) {
+        if (prev[sk] && typeof prev[sk] === 'object') out[sk] = Object.assign({}, prev[sk]);
+      });
+    }
+    if (next && typeof next === 'object') {
+      Object.keys(next).forEach(function (sk) {
+        var nsk = next[sk];
+        if (nsk && typeof nsk === 'object') {
+          out[sk] = Object.assign({}, out[sk] || {}, nsk);
+        }
+      });
+    }
+    return Object.keys(out).length ? out : null;
+  }
+
   function mergeDashboardSettingsForPersist(prevDash, nextDash) {
     if (!prevDash || typeof prevDash !== 'object') return nextDash;
     var pb = prevDash.business && typeof prevDash.business === 'object' ? prevDash.business : {};
@@ -3244,11 +3245,23 @@
     } else if (Array.isArray(prevDash.email_templates)) {
       out.email_templates = prevDash.email_templates;
     }
+    var mergedCrmColors = mergeCrmOptionColors(prevDash.crmOptionColors, nextDash.crmOptionColors);
+    if (mergedCrmColors) out.crmOptionColors = mergedCrmColors;
+    else if (prevDash.crmOptionColors && typeof prevDash.crmOptionColors === 'object') {
+      out.crmOptionColors = JSON.parse(JSON.stringify(prevDash.crmOptionColors));
+    }
     return out;
   }
 
   async function applyDashboardSettingsFromCloud(raw) {
     if (raw == null || typeof raw !== 'object') return;
+    if (raw.crmOptionColors && typeof raw.crmOptionColors === 'object') {
+      try {
+        crmOptionColorsStore = JSON.parse(JSON.stringify(raw.crmOptionColors));
+      } catch (_) {
+        crmOptionColorsStore = {};
+      }
+    }
     if (!raw.business && !raw.budgets && !raw.budgetMonths && !raw.workspace) return;
     var biz = raw.business;
     if (biz && typeof biz === 'object') {
@@ -3583,6 +3596,62 @@
     }
   }
 
+  var crmOptionColorsPersistTimer = null;
+
+  async function persistCrmOptionColorsToSupabaseOnly() {
+    if (isDemoDashboardUser()) return;
+    supabase = window.supabaseClient || supabase;
+    currentUser = window.currentUser || currentUser;
+    if (!supabase || !currentUser || !getCurrentOrgId()) return;
+    try {
+      var existing = await fetchAppSettingsFromSupabase();
+      var prevDash =
+        existing && existing.dashboard_settings && typeof existing.dashboard_settings === 'object'
+          ? JSON.parse(JSON.stringify(existing.dashboard_settings))
+          : {};
+      prevDash.crmOptionColors = JSON.parse(JSON.stringify(crmOptionColorsStore || {}));
+      var result = await supabase.from('app_settings').upsert(
+        {
+          organization_id: getCurrentOrgId(),
+          project_statuses: projectStatuses,
+          dashboard_settings: prevDash,
+          updated_at: new Date().toISOString(),
+        },
+        { onConflict: 'organization_id' }
+      );
+      if (result.error) console.error('persist crmOptionColors', result.error);
+    } catch (err) {
+      console.error('persistCrmOptionColorsToSupabaseOnly', err);
+    }
+  }
+
+  function schedulePersistCrmOptionColorsToSupabase() {
+    if (crmOptionColorsPersistTimer) window.clearTimeout(crmOptionColorsPersistTimer);
+    crmOptionColorsPersistTimer = window.setTimeout(function () {
+      crmOptionColorsPersistTimer = null;
+      persistCrmOptionColorsToSupabaseOnly();
+    }, 500);
+  }
+
+  function ensureCrmOptionColorDefaultsFilled() {
+    var changed = false;
+    var proj = projectStatuses || [];
+    CUSTOMERS_COLUMN_DEFS.forEach(function (col) {
+      if (!col.selectKey) return;
+      var opts = selectOptionsForColumn(col, proj);
+      if (!crmOptionColorsStore[col.selectKey] || typeof crmOptionColorsStore[col.selectKey] !== 'object') {
+        crmOptionColorsStore[col.selectKey] = {};
+      }
+      opts.forEach(function (label) {
+        if (!crmOptionColorsStore[col.selectKey][label]) {
+          crmOptionColorsStore[col.selectKey][label] = defaultPillColorForOption(col.selectKey, label);
+          changed = true;
+        }
+      });
+    });
+    if (changed) schedulePersistCrmOptionColorsToSupabase();
+  }
+
   function mapTransactionRow(row) {
     var metaRaw = row.metadata;
     var meta = typeof metaRaw === 'string' ? (function () {
@@ -3655,6 +3724,7 @@
       companyName: row.company_name || '',
       contactName: row.contact_name || '',
       status: st,
+      priority: row.priority != null ? String(row.priority) : '',
       industry: row.industry || '',
       email: row.email || '',
       phone: row.phone || '',
@@ -5472,7 +5542,7 @@
     if (!container || prefersReducedMotion()) return;
     /** Advisor: stagger header → transcript → composer (same motion tokens as other pages). */
     if (container.id === 'page-chat') {
-      var chatParts = container.querySelectorAll('.chat-transcript, .chat-advisor-center-wrap');
+      var chatParts = container.querySelectorAll('.chat-top-bar, .chat-transcript, .chat-composer-dock');
       for (var c = 0; c < chatParts.length; c += 1) {
         var ch = chatParts[c];
         ch.classList.remove('motion-in');
@@ -5765,7 +5835,6 @@ var incomePowerState = {
       if (id === 'lists') {
         setSbNavDisplay(document.getElementById('nav-lbl-lists'), h);
         setSbNavDisplay(document.getElementById('lists-sb-wrap'), h);
-        setSbNavDisplay(sb.querySelector('.ni[data-nav="lists"]'), h);
       } else if (id === 'chat') {
         setSbNavDisplay(document.getElementById('nav-lbl-chats'), h);
         setSbNavDisplay(document.getElementById('chats-sb-wrap'), h);
@@ -10981,24 +11050,25 @@ var incomePowerState = {
   }
 
   async function crmPersistField(client, fieldKey, colId, prevVal) {
-    if (!client || !fieldKey || client._crmDraft) return;
+    if (!client || !fieldKey || client._crmDraft) return true;
     if (isDemoDashboardUser()) {
       client.updatedAt = new Date().toISOString();
       saveClients(clients);
       renderClients();
-      return;
+      return true;
     }
     var res = await persistClientToSupabase(client, 'update');
     if (res === 'ok' || res === 'skipped') {
       client.updatedAt = new Date().toISOString();
       saveClients(clients);
       renderClients();
-    } else {
-      if (prevVal !== undefined) client[fieldKey] = prevVal;
-      saveClients(clients);
-      renderClients();
-      crmFlashCellError(client.id, colId);
+      return true;
     }
+    if (prevVal !== undefined) client[fieldKey] = prevVal;
+    saveClients(clients);
+    renderClients();
+    crmFlashCellError(client.id, colId);
+    return false;
   }
 
   function crmSyncDisplayFromClient(td, client, colId) {
@@ -11024,12 +11094,7 @@ var incomePowerState = {
     crmCloseSelectOverlay();
     var def = crmColDefById(colId);
     if (!def || def.cellType !== 'select' || !def.selectKey) return;
-    var opts =
-      def.selectKey === 'preferred'
-        ? CRM_PREF_CHANNEL_OPTS
-        : def.selectKey === 'style'
-          ? CRM_COMM_STYLE_OPTS
-          : crmStatusSelectOptions();
+    var opts = selectOptionsForColumn(def, projectStatuses || []);
     var cur = crmGetField(client, def.fieldKey);
     var menu = document.createElement('div');
     menu.className = 'crm-select-overlay';
@@ -11242,13 +11307,8 @@ var incomePowerState = {
   }
 
   function crmAfterRenderClients() {
-    if (crmInlineState.activeCell) {
-      var ac = crmInlineState.activeCell;
-      window.requestAnimationFrame(function () {
-        crmEnterEdit(ac.rowId, ac.colId);
-      });
-    } else if (crmInlineState.selectedRowId) {
-      crmSelectRowVisual(crmInlineState.selectedRowId);
+    if (window.bizDashSyncCrmCustomersTable) {
+      window.bizDashSyncCrmCustomersTable();
     }
   }
 
@@ -11328,6 +11388,7 @@ var incomePowerState = {
     tds += cellHtml(crmColDefById('preferred'), esc(c.preferredChannel || '—'), '');
     tds += cellHtml(crmColDefById('style'), esc(c.communicationStyle || '—'), '');
     tds += cellHtml(crmColDefById('status'), stHtml, '');
+    tds += cellHtml(crmColDefById('priority'), esc(c.priority || '—'), '');
     tds += cellHtml(crmColDefById('projects'), pcount ? String(pcount) : '—', '', '');
     tds += cellHtml(crmColDefById('revenue'), fmtCurrency(rev), '', revTitle);
     tds += cellHtml(crmColDefById('allocated'), fmtCurrency(cost), '', costTitle);
@@ -11354,161 +11415,6 @@ var incomePowerState = {
   function wireCrmInlineCustomers() {
     if (crmCustomersInlineWired) return;
     crmCustomersInlineWired = true;
-    var tbl = $('customers-table');
-    if (!tbl) return;
-    tbl.addEventListener('mousedown', function (ev) {
-      var trM = ev.target.closest && ev.target.closest('tr[data-client-id]');
-      crmInlineState.mouseRowId = trM ? trM.getAttribute('data-client-id') : null;
-    }, true);
-    tbl.addEventListener('focusout', function (ev) {
-      if (crmInlineState.suppressBlur) return;
-      var t = ev.target;
-      if (!t || !t.classList || !t.classList.contains('crm-cell-input')) return;
-      var td = t.closest('.crm-cell');
-      var tr = t.closest('tr');
-      if (!td || !tr) return;
-      var rowId = tr.getAttribute('data-client-id');
-      var rel = ev.relatedTarget;
-      var leaveRow = !rel || !tr.contains(rel);
-      if (leaveRow && !rel && crmInlineState.mouseRowId && String(crmInlineState.mouseRowId) === String(rowId)) {
-        leaveRow = false;
-      }
-      if (rel && tr.contains(rel)) {
-        crmCommitActiveTextEdit();
-        return;
-      }
-      crmCommitActiveTextEdit();
-      if (leaveRow) crmOnLeaveRow(rowId);
-    });
-    tbl.addEventListener('keydown', function (ev) {
-      var pg = $('page-customers');
-      if (!pg || !pg.classList.contains('on')) return;
-      if (!crmInlineState.activeCell) return;
-      var inp = ev.target;
-      if (!inp || !inp.classList.contains('crm-cell-input')) return;
-      if (ev.key === 'Tab') {
-        ev.preventDefault();
-        var cols = crmVisibleEditableColIds();
-        var ac = crmInlineState.activeCell;
-        var ix = cols.indexOf(ac.colId);
-        crmCommitActiveTextEdit();
-        var ni = ev.shiftKey ? ix - 1 : ix + 1;
-        if (ni >= 0 && ni < cols.length) {
-          crmSelectRow(ac.rowId, cols[ni]);
-          crmEnterEdit(ac.rowId, cols[ni]);
-        } else if (!ev.shiftKey && ni >= cols.length) {
-          crmOnLeaveRow(ac.rowId);
-        }
-        return;
-      }
-      if (ev.key === 'Enter') {
-        ev.preventDefault();
-        var rid = crmInlineState.activeCell.rowId;
-        var cid = crmInlineState.activeCell.colId;
-        crmCommitActiveTextEdit();
-        var list = crmClientsDisplayList();
-        var ri = -1;
-        for (var i = 0; i < list.length; i++) {
-          if (list[i] && String(list[i].id) === String(rid)) {
-            ri = i;
-            break;
-          }
-        }
-        if (ri >= 0 && ri + 1 < list.length) {
-          var nr = list[ri + 1].id;
-          crmSelectRow(nr, cid);
-          crmEnterEdit(nr, cid);
-        }
-        return;
-      }
-      if (ev.key === 'Escape') {
-        ev.preventDefault();
-        crmCancelActiveEdit();
-      }
-    });
-    document.addEventListener('mousedown', function (ev) {
-      var pg = $('page-customers');
-      if (!pg || !pg.classList.contains('on')) return;
-      if (ev.target.closest && ev.target.closest('.crm-select-overlay')) return;
-      var ct = $('customers-table');
-      if (ct && ct.contains(ev.target)) return;
-      crmClearAll();
-    }, true);
-    document.addEventListener('keydown', function (ev) {
-      var pg = $('page-customers');
-      if (!pg || !pg.classList.contains('on')) return;
-      if (ev.key === 'Escape' && crmInlineState.activeCell) {
-        var escDef = crmColDefById(crmInlineState.activeCell.colId);
-        if (escDef && escDef.cellType === 'select') {
-          ev.preventDefault();
-          crmCancelActiveEdit();
-          return;
-        }
-      }
-      var ac0 = crmInlineState.activeCell;
-      if (ac0) {
-        var acd0 = crmColDefById(ac0.colId);
-        if (acd0 && acd0.cellType === 'select' && ev.key === 'Tab') {
-          ev.preventDefault();
-          var ridT = ac0.rowId;
-          var cidT = ac0.colId;
-          crmDismissSelectEditor();
-          var colsT = crmVisibleEditableColIds();
-          var ixT = colsT.indexOf(cidT);
-          var niT = ev.shiftKey ? ixT - 1 : ixT + 1;
-          if (niT >= 0 && niT < colsT.length) {
-            crmSelectRow(ridT, colsT[niT]);
-            crmEnterEdit(ridT, colsT[niT]);
-          } else if (!ev.shiftKey && niT >= colsT.length) {
-            crmOnLeaveRow(ridT);
-          }
-          return;
-        }
-      }
-      if (crmInlineState.activeCell || ev.ctrlKey || ev.metaKey || ev.altKey) return;
-      if (!crmInlineState.selectedRowId || !crmInlineState.selectedColId) return;
-      if (ev.key === 'ArrowRight') {
-        ev.preventDefault();
-        crmMoveSelection(1, 0);
-        return;
-      }
-      if (ev.key === 'ArrowLeft') {
-        ev.preventDefault();
-        crmMoveSelection(-1, 0);
-        return;
-      }
-      if (ev.key === 'ArrowDown') {
-        ev.preventDefault();
-        crmMoveSelection(0, 1);
-        return;
-      }
-      if (ev.key === 'ArrowUp') {
-        ev.preventDefault();
-        crmMoveSelection(0, -1);
-        return;
-      }
-      var scCol = crmColDefById(crmInlineState.selectedColId);
-      if (ev.key.length === 1 && !ev.key.match(/\s/) && scCol && scCol.editable) {
-        ev.preventDefault();
-        var rid = crmInlineState.selectedRowId;
-        var cid = crmInlineState.selectedColId;
-        if (scCol.cellType === 'select') {
-          crmEnterEdit(rid, cid);
-          return;
-        }
-        crmEnterEdit(rid, cid);
-        window.requestAnimationFrame(function () {
-          var td = document.querySelector(
-            'tr[data-client-id="' + escAttr(rid) + '"] .crm-cell[data-col-id="' + escAttr(cid) + '"]',
-          );
-          var inp = td && td.querySelector('.crm-cell-input');
-          if (inp) {
-            inp.value = ev.key;
-            inp.focus();
-          }
-        });
-      }
-    });
     var searchInp = $('customers-search');
     if (searchInp) {
       searchInp.addEventListener('input', function () {
@@ -11518,8 +11424,49 @@ var incomePowerState = {
     }
   }
 
+  function crmClientToTableRowVm(c) {
+    var rev = effectiveClientRevenue(c);
+    var cost = effectiveClientAllocatedCost(c);
+    var pr = fmtProfitMarginRoi(rev, cost);
+    var pcount = clientProjectCount(c.id);
+    return {
+      id: String(c.id),
+      draft: !!c._crmDraft,
+      inserted: !!c._crmInserted,
+      retainer: !!clientIsRetainer(c),
+      companyName: c.companyName || '',
+      contactName: c.contactName || '',
+      email: c.email || '',
+      phone: c.phone || '',
+      preferredChannel: c.preferredChannel || '',
+      communicationStyle: c.communicationStyle || '',
+      status: c.status || '',
+      priority: c.priority || '',
+      projects: pcount ? String(pcount) : '—',
+      revenue: fmtCurrency(rev),
+      allocated: fmtCurrency(cost),
+      profit: fmtCurrency(pr.profit),
+      profitNegative: pr.profit < 0,
+      margin: pr.marginStr,
+      roi: pr.roiStr,
+      updated: crmFormatUpdatedDisplay(c),
+    };
+  }
+
+  function crmBuildCustomersTableSyncPayload() {
+    ensureCrmOptionColorDefaultsFilled();
+    var list = crmClientsDisplayList();
+    return {
+      rows: list.map(crmClientToTableRowVm),
+      columnPrefs: Object.assign({}, customersColumnPrefs),
+      optionColors: JSON.parse(JSON.stringify(crmOptionColorsStore || {})),
+      projectStatuses: (projectStatuses || []).slice(),
+    };
+  }
+
   function crmStartNewClientRow() {
     var st0 = crmStatusSelectOptions()[0] || 'Lead';
+    var pr0 = CRM_PRIORITY_OPTS[1] || 'Medium';
     var row = {
       id: uuid(),
       companyName: '',
@@ -11527,6 +11474,7 @@ var incomePowerState = {
       email: '',
       phone: '',
       status: st0,
+      priority: pr0,
       industry: '',
       preferredChannel: CRM_PREF_CHANNEL_OPTS[0] || '',
       communicationStyle: CRM_COMM_STYLE_OPTS[0] || '',
@@ -11544,11 +11492,11 @@ var incomePowerState = {
     clients.push(row);
     saveClients(clients);
     crmClearAll();
-    crmInlineState.selectedRowId = String(row.id);
-    crmInlineState.selectedColId = 'company';
     renderClients();
     window.requestAnimationFrame(function () {
-      crmEnterEdit(row.id, 'company');
+      if (window.bizDashCrmCustomersTableFocus) {
+        window.bizDashCrmCustomersTableFocus({ rowId: String(row.id), colId: 'company', activate: true });
+      }
     });
     if (state.computed) renderInsights();
   }
@@ -11563,13 +11511,21 @@ var incomePowerState = {
     var list = crmClientsDisplayList();
     if (!list.length) {
       crmClearAll();
-      tbody.innerHTML = '';
+      if (window.bizDashSyncCrmCustomersTable) {
+        window.bizDashSyncCrmCustomersTable();
+      } else {
+        tbody.innerHTML = '';
+      }
       if (empty) empty.style.display = 'block';
       if (table) table.style.display = 'none';
     } else {
       if (empty) empty.style.display = 'none';
       if (table) table.style.display = 'table';
-      tbody.innerHTML = list.map(crmBuildClientRowHtml).join('');
+      if (window.bizDashSyncCrmCustomersTable) {
+        window.bizDashSyncCrmCustomersTable();
+      } else {
+        tbody.innerHTML = list.map(crmBuildClientRowHtml).join('');
+      }
       applyCustomersColumnVisibility();
       crmAfterRenderClients();
     }
@@ -18297,7 +18253,7 @@ var incomePowerState = {
       L.calendarDateColumnId = colIds.length > 1 ? colIds[1] : colIds[0];
     }
     pushWorkspaceList(L);
-    window.nav('lists', document.querySelector('.ni[data-nav="lists"]'));
+    window.nav('lists', document.getElementById('lists-sb-browse'));
     openListDetailView(L.id);
     return { ok: true, listId: L.id };
   };
@@ -18315,7 +18271,7 @@ var incomePowerState = {
     ev.stopPropagation();
     if (action === 'open') {
       /* nav('lists') resets to the grid; open detail after so we land in list space, not the overview. */
-      window.nav('lists', document.querySelector('.ni[data-nav="lists"]'));
+      window.nav('lists', document.getElementById('lists-sb-browse'));
       openListDetailView(listId);
       document.body.classList.remove('mobile-nav-open');
       return;
@@ -18527,7 +18483,7 @@ var incomePowerState = {
       X.rows = (X.rows || []).concat([listRowApplyModalFields(X, draft)]);
     });
     closeListNewPageModal();
-    window.nav('lists', document.querySelector('.ni[data-nav="lists"]'));
+    window.nav('lists', document.getElementById('lists-sb-browse'));
     openListDetailView(id);
   }
 
@@ -18572,7 +18528,7 @@ var incomePowerState = {
           var dup1 = duplicateWorkspaceList(lid, true);
           listsSbHideContextMenu();
           if (dup1) {
-            window.nav('lists', document.querySelector('.ni[data-nav="lists"]'));
+            window.nav('lists', document.getElementById('lists-sb-browse'));
             openListDetailView(dup1.id);
           }
           return;
@@ -18581,7 +18537,7 @@ var incomePowerState = {
           var dup2 = duplicateWorkspaceList(lid, false);
           listsSbHideContextMenu();
           if (dup2) {
-            window.nav('lists', document.querySelector('.ni[data-nav="lists"]'));
+            window.nav('lists', document.getElementById('lists-sb-browse'));
             openListDetailView(dup2.id);
           }
           return;
@@ -19609,7 +19565,7 @@ var incomePowerState = {
     var browse = document.getElementById('lists-sb-browse');
     if (browse) {
       browse.addEventListener('click', function () {
-        window.nav('lists', document.querySelector('.ni[data-nav="lists"]'));
+        window.nav('lists', browse);
         document.body.classList.remove('mobile-nav-open');
       });
     }
@@ -19646,7 +19602,7 @@ var incomePowerState = {
       emptyDb.addEventListener('click', function () {
         closeListTemplatesModal();
         pushWorkspaceList(blankNotionWorkspaceList());
-        window.nav('lists', document.querySelector('.ni[data-nav="lists"]'));
+        window.nav('lists', document.getElementById('lists-sb-browse'));
         var first = loadWorkspaceLists()[0];
         if (first) openListDetailView(first.id);
       });
@@ -19721,7 +19677,7 @@ var incomePowerState = {
         L.activeView = listDetailTabToView(L, L.activeTabId);
         closeListCustomizeModal();
         pushWorkspaceList(L);
-        window.nav('lists', document.querySelector('.ni[data-nav="lists"]'));
+        window.nav('lists', document.getElementById('lists-sb-browse'));
         openListDetailView(L.id);
       });
     }
@@ -20787,11 +20743,14 @@ var incomePowerState = {
       // Sidebar active state
       var items = document.querySelectorAll('.ni');
       items.forEach(function (n) { n.classList.remove('active'); });
+      var listsBrowseEl = document.getElementById('lists-sb-browse');
+      if (listsBrowseEl) listsBrowseEl.classList.remove('active');
       if (el && el.classList) {
         el.classList.add('active');
       } else {
         var sideItem = document.querySelector('.ni[data-nav="' + pageId + '"]');
         if (sideItem) sideItem.classList.add('active');
+        else if (pageId === 'lists' && listsBrowseEl) listsBrowseEl.classList.add('active');
       }
 
       var mobileTitle = document.getElementById('mobile-title');
@@ -20862,6 +20821,34 @@ var incomePowerState = {
       }
     }
   }
+
+  window.bizDashCrmCustomersTableBuildPayload = crmBuildCustomersTableSyncPayload;
+
+  window.bizDashCrmTablePatchField = async function (clientId, fieldKey, val, colId) {
+    var idx = crmFindClientIndex(clientId);
+    if (idx < 0) return false;
+    var c = clients[idx];
+    var prev = c[fieldKey];
+    c[fieldKey] = val;
+    saveClients(clients);
+    if (c._crmDraft && !c._crmInserted) {
+      renderClients();
+      return true;
+    }
+    return await crmPersistField(c, fieldKey, colId, prev);
+  };
+
+  window.bizDashCrmTableRevertField = function (clientId, fieldKey, prev) {
+    var idx = crmFindClientIndex(clientId);
+    if (idx < 0) return;
+    clients[idx][fieldKey] = prev;
+    saveClients(clients);
+    renderClients();
+  };
+
+  window.bizDashCrmTableOnLeaveRow = function (rowId) {
+    crmOnLeaveRow(rowId);
+  };
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
