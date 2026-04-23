@@ -445,7 +445,6 @@ import {
 
   var SIDEBAR_NAV_PAGE_DEFS = [
     { id: 'customers', label: 'Customers' },
-    { id: 'tasks', label: 'Tasks' },
     { id: 'emails', label: 'Emails' },
     { id: 'revenue', label: 'Income' },
     { id: 'expenses', label: 'Expenses' },
@@ -3827,8 +3826,6 @@ import {
   var wfStages = [];
   var wfRules = [];
   var wfTasks = [];
-  /** Cached workspace members for Tasks tab assignee picker (from organization-team list). */
-  var tasksTabMembers = [];
   var wfSchemaUnavailable = false;
   var crmEventsTableUnavailable = false;
   var weeklySummariesTableUnavailable = false;
@@ -4347,498 +4344,6 @@ import {
       (rules || '<p style="font-size:12px;color:var(--text3);">No rules yet.</p>');
   }
 
-  function tasksTabStartOfLocalDay(d) {
-    var x = new Date(d);
-    x.setHours(0, 0, 0, 0);
-    return x.getTime();
-  }
-
-  function tasksTabDueMeta(task) {
-    var st = task.status || 'open';
-    if (!task.dueAt) {
-      return { key: 'nodue', label: '—', cls: 'tasks-due-muted', sort: 4 };
-    }
-    var due = new Date(task.dueAt);
-    if (isNaN(due.getTime())) {
-      return { key: 'nodue', label: '—', cls: 'tasks-due-muted', sort: 4 };
-    }
-    var startToday = tasksTabStartOfLocalDay(new Date());
-    var endToday = startToday + 86400000;
-    var tDue = tasksTabStartOfLocalDay(due);
-    if (tDue < startToday && st === 'open') {
-      return { key: 'overdue', label: 'Overdue', cls: 'tasks-due-overdue', sort: 0 };
-    }
-    if (tDue >= startToday && tDue < endToday) {
-      return { key: 'today', label: st === 'done' ? 'Today' : 'Due today', cls: 'tasks-due-today', sort: 1 };
-    }
-    if (tDue >= endToday) {
-      return {
-        key: 'upcoming',
-        label: due.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' }),
-        cls: 'tasks-due-muted',
-        sort: 2,
-      };
-    }
-    return { key: 'earlier', label: fmtDateDisplay(task.dueAt), cls: 'tasks-due-muted', sort: 3 };
-  }
-
-  function tasksTabAssigneeDisplay(task) {
-    var email = '';
-    var m = tasksTabMembers.find(function (x) { return x.user_id === task.userId; });
-    if (m && m.email) email = String(m.email);
-    if (!email && task.assignedToEmail) email = String(task.assignedToEmail);
-    if (!email && task.userId && window.currentUser && task.userId === window.currentUser.id) {
-      email = (window.currentUser.email || 'You').trim();
-    }
-    if (!email) email = task.userId ? String(task.userId).slice(0, 8) + '…' : '—';
-    var parts = email.split('@')[0].split(/[.\s_]+/).filter(Boolean);
-    var ini =
-      parts.length >= 2
-        ? (parts[0].charAt(0) + parts[1].charAt(0)).toUpperCase()
-        : (email.charAt(0) || '?').toUpperCase();
-    return { email: email, initials: ini.slice(0, 2) };
-  }
-
-  async function tasksTabBearerForEdge(supabase) {
-    try {
-      var ref = await supabase.auth.refreshSession();
-      if (ref && ref.error) return null;
-      var s = ref && ref.data && ref.data.session;
-      if (s && s.access_token) return s.access_token;
-      var g = await supabase.auth.getSession();
-      s = g && g.data && g.data.session;
-      return s && s.access_token ? s.access_token : null;
-    } catch (_) {
-      return null;
-    }
-  }
-
-  async function tasksTabInvokeOrganizationTeamRaw(supabase, orgId, body, accessToken) {
-    var base = (
-      (supabase && supabase.supabaseUrl ? String(supabase.supabaseUrl) : '') ||
-      (typeof window.__bizdashSupabaseUrl === 'string' ? window.__bizdashSupabaseUrl : '')
-    ).replace(/\/$/, '');
-    var anon =
-      (supabase && supabase.supabaseKey ? String(supabase.supabaseKey) : '') ||
-      (typeof window.__bizdashSupabaseAnonKey === 'string' ? window.__bizdashSupabaseAnonKey : '');
-    if (!base || !anon) return { ok: false, status: 0, data: null };
-    var url = base + '/functions/v1/organization-team';
-    var res = await fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        Authorization: 'Bearer ' + accessToken,
-        apikey: anon,
-      },
-      body: JSON.stringify(Object.assign({ organizationId: orgId }, body)),
-    });
-    var text = await res.text();
-    var data = null;
-    try {
-      data = text ? JSON.parse(text) : null;
-    } catch (_) {
-      data = { error: text || 'Invalid JSON' };
-    }
-    return { ok: res.ok, status: res.status, data: data };
-  }
-
-  async function tasksTabRefreshMembers() {
-    supabase = window.supabaseClient || supabase;
-    currentUser = window.currentUser || currentUser;
-    var orgId = typeof getCurrentOrgId === 'function' ? getCurrentOrgId() : null;
-    tasksTabMembers = [];
-    if (!supabase || !currentUser || !orgId || isDemoDashboardUser()) return;
-    try {
-      var token = await tasksTabBearerForEdge(supabase);
-      if (!token) return;
-      var raw = await tasksTabInvokeOrganizationTeamRaw(supabase, orgId, { action: 'list' }, token);
-      if (!raw.ok && raw.status === 401) {
-        token = await tasksTabBearerForEdge(supabase);
-        if (token) raw = await tasksTabInvokeOrganizationTeamRaw(supabase, orgId, { action: 'list' }, token);
-      }
-      if (raw.ok && raw.data && Array.isArray(raw.data.members)) {
-        tasksTabMembers = raw.data.members;
-      }
-    } catch (e) {
-      console.warn('tasksTabRefreshMembers', e);
-    }
-  }
-
-  function tasksTabFillAssigneeSelect(sel) {
-    if (!sel) return;
-    var uid = window.currentUser && window.currentUser.id ? window.currentUser.id : '';
-    var opts = [];
-    if (tasksTabMembers.length) {
-      tasksTabMembers.forEach(function (m) {
-        var em = (m.email || m.user_id || '').trim();
-        if (!em) return;
-        opts.push({
-          id: m.user_id,
-          label: em,
-          selected: uid && m.user_id === uid,
-        });
-      });
-    } else if (uid) {
-      opts.push({ id: uid, label: (window.currentUser.email || 'Me').trim(), selected: true });
-    }
-    if (!opts.length) {
-      sel.innerHTML = '<option value="">No teammates loaded</option>';
-      return;
-    }
-    sel.innerHTML = opts
-      .map(function (o) {
-        return (
-          '<option value="' +
-          esc(o.id) +
-          '"' +
-          (o.selected ? ' selected' : '') +
-          '>' +
-          esc(o.label) +
-          '</option>'
-        );
-      })
-      .join('');
-  }
-
-  function tasksTabFillClientSelect(sel) {
-    if (!sel) return;
-    var cur = sel.value;
-    var rows = '<option value="">— None —</option>' +
-      (clients || [])
-        .filter(function (c) { return c && c.id; })
-        .map(function (c) {
-          return '<option value="' + esc(c.id) + '">' + esc(c.companyName || c.contactName || 'Client') + '</option>';
-        })
-        .join('');
-    sel.innerHTML = rows;
-    if (cur) {
-      for (var i = 0; i < sel.options.length; i++) {
-        if (sel.options[i].value === cur) {
-          sel.value = cur;
-          break;
-        }
-      }
-    }
-  }
-
-  function renderTasksPage() {
-    var page = document.getElementById('page-tasks');
-    var empty = document.getElementById('tasks-tab-empty');
-    var main = document.getElementById('tasks-tab-main');
-    var demoHint = document.getElementById('tasks-tab-demo');
-    if (!page || !empty || !main) return;
-
-    var demo = isDemoDashboardUser();
-    if (demoHint) {
-      demoHint.style.display = demo ? 'block' : 'none';
-      demoHint.textContent = demo
-        ? 'Preview mode: sign in to create and assign tasks that sync to your workspace.'
-        : '';
-    }
-
-    var filterEl = document.getElementById('tasks-filter');
-    var filter = filterEl && filterEl.value ? filterEl.value : 'open';
-
-    var list = (wfTasks || []).slice();
-    if (filter === 'open') list = list.filter(function (t) { return (t.status || 'open') === 'open'; });
-    else if (filter === 'done') list = list.filter(function (t) { return t.status === 'done'; });
-
-    list.sort(function (a, b) {
-      var ma = tasksTabDueMeta(a);
-      var mb = tasksTabDueMeta(b);
-      if (ma.sort !== mb.sort) return ma.sort - mb.sort;
-      var da = a.dueAt ? new Date(a.dueAt).getTime() : 9e15;
-      var db = b.dueAt ? new Date(b.dueAt).getTime() : 9e15;
-      if (da !== db) return da - db;
-      return String(a.title || '').localeCompare(String(b.title || ''));
-    });
-
-    if (!list.length) {
-      empty.classList.add('on');
-      main.classList.remove('on');
-      main.innerHTML = '';
-      return;
-    }
-
-    empty.classList.remove('on');
-    main.classList.add('on');
-
-    var groups = ['overdue', 'today', 'upcoming', 'nodue', 'donegroup'];
-    var groupLabels = {
-      overdue: 'Overdue',
-      today: 'Today',
-      upcoming: 'Upcoming',
-      nodue: 'No due date',
-      donegroup: 'Done',
-    };
-    var byGroup = {};
-    groups.forEach(function (g) {
-      byGroup[g] = [];
-    });
-    list.forEach(function (t) {
-      var meta = tasksTabDueMeta(t);
-      var gkey = meta.key;
-      if (filter === 'done' || t.status === 'done') {
-        byGroup.donegroup.push(t);
-      } else if (gkey === 'overdue') byGroup.overdue.push(t);
-      else if (gkey === 'today') byGroup.today.push(t);
-      else if (gkey === 'upcoming') byGroup.upcoming.push(t);
-      else byGroup.nodue.push(t);
-    });
-
-    function rowHtml(t) {
-      var cl = t.clientId ? (clients.find(function (c) { return c.id === t.clientId; }) || {}) : {};
-      var cn = cl.companyName || cl.contactName || '—';
-      var meta = tasksTabDueMeta(t);
-      var ad = tasksTabAssigneeDisplay(t);
-      var done = t.status === 'done';
-      return (
-        '<tr data-task-id="' +
-        esc(t.id) +
-        '">' +
-        '<td class="tasks-col-task"><div class="tasks-row-title">' +
-        '<input type="checkbox" data-task-toggle="' +
-        esc(t.id) +
-        '" ' +
-        (done ? 'checked' : '') +
-        (demo ? ' disabled' : '') +
-        ' title="Mark done" />' +
-        '<span' +
-        (done ? ' style="text-decoration:line-through;color:var(--text3);"' : '') +
-        '>' +
-        esc(t.title || '') +
-        '</span></div></td>' +
-        '<td><span class="' +
-        esc(meta.cls) +
-        '">' +
-        esc(meta.label) +
-        '</span></td>' +
-        '<td style="font-size:13px;color:var(--text2);">' +
-        esc(cn) +
-        '</td>' +
-        '<td><span class="tasks-assignee"><span class="tasks-assignee-av">' +
-        esc(ad.initials) +
-        '</span><span class="tasks-assignee-em">' +
-        esc(ad.email) +
-        '</span></span></td>' +
-        '<td style="text-align:right;width:48px;">' +
-        (demo
-          ? ''
-          : '<button type="button" class="tasks-row-menu" data-task-menu="' +
-            esc(t.id) +
-            '" title="Delete">⋯</button>') +
-        '</td></tr>'
-      );
-    }
-
-    var html = '';
-    groups.forEach(function (gk) {
-      var rows = byGroup[gk];
-      if (!rows.length) return;
-      html +=
-        '<div class="tasks-group-hdr">' +
-        esc(groupLabels[gk] || gk) +
-        ' <span class="tasks-group-count">' +
-        String(rows.length) +
-        '</span></div>' +
-        '<table class="tasks-table"><thead><tr>' +
-        '<th>Task</th><th>Due date</th><th>Record</th><th>Assigned to</th><th></th>' +
-        '</tr></thead><tbody>' +
-        rows.map(rowHtml).join('') +
-        '</tbody></table>';
-    });
-
-    main.innerHTML = html || '<p style="font-size:13px;color:var(--text3);padding:12px;">No tasks match this filter.</p>';
-    if (html) {
-      stagePageMotion(main);
-    }
-  }
-
-  function wireTasksTab() {
-    var root = document.getElementById('page-tasks');
-    if (!root || root.getAttribute('data-tasks-wired') === '1') return;
-    root.setAttribute('data-tasks-wired', '1');
-
-    var main = document.getElementById('tasks-tab-main');
-    var overlay = document.getElementById('tasks-modal-overlay');
-    var help = document.getElementById('tasks-link-help');
-    var ask = document.getElementById('tasks-link-ask');
-    if (help) {
-      help.addEventListener('click', function (e) {
-        e.preventDefault();
-        if (typeof window.nav === 'function') window.nav('chat');
-      });
-    }
-    if (ask) {
-      ask.addEventListener('click', function (e) {
-        e.preventDefault();
-        if (typeof window.nav === 'function') window.nav('chat');
-      });
-    }
-
-    function openModal() {
-      var titleIn = document.getElementById('tasks-modal-title');
-      var dueIn = document.getElementById('tasks-modal-due');
-      var asg = document.getElementById('tasks-modal-assignee');
-      var err = document.getElementById('tasks-modal-error');
-      if (err) {
-        err.style.display = 'none';
-        err.textContent = '';
-      }
-      if (titleIn) titleIn.value = '';
-      if (dueIn) dueIn.value = '';
-      tasksTabFillClientSelect(document.getElementById('tasks-modal-client'));
-      tasksTabRefreshMembers().then(function () {
-        tasksTabFillAssigneeSelect(asg);
-      });
-      if (overlay) {
-        overlay.classList.add('on');
-        overlay.setAttribute('aria-hidden', 'false');
-      }
-    }
-
-    function closeModal() {
-      if (overlay) {
-        overlay.classList.remove('on');
-        overlay.setAttribute('aria-hidden', 'true');
-      }
-    }
-
-    var btnNew = document.getElementById('btn-tasks-new');
-    var btnNewE = document.getElementById('btn-tasks-new-empty');
-    if (btnNew) btnNew.addEventListener('click', function () { openModal(); });
-    if (btnNewE) btnNewE.addEventListener('click', function () { openModal(); });
-
-    var cancel = document.getElementById('tasks-modal-cancel');
-    if (cancel) cancel.addEventListener('click', closeModal);
-    if (overlay) {
-      overlay.addEventListener('click', function (e) {
-        if (e.target === overlay) closeModal();
-      });
-    }
-
-    var save = document.getElementById('tasks-modal-save');
-    if (save) {
-      save.addEventListener('click', async function () {
-        var errEl = document.getElementById('tasks-modal-error');
-        var titleIn = document.getElementById('tasks-modal-title');
-        var dueIn = document.getElementById('tasks-modal-due');
-        var asg = document.getElementById('tasks-modal-assignee');
-        var cli = document.getElementById('tasks-modal-client');
-        if (errEl) {
-          errEl.style.display = 'none';
-          errEl.textContent = '';
-        }
-        if (isDemoDashboardUser()) {
-          if (errEl) {
-            errEl.textContent = 'Sign in to create tasks.';
-            errEl.style.display = 'block';
-          }
-          return;
-        }
-        supabase = window.supabaseClient || supabase;
-        currentUser = window.currentUser || currentUser;
-        var orgId = typeof getCurrentOrgId === 'function' ? getCurrentOrgId() : null;
-        var title = titleIn && titleIn.value ? String(titleIn.value).trim() : '';
-        if (!title) {
-          if (errEl) {
-            errEl.textContent = 'Title is required.';
-            errEl.style.display = 'block';
-          }
-          return;
-        }
-        var assigneeId = asg && asg.value ? String(asg.value).trim() : '';
-        if (!assigneeId) {
-          if (errEl) {
-            errEl.textContent = 'Choose an assignee.';
-            errEl.style.display = 'block';
-          }
-          return;
-        }
-        var assigneeEmail = '';
-        if (asg && asg.selectedOptions && asg.selectedOptions[0]) {
-          assigneeEmail = String(asg.selectedOptions[0].textContent || '').trim();
-        }
-        var dueAt = null;
-        if (dueIn && dueIn.value) {
-          var d = new Date(dueIn.value + 'T12:00:00');
-          dueAt = isNaN(d.getTime()) ? null : d.toISOString();
-        }
-        var clientId = cli && cli.value ? String(cli.value).trim() : null;
-        if (!supabase || !currentUser || !orgId) {
-          if (errEl) {
-            errEl.textContent = 'Sign in and open a workspace to save tasks.';
-            errEl.style.display = 'block';
-          }
-          return;
-        }
-        var row = {
-          id: uuid(),
-          user_id: assigneeId,
-          organization_id: orgId,
-          title: title,
-          body: '',
-          status: 'open',
-          due_at: dueAt,
-          client_id: clientId || null,
-          campaign_id: null,
-          created_by: 'user',
-          workflow_run_id: null,
-          assigned_to_email: assigneeEmail || null,
-        };
-        var ins = await supabase.from('workspace_tasks').insert(row);
-        if (ins.error) {
-          if (errEl) {
-            errEl.textContent = String(ins.error.message || ins.error);
-            errEl.style.display = 'block';
-          }
-          return;
-        }
-        closeModal();
-        await wfRefreshFromSupabase();
-        renderTasksPage();
-      });
-    }
-
-    var filt = document.getElementById('tasks-filter');
-    if (filt) {
-      filt.addEventListener('change', function () {
-        renderTasksPage();
-      });
-    }
-
-    if (main) {
-      main.addEventListener('click', async function (ev) {
-        var menuBtn = ev.target.closest('[data-task-menu]');
-        if (menuBtn && !isDemoDashboardUser()) {
-          var tid = menuBtn.getAttribute('data-task-menu');
-          if (tid && confirm('Delete this task?')) {
-            supabase = window.supabaseClient || supabase;
-            if (supabase && getCurrentOrgId()) {
-              await supabase.from('workspace_tasks').delete().eq('id', tid).eq('organization_id', getCurrentOrgId());
-              await wfRefreshFromSupabase();
-              renderTasksPage();
-            }
-          }
-          return;
-        }
-        var cb = ev.target.closest('[data-task-toggle]');
-        if (!cb || isDemoDashboardUser()) return;
-        var id = cb.getAttribute('data-task-toggle');
-        if (!id) return;
-        var nowDone = !!cb.checked;
-        supabase = window.supabaseClient || supabase;
-        if (!supabase || !getCurrentOrgId()) return;
-        await supabase
-          .from('workspace_tasks')
-          .update({ status: nowDone ? 'done' : 'open', updated_at: new Date().toISOString() })
-          .eq('id', id)
-          .eq('organization_id', getCurrentOrgId());
-        await wfRefreshFromSupabase();
-        renderTasksPage();
-      });
-    }
-  }
 
   function wireEmailsPage() {
     var root = document.getElementById('page-emails');
@@ -5556,8 +5061,6 @@ import {
     }
     var selectors =
       '.ph, .kg .kc, .card, .ts-kpi, .bva-row, .dt tbody tr, ' +
-      '.tasks-attio-hdr, .tasks-attio-toolbar, .tasks-learn, #tasks-tab-empty.on, ' +
-      '.tasks-group-hdr, .tasks-table tbody tr, ' +
       '.eml-topbar, .eml-panel.on, .eml-learn, ' +
       /* Scheduling (React island): stagger header → subnav → body like other tabs */
       '.scheduling-root > .ph, .scheduling-root > nav, .scheduling-root > p, .scheduling-root > div:not(.pointer-events-none)';
@@ -7722,7 +7225,11 @@ var incomePowerState = {
       var dirLink = document.getElementById('settings-people-directory-link');
       if (saveBtn) {
         saveBtn.style.display =
-          panelId === 'people' || panelId === 'refer-earn' || panelId === 'connections' || panelId === 'pages'
+          panelId === 'people' ||
+          panelId === 'refer-earn' ||
+          panelId === 'connections' ||
+          panelId === 'pages' ||
+          panelId === 'advisor'
             ? 'none'
             : '';
       }
@@ -7745,6 +7252,10 @@ var incomePowerState = {
       }
       if (panelId === 'pages') {
         renderSettingsPagesPanel();
+      }
+      if (panelId === 'advisor') {
+        wireSettingsAdvisorChatsPanel();
+        renderSettingsAdvisorChatsPanel();
       }
       if (panelId !== 'connections') {
         bizdashCloseConnDetailSubmodal();
@@ -7859,6 +7370,7 @@ var incomePowerState = {
     });
 
     wireSettingsPagesPanel();
+    wireSettingsAdvisorChatsPanel();
   }
 
   async function refreshConnectionsPanel() {
@@ -8150,24 +7662,6 @@ var incomePowerState = {
     }
   }
 
-  // #region agent log
-  function __dbgOAuthIngest(payload) {
-    fetch('http://127.0.0.1:7914/ingest/507d12bf-babb-4204-8816-34a6e29c9b5b', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '1266cb' },
-      body: JSON.stringify({
-        sessionId: '1266cb',
-        location: payload.location,
-        message: payload.message,
-        data: payload.data,
-        timestamp: Date.now(),
-        hypothesisId: payload.hypothesisId,
-        runId: payload.runId || 'pre-fix',
-      }),
-    }).catch(function () {});
-  }
-  // #endregion
-
   function updateGoogleOAuthRedirectHint() {
     var line = document.getElementById('bizdash-google-oauth-redirect-line');
     if (!line) return;
@@ -8229,47 +7723,9 @@ var incomePowerState = {
           j = _gText ? JSON.parse(_gText) : {};
         } catch (_) {}
         if (!res.ok || !j.url) {
-          // #region agent log
-          __dbgOAuthIngest({
-            location: 'financial-core.js:wireGoogleOAuthInSettings',
-            message: 'oauth-google-start failed before redirect',
-            hypothesisId: 'H4',
-            data: {
-              httpStatus: res.status,
-              supabaseHost: base ? new URL(base).hostname : '',
-              errSnippet: j && j.error ? String(j.error).slice(0, 120) : (_gText || '').slice(0, 120),
-            },
-          });
-          // #endregion
           alert(bizdashDescribeEdgeFnFailure(res, _gText, j));
           return;
         }
-        // #region agent log
-        try {
-          var authU = new URL(String(j.url));
-          var cid = authU.searchParams.get('client_id') || '';
-          var ruri = authU.searchParams.get('redirect_uri') || '';
-          __dbgOAuthIngest({
-            location: 'financial-core.js:wireGoogleOAuthInSettings',
-            message: 'oauth-google-start ok; auth URL params',
-            hypothesisId: 'H1',
-            data: {
-              supabaseHost: base ? new URL(base).hostname : '',
-              clientIdLen: cid.length,
-              clientIdLooksWeb: /\.apps\.googleusercontent\.com$/.test(cid),
-              redirectUriFromAuthUrl: ruri ? decodeURIComponent(ruri) : '',
-              redirectUriFromApi: j.redirect_uri ? String(j.redirect_uri) : null,
-            },
-          });
-        } catch (_e) {
-          __dbgOAuthIngest({
-            location: 'financial-core.js:wireGoogleOAuthInSettings',
-            message: 'parse auth URL failed',
-            hypothesisId: 'H1',
-            data: { err: String(_e && _e.message ? _e.message : _e) },
-          });
-        }
-        // #endregion
         window.location.href = String(j.url);
       });
     });
@@ -8284,14 +7740,6 @@ var incomePowerState = {
       var provider = (params.get('provider') || '').trim();
       var detail = (params.get('detail') || '').trim();
       var googleErr = (params.get('google_error') || '').trim();
-      // #region agent log
-      __dbgOAuthIngest({
-        location: 'financial-core.js:consumeOAuthReturnFromUrl',
-        message: 'oauth query params after redirect to app',
-        hypothesisId: 'H3',
-        data: { oauth: oauth, provider: provider, detail: detail, google_error: googleErr || undefined },
-      });
-      // #endregion
       params.delete('oauth');
       params.delete('provider');
       params.delete('detail');
@@ -8599,8 +8047,6 @@ var incomePowerState = {
     renderRetention();
     renderTimesheet();
     renderPersonableCards();
-    var pgTasks = document.getElementById('page-tasks');
-    if (pgTasks && pgTasks.classList.contains('on')) renderTasksPage();
     var pgSet = document.getElementById('page-settings');
     if (pgSet && pgSet.classList.contains('on')) renderAutomationSettings();
   }
@@ -10838,6 +10284,7 @@ var incomePowerState = {
       customersColumnPrefs[colId] = input.checked !== false;
       saveCustomersColumnPrefs(customersColumnPrefs);
       applyCustomersColumnVisibility();
+      if (typeof window.bizDashSyncCrmCustomersTable === 'function') window.bizDashSyncCrmCustomersTable();
     });
     panel.addEventListener('click', function (ev) {
       var resetBtn = ev.target.closest('#btn-customers-columns-reset');
@@ -10846,6 +10293,7 @@ var incomePowerState = {
       saveCustomersColumnPrefs(customersColumnPrefs);
       renderCustomersColumnsPanel();
       applyCustomersColumnVisibility();
+      if (typeof window.bizDashSyncCrmCustomersTable === 'function') window.bizDashSyncCrmCustomersTable();
     });
     document.addEventListener('click', function () {
       panel.classList.remove('on');
@@ -16673,11 +16121,6 @@ var incomePowerState = {
     var ins = await supabase.from('workspace_tasks').insert(row);
     if (ins.error) return { ok: false, error: formatSupabaseErr(ins.error) };
     await wfRefreshFromSupabase();
-    try {
-      renderTasksPage();
-    } catch (e) {
-      console.warn('renderTasksPage', e);
-    }
     return { ok: true, task: mapWorkspaceTaskRow(row) };
   };
 
@@ -17757,7 +17200,7 @@ var incomePowerState = {
     });
     var av = 'table';
     if (tpl.previewKind === 'board') av = 'board';
-    else if (tpl.previewKind === 'calendar' || tpl.supportsCalendarView) av = 'calendar';
+    else if (tpl.previewKind === 'calendar') av = 'calendar';
     return {
       id: newListId(),
       title: tpl.title,
@@ -18828,6 +18271,132 @@ var incomePowerState = {
     });
   }
 
+  function advisorChatUpdatedLabel(iso) {
+    try {
+      var d = iso ? new Date(iso) : null;
+      if (!d || isNaN(d.getTime())) return '—';
+      return d.toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    } catch (_) {
+      return '—';
+    }
+  }
+
+  function clearAdvisorSessionIfThread(id) {
+    var tid = null;
+    try {
+      tid = sessionStorage.getItem('advisor-active-thread');
+    } catch (_) {}
+    if (!tid || String(tid) !== String(id)) return;
+    try {
+      sessionStorage.removeItem('advisor-active-thread');
+      sessionStorage.removeItem('advisor-pending-replay');
+    } catch (_) {}
+    var chatPg = document.getElementById('page-chat');
+    if (chatPg && chatPg.classList.contains('on') && typeof window.resetAdvisorChatForNewThread === 'function') {
+      window.resetAdvisorChatForNewThread();
+    }
+  }
+
+  function deleteWorkspaceAdvisorChatById(chatId) {
+    var id = String(chatId || '');
+    if (!id) return;
+    var chats = loadWorkspaceChats().filter(function (C) {
+      return String(C && C.id) !== id;
+    });
+    saveWorkspaceChats(chats);
+    clearAdvisorSessionIfThread(id);
+    renderChatsSidebar();
+    renderSettingsAdvisorChatsPanel();
+  }
+
+  function deleteAllWorkspaceAdvisorChats() {
+    saveWorkspaceChats([]);
+    try {
+      sessionStorage.removeItem('advisor-active-thread');
+      sessionStorage.removeItem('advisor-pending-replay');
+    } catch (_) {}
+    var chatPg = document.getElementById('page-chat');
+    if (chatPg && chatPg.classList.contains('on') && typeof window.resetAdvisorChatForNewThread === 'function') {
+      window.resetAdvisorChatForNewThread();
+    }
+    renderChatsSidebar();
+    renderSettingsAdvisorChatsPanel();
+  }
+
+  var settingsAdvisorChatsWired = false;
+  function wireSettingsAdvisorChatsPanel() {
+    if (settingsAdvisorChatsWired) return;
+    var listHost = document.getElementById('settings-advisor-chats-rows');
+    var delAll = document.getElementById('settings-btn-advisor-delete-all-chats');
+    if (!listHost && !delAll) return;
+    settingsAdvisorChatsWired = true;
+    if (listHost) {
+      listHost.addEventListener('click', function (ev) {
+        var btn = ev.target && ev.target.closest ? ev.target.closest('[data-advisor-settings-delete]') : null;
+        if (!btn) return;
+        var cid = btn.getAttribute('data-advisor-settings-delete');
+        if (!cid) return;
+        var chats = loadWorkspaceChats();
+        var row = findWorkspaceChatById(chats, cid);
+        var label = row && row.title ? String(row.title) : 'this chat';
+        if (!window.confirm('Delete “' + label.slice(0, 200) + '”? This cannot be undone.')) return;
+        deleteWorkspaceAdvisorChatById(cid);
+      });
+    }
+    if (delAll) {
+      delAll.addEventListener('click', function () {
+        var chats = loadWorkspaceChats();
+        if (!chats.length) return;
+        if (
+          !window.confirm(
+            'Delete all ' +
+              chats.length +
+              ' saved Advisor chats for this workspace on this device? This cannot be undone.',
+          )
+        )
+          return;
+        deleteAllWorkspaceAdvisorChats();
+      });
+    }
+  }
+
+  function renderSettingsAdvisorChatsPanel() {
+    var host = document.getElementById('settings-advisor-chats-rows');
+    var delAll = document.getElementById('settings-btn-advisor-delete-all-chats');
+    if (!host) return;
+    var chats = loadWorkspaceChats();
+    if (delAll) delAll.disabled = !chats.length;
+    if (!chats.length) {
+      host.innerHTML =
+        '<p class="settings-acct-row-meta" style="margin:0;">No saved Advisor conversations yet. Chats you start in Advisor are stored here for quick access.</p>';
+      return;
+    }
+    host.innerHTML = chats
+      .map(function (C) {
+        var id = escList(C.id);
+        var title = escList(C.title || 'Chat');
+        var when = escList(advisorChatUpdatedLabel(C.updatedAt));
+        return (
+          '<div class="settings-acct-row">' +
+          '<div class="settings-acct-row-copy">' +
+          '<p class="settings-acct-row-label">' +
+          title +
+          '</p>' +
+          '<p class="settings-acct-row-meta">Last updated ' +
+          when +
+          '</p>' +
+          '</div>' +
+          '<div class="settings-acct-row-actions">' +
+          '<button type="button" class="btn btn-danger-outline" data-advisor-settings-delete="' +
+          id +
+          '">Delete</button>' +
+          '</div>' +
+          '</div>'
+        );
+      })
+      .join('');
+  }
+
   function openAdvisorThreadFromSidebar(threadId) {
     var chats = loadWorkspaceChats();
     var L = findWorkspaceChatById(chats, threadId);
@@ -18919,7 +18488,8 @@ var incomePowerState = {
 
   function listDetailTabToView(L, tabId) {
     if (tabId === 'cal' && L.supportsCalendarView) return 'calendar';
-    if (tabId === 'status' || tabId === 'byStage' || tabId === 'board' || tabId === 'gantt') return 'board';
+    if (tabId === 'gantt') return 'table';
+    if (tabId === 'status' || tabId === 'byStage' || tabId === 'board') return 'board';
     return 'table';
   }
 
@@ -19318,6 +18888,60 @@ var incomePowerState = {
     );
   }
 
+  function listsTrashIconSvg() {
+    return (
+      '<svg class="lists-row-del-ic" viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">' +
+      '<polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>' +
+      '<line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>'
+    );
+  }
+
+  function listsRowDeleteButtonHtml(listId, rowIdx) {
+    return (
+      '<button type="button" class="lists-row-del-btn" title="Delete row" aria-label="Delete row" data-list-row-del="1" data-list-id="' +
+      escList(listId) +
+      '" data-row-i="' +
+      rowIdx +
+      '">' +
+      listsTrashIconSvg() +
+      '</button>'
+    );
+  }
+
+  function listsEmptyRowObject(L) {
+    var row = {};
+    (L.columns || []).forEach(function (c) {
+      if (c && c.id) row[c.id] = '';
+    });
+    return row;
+  }
+
+  function listsAppendEmptyRow(listId) {
+    updateWorkspaceListById(listId, function (X) {
+      X.rows = (X.rows || []).concat([listsEmptyRowObject(X)]);
+    });
+  }
+
+  function listsAppendRowWithGroupValue(listId, groupColId, value) {
+    var gid = String(groupColId || '');
+    updateWorkspaceListById(listId, function (X) {
+      var row = listsEmptyRowObject(X);
+      if (gid) row[gid] = value != null ? String(value) : '';
+      X.rows = (X.rows || []).concat([row]);
+    });
+  }
+
+  function listsDeleteRowAt(listId, rowIdx) {
+    var idx = parseInt(rowIdx, 10);
+    if (isNaN(idx) || idx < 0) return;
+    updateWorkspaceListById(listId, function (X) {
+      var rows = X.rows || [];
+      if (idx >= rows.length) return;
+      rows.splice(idx, 1);
+      X.rows = rows;
+    });
+  }
+
   function patchWorkspaceListCell(listId, rowIdx, colId, value) {
     var lists = loadWorkspaceLists();
     var ix = findWorkspaceListIndexById(listId);
@@ -19373,6 +18997,99 @@ var incomePowerState = {
     );
   }
 
+  var listsRowActionsWired = false;
+  function wireListsRowActionsGlobalOnce() {
+    if (listsRowActionsWired) return;
+    listsRowActionsWired = true;
+    document.addEventListener(
+      'click',
+      function (ev) {
+        var btn = ev.target.closest && ev.target.closest('[data-list-row-del]');
+        if (!btn) return;
+        var wrap = document.getElementById('lists-detail-table-wrap');
+        if (!wrap || !btn.closest || !btn.closest('#lists-detail-table-wrap')) return;
+        var det = document.getElementById('lists-view-detail');
+        if (!det || det.style.display === 'none') return;
+        var listId = det.getAttribute('data-active-list');
+        if (!listId || String(btn.getAttribute('data-list-id')) !== String(listId)) return;
+        var rowIdx = parseInt(btn.getAttribute('data-row-i'), 10);
+        if (isNaN(rowIdx)) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        if (!window.confirm('Delete this row?')) return;
+        listsDeleteRowAt(listId, rowIdx);
+      },
+      true,
+    );
+  }
+
+  var listsBoardCalNavWired = false;
+  function wireListsBoardNewAndCalendarNavOnce() {
+    if (listsBoardCalNavWired) return;
+    listsBoardCalNavWired = true;
+    document.addEventListener(
+      'click',
+      function (ev) {
+        var bn = ev.target.closest && ev.target.closest('[data-list-board-new]');
+        if (bn && bn.closest && bn.closest('#lists-detail-table-wrap')) {
+          var det = document.getElementById('lists-view-detail');
+          if (!det || det.style.display === 'none') return;
+          var active = det.getAttribute('data-active-list');
+          var lid = bn.getAttribute('data-list-board-new');
+          if (!lid || String(active) !== String(lid)) return;
+          var col = bn.getAttribute('data-board-col');
+          var enc = bn.getAttribute('data-board-val');
+          var val = '';
+          try {
+            val = enc != null ? decodeURIComponent(enc) : '';
+          } catch (_) {
+            val = String(enc || '');
+          }
+          ev.preventDefault();
+          ev.stopPropagation();
+          listsAppendRowWithGroupValue(lid, col, val);
+          return;
+        }
+        var nav = ev.target.closest && ev.target.closest('[data-list-cal-nav]');
+        if (!nav || !nav.closest || !nav.closest('#lists-detail-table-wrap')) return;
+        var det2 = document.getElementById('lists-view-detail');
+        if (!det2 || det2.style.display === 'none') return;
+        var lid2 = nav.getAttribute('data-list-cal-nav');
+        if (!lid2 || String(det2.getAttribute('data-active-list')) !== String(lid2)) return;
+        var go = nav.getAttribute('data-cal-go');
+        var delta = nav.getAttribute('data-cal-delta');
+        ev.preventDefault();
+        ev.stopPropagation();
+        updateWorkspaceListById(lid2, function (X) {
+          if (!X.supportsCalendarView) return;
+          var ref = new Date();
+          var y = X.calendarViewYear != null ? parseInt(X.calendarViewYear, 10) : ref.getFullYear();
+          var mo = X.calendarViewMonth != null ? parseInt(X.calendarViewMonth, 10) : ref.getMonth() + 1;
+          if (isNaN(y)) y = ref.getFullYear();
+          if (isNaN(mo) || mo < 1 || mo > 12) mo = ref.getMonth() + 1;
+          if (go === 'today') {
+            X.calendarViewYear = ref.getFullYear();
+            X.calendarViewMonth = ref.getMonth() + 1;
+            return;
+          }
+          var d = parseInt(delta, 10);
+          if (isNaN(d)) return;
+          mo += d;
+          if (mo > 12) {
+            mo = 1;
+            y += 1;
+          } else if (mo < 1) {
+            mo = 12;
+            y -= 1;
+          }
+          X.calendarViewYear = y;
+          X.calendarViewMonth = mo;
+        });
+      },
+      true,
+    );
+  }
+
   function listsTableHtml(L) {
     var cols = L.columns || [];
     var thead =
@@ -19390,7 +19107,7 @@ var incomePowerState = {
           );
         })
         .join('') +
-      '</tr>';
+      '<th class="lists-th-cell lists-th-rowact" aria-label="Row actions"></th></tr>';
     var rows = L.rows || [];
     var lid = L.id;
     var tb = rows
@@ -19402,27 +19119,61 @@ var incomePowerState = {
               return '<td>' + listsRenderOneCell(L, lid, rowIdx, c, r[c.id] != null ? r[c.id] : '') + '</td>';
             })
             .join('') +
-          '</tr>'
+          '<td class="lists-td-rowact">' +
+          listsRowDeleteButtonHtml(lid, rowIdx) +
+          '</td></tr>'
         );
       })
       .join('');
     return '<div class="lists-dt-wrap"><table class="dt lists-dt"><thead>' + thead + '</thead><tbody>' + tb + '</tbody></table></div>';
   }
 
-  function listsBoardHtml(L) {
+  function listsBoardStageSortRank(stageKey) {
+    var raw = String(stageKey || '').trim();
+    var s = raw === '—' ? '' : raw.toLowerCase();
+    if (!s) return 4000;
+    if (s === 'complete' || s === 'done') return 10;
+    if (s === 'in progress' || s === 'in-progress' || s === 'inprogress') return 20;
+    if (s === 'blocked') return 25;
+    if (s === 'not started' || s === 'to-do' || s === 'todo' || s === 'to do') return 30;
+    return 100;
+  }
+
+  function listsBoardSortedStages(keys) {
+    return keys.slice().sort(function (a, b) {
+      var ra = listsBoardStageSortRank(a);
+      var rb = listsBoardStageSortRank(b);
+      if (ra !== rb) return ra - rb;
+      var sa = String(a === '—' ? '' : a).toLowerCase();
+      var sb = String(b === '—' ? '' : b).toLowerCase();
+      return sa.localeCompare(sb);
+    });
+  }
+
+  function listsBoardHtml(L, opts) {
+    var previewStatic = !!(opts && opts.previewStatic);
     var cols = L.columns || [];
     var gid = L.boardGroupColumnId || (cols[1] ? cols[1].id : null) || (cols[0] ? cols[0].id : 'c1');
+    var gCol = null;
+    cols.forEach(function (c) {
+      if (c && String(c.id) === String(gid)) gCol = c;
+    });
+    var hdrRole = (gCol && listsColumnSelectRole(gCol)) || 'status';
     var buckets = {};
     (L.rows || []).forEach(function (r) {
       var k = String(r[gid] != null ? r[gid] : '').trim() || '—';
       if (!buckets[k]) buckets[k] = [];
       buckets[k].push(r);
     });
-    var order = Object.keys(buckets);
+    var order = listsBoardSortedStages(Object.keys(buckets));
     var colHtml = order
       .map(function (stage) {
+        var displayHdr = stage === '—' ? 'No status' : stage;
+        var hdrTone = listsSelectToneClass(hdrRole, stage === '—' ? '' : stage);
         var cards = buckets[stage]
           .map(function (r) {
+            var rowIdx = (L.rows || []).indexOf(r);
+            if (rowIdx < 0) rowIdx = 0;
             var titleCol = cols[0] ? cols[0].id : 'c1';
             var title = String(r[titleCol] != null ? r[titleCol] : '').trim() || 'Item';
             var meta = cols
@@ -19435,7 +19186,9 @@ var incomePowerState = {
               .slice(0, 4)
               .join(' · ');
             return (
-              '<div class="lists-board-card"><div class="lists-board-card-title">' +
+              '<div class="lists-board-card">' +
+              listsRowDeleteButtonHtml(L.id, rowIdx) +
+              '<div class="lists-board-card-title">' +
               escList(title) +
               '</div>' +
               (meta ? '<div class="lists-board-card-meta">' + meta + '</div>' : '') +
@@ -19443,11 +19196,29 @@ var incomePowerState = {
             );
           })
           .join('');
+        var newVal = stage === '—' ? '' : String(stage);
+        var newBtn = previewStatic
+          ? ''
+          : '<button type="button" class="lists-board-new-row" data-list-board-new="' +
+            escList(L.id) +
+            '" data-board-col="' +
+            escList(gid) +
+            '" data-board-val="' +
+            encodeURIComponent(newVal) +
+            '"><span class="lists-board-new-plus">+</span> New row</button>';
         return (
-          '<div class="lists-board-col"><div class="lists-board-col-hdr">' +
-          escList(stage) +
-          '</div>' +
+          '<div class="lists-board-col">' +
+          '<div class="lists-board-col-hdr ' +
+          hdrTone +
+          '">' +
+          '<span class="lists-board-hdr-dot" aria-hidden="true"></span>' +
+          '<span class="lists-board-hdr-txt">' +
+          escList(displayHdr) +
+          '</span></div>' +
+          '<div class="lists-board-col-body">' +
           cards +
+          '</div>' +
+          newBtn +
           '</div>'
         );
       })
@@ -19455,15 +19226,19 @@ var incomePowerState = {
     return '<div class="lists-board">' + colHtml + '</div>';
   }
 
-  function listsCalendarHtml(L) {
+  function listsCalendarHtml(L, opts) {
+    var previewStatic = !!(opts && opts.previewStatic);
     if (!L.supportsCalendarView) {
-      return '<p class="lists-cal-empty">Calendar view is available for Content Calendar and Social Media Planner lists.</p>';
+      return '<p class="lists-cal-empty">Calendar view is not enabled for this list.</p>';
     }
     var dateCol = L.calendarDateColumnId || (L.columns && L.columns[1] ? L.columns[1].id : 'c2');
     var titleCol = L.columns && L.columns[0] ? L.columns[0].id : 'c1';
-    var now = new Date();
-    var y = now.getFullYear();
-    var mo = now.getMonth() + 1;
+    var ref = new Date();
+    var y = L.calendarViewYear != null ? parseInt(L.calendarViewYear, 10) : ref.getFullYear();
+    var mo = L.calendarViewMonth != null ? parseInt(L.calendarViewMonth, 10) : ref.getMonth() + 1;
+    if (isNaN(y) || y < 1970 || y > 2100) y = ref.getFullYear();
+    if (isNaN(mo) || mo < 1 || mo > 12) mo = ref.getMonth() + 1;
+    var today = new Date();
     var first = new Date(y, mo - 1, 1);
     var startPad = first.getDay();
     var daysInMo = new Date(y, mo, 0).getDate();
@@ -19472,15 +19247,22 @@ var incomePowerState = {
     for (i = 0; i < startPad; i++) cells.push('<div class="lists-cal-cell lists-cal-muted"></div>');
     for (i = 1; i <= daysInMo; i++) {
       var items = [];
-      (L.rows || []).forEach(function (r) {
+      (L.rows || []).forEach(function (r, ri) {
         var p = listsParseYmd(r[dateCol]);
         if (p && p.y === y && p.mo === mo && p.d === i) {
-          items.push('<div class="lists-cal-item">' + escList(r[titleCol] != null ? r[titleCol] : 'Item') + '</div>');
+          items.push(
+            '<div class="lists-cal-item-row">' +
+              '<div class="lists-cal-item">' +
+              escList(r[titleCol] != null ? r[titleCol] : 'Item') +
+              '</div>' +
+              listsRowDeleteButtonHtml(L.id, ri) +
+              '</div>',
+          );
         }
       });
       cells.push(
         '<div class="lists-cal-cell' +
-        (i === now.getDate() && mo === now.getMonth() + 1 && y === now.getFullYear() ? ' lists-cal-today' : '') +
+        (i === today.getDate() && mo === today.getMonth() + 1 && y === today.getFullYear() ? ' lists-cal-today' : '') +
         '"><div class="lists-cal-day">' +
         i +
         '</div>' +
@@ -19495,12 +19277,41 @@ var incomePowerState = {
         return '<div class="lists-cal-wh">' + w + '</div>';
       })
       .join('');
+    var monthNames = [
+      'January',
+      'February',
+      'March',
+      'April',
+      'May',
+      'June',
+      'July',
+      'August',
+      'September',
+      'October',
+      'November',
+      'December',
+    ];
+    var titleStr = (monthNames[mo - 1] || 'Month') + ' ' + y;
+    var toolbar = previewStatic
+      ? ''
+      : '<div class="lists-cal-toolbar">' +
+        '<button type="button" class="btn lists-cal-nav" data-list-cal-nav="' +
+        escList(L.id) +
+        '" data-cal-delta="-1" aria-label="Previous month">‹</button>' +
+        '<button type="button" class="btn lists-cal-nav" data-list-cal-nav="' +
+        escList(L.id) +
+        '" data-cal-go="today">Today</button>' +
+        '<button type="button" class="btn lists-cal-nav" data-list-cal-nav="' +
+        escList(L.id) +
+        '" data-cal-delta="1" aria-label="Next month">›</button>' +
+        '</div>';
     return (
-      '<div class="lists-cal"><div class="lists-cal-title">' +
-      y +
-      '–' +
-      (mo < 10 ? '0' : '') +
-      mo +
+      '<div class="lists-cal" data-list-cal-host="' +
+      escList(L.id) +
+      '"><div class="lists-cal-title-row"><div class="lists-cal-title">' +
+      escList(titleStr) +
+      '</div>' +
+      toolbar +
       '</div><div class="lists-cal-grid">' +
       hdr +
       cells.join('') +
@@ -19517,12 +19328,13 @@ var incomePowerState = {
           return '<th>' + escList(c.name) + '</th>';
         })
         .join('') +
+      '<th class="lists-th-rowact" aria-label="Row actions"></th>' +
       '<th class="lists-th-add"><span class="lists-add-prop">+ Add property</span></th></tr>';
     var rows = L.rows || [];
     var tb =
       rows.length === 0
         ? '<tr><td class="lists-td-check"></td><td colspan="' +
-          (cols.length + 1) +
+          (cols.length + 2) +
           '"></td></tr>'
         : rows
             .map(function (r, rowIdx) {
@@ -19533,7 +19345,9 @@ var incomePowerState = {
                     return '<td>' + listsRenderOneCell(L, L.id, rowIdx, c, r[c.id] != null ? r[c.id] : '') + '</td>';
                   })
                   .join('') +
-                '<td></td></tr>'
+                '<td class="lists-td-rowact">' +
+                listsRowDeleteButtonHtml(L.id, rowIdx) +
+                '</td><td></td></tr>'
               );
             })
             .join('');
@@ -19585,13 +19399,31 @@ var incomePowerState = {
         });
       return;
     }
+    normalizeListForUi(L);
     var tabs = listDetailEffectiveTabs(L);
     if (!L.activeTabId || !tabs.some(function (t) { return t.id === L.activeTabId; })) L.activeTabId = tabs[0] ? tabs[0].id : 'all';
     var vType = listDetailTabToView(L, L.activeTabId);
     if (vType === 'calendar') wrap.innerHTML = listsCalendarHtml(L);
-    else if (vType === 'board' && L.boardGroupColumnId) wrap.innerHTML = listsBoardHtml(L);
+    else if (vType === 'board') wrap.innerHTML = listsBoardHtml(L);
     else wrap.innerHTML = listsTableHtml(L);
     if (vType === 'table') paintListTableHeaderIcons();
+  }
+
+  function inferBoardGroupColumnId(L) {
+    var cols = L.columns || [];
+    var i;
+    for (i = 0; i < cols.length; i++) {
+      var c = cols[i];
+      if (c && listsColumnSelectRole(c) === 'status') return c.id;
+    }
+    for (i = 0; i < cols.length; i++) {
+      var c2 = cols[i];
+      var nm = String(c2 && c2.name != null ? c2.name : '')
+        .trim()
+        .toLowerCase();
+      if (/\b(status|stage|state)\b/.test(nm)) return c2.id;
+    }
+    return null;
   }
 
   function normalizeListForUi(L) {
@@ -19612,15 +19444,65 @@ var incomePowerState = {
           var d = defByColId[c.id];
           if (d && d.featureId && !c.featureId) c.featureId = d.featureId;
         });
+        var tplBoardId = tplMeta.boardGroupColumnId ? String(tplMeta.boardGroupColumnId) : '';
+        if (tplBoardId) {
+          var hasBoardCol = (L.columns || []).some(function (c) {
+            return c && String(c.id) === tplBoardId;
+          });
+          if (!hasBoardCol) {
+            var dAdd = defByColId[tplBoardId];
+            if (dAdd) {
+              if (!L.columns) L.columns = [];
+              L.columns.push({
+                id: dAdd.id,
+                name: dAdd.name,
+                icon: null,
+                iconStyle: 'filled',
+                featureId: dAdd.featureId || null,
+              });
+              (L.rows || []).forEach(function (r) {
+                if (r[tplBoardId] == null) r[tplBoardId] = '';
+              });
+            }
+          }
+        }
+      }
+      if (tplMeta) {
+        if (tplMeta.supportsCalendarView) L.supportsCalendarView = true;
+        if (!L.boardGroupColumnId && tplMeta.boardGroupColumnId) L.boardGroupColumnId = tplMeta.boardGroupColumnId;
+        if (!L.calendarDateColumnId && tplMeta.calendarDateColumnId) L.calendarDateColumnId = tplMeta.calendarDateColumnId;
+        if (Array.isArray(tplMeta.previewTabs) && tplMeta.previewTabs.length) {
+          var curTabs = Array.isArray(L.previewTabs) && L.previewTabs.length ? L.previewTabs : [];
+          var tabById = {};
+          curTabs.forEach(function (t) {
+            if (t && t.id) tabById[t.id] = t;
+          });
+          var mergedTabs = [];
+          tplMeta.previewTabs.forEach(function (t) {
+            if (!t || !t.id) return;
+            if (t.id === 'cal' && !L.supportsCalendarView) return;
+            mergedTabs.push(tabById[t.id] ? tabById[t.id] : JSON.parse(JSON.stringify(t)));
+          });
+          curTabs.forEach(function (t) {
+            if (!t || !t.id) return;
+            var inTpl = tplMeta.previewTabs.some(function (x) {
+              return x && x.id === t.id;
+            });
+            if (!inTpl) mergedTabs.push(t);
+          });
+          L.previewTabs = mergedTabs;
+        }
       }
     }
-    if (!L.previewTabs && L.templateId) {
-      var t = findListTemplate(L.templateId);
-      if (t) {
-        if (t.previewTabs) L.previewTabs = JSON.parse(JSON.stringify(t.previewTabs));
-        if (t.boardGroupColumnId) L.boardGroupColumnId = t.boardGroupColumnId;
-        if (t.calendarDateColumnId) L.calendarDateColumnId = t.calendarDateColumnId;
-        if (t.supportsCalendarView) L.supportsCalendarView = true;
+    if (!L.boardGroupColumnId) {
+      var inferred = inferBoardGroupColumnId(L);
+      if (inferred) L.boardGroupColumnId = inferred;
+    }
+    if (L.supportsCalendarView) {
+      var ref = new Date();
+      if (L.calendarViewYear == null || L.calendarViewMonth == null || L.calendarViewMonth < 1 || L.calendarViewMonth > 12) {
+        L.calendarViewYear = ref.getFullYear();
+        L.calendarViewMonth = ref.getMonth() + 1;
       }
     }
   }
@@ -19639,7 +19521,45 @@ var incomePowerState = {
     var tabsHost = document.getElementById('lists-detail-tabs');
     var actions = document.getElementById('lists-detail-actions');
     if (!L || !main || !det || !wrap) return;
+    var snapBoard = L.boardGroupColumnId;
+    var snapCalCol = L.calendarDateColumnId;
+    var snapSupCal = L.supportsCalendarView;
+    var snapCy = L.calendarViewYear;
+    var snapCm = L.calendarViewMonth;
+    var snapColSig = (L.columns || [])
+      .map(function (c) {
+        return c && c.id ? String(c.id) : '';
+      })
+      .join(',');
+    var snapTabIds = (L.previewTabs || [])
+      .map(function (t) {
+        return t && t.id ? String(t.id) : '';
+      })
+      .join(',');
     normalizeListForUi(L);
+    var afterColSig = (L.columns || [])
+      .map(function (c) {
+        return c && c.id ? String(c.id) : '';
+      })
+      .join(',');
+    var afterTabIds = (L.previewTabs || [])
+      .map(function (t) {
+        return t && t.id ? String(t.id) : '';
+      })
+      .join(',');
+    if (
+      L.boardGroupColumnId !== snapBoard ||
+      L.calendarDateColumnId !== snapCalCol ||
+      L.supportsCalendarView !== snapSupCal ||
+      L.calendarViewYear !== snapCy ||
+      L.calendarViewMonth !== snapCm ||
+      afterColSig !== snapColSig ||
+      afterTabIds !== snapTabIds
+    ) {
+      saveWorkspaceLists(lists);
+      renderListsSidebar();
+      renderListsPageGrid();
+    }
     main.style.display = 'none';
     det.style.display = 'block';
     if (title) title.textContent = L.title;
@@ -19648,7 +19568,11 @@ var incomePowerState = {
       actions.innerHTML =
         '<button type="button" class="btn" data-list-rename="' +
         escList(L.id) +
-        '">Rename</button><button type="button" class="btn" data-list-del="' +
+        '">Rename</button>' +
+        (L.layout === 'notion'
+          ? ''
+          : '<button type="button" class="btn btn-p" data-list-add-row="' + escList(L.id) + '">Add row</button>') +
+        '<button type="button" class="btn" data-list-del="' +
         escList(L.id) +
         '">Delete</button>';
       var rBtn = actions.querySelector('[data-list-rename]');
@@ -19660,6 +19584,12 @@ var incomePowerState = {
             if (title) title.textContent = String(nm).trim();
           }
         });
+      var aRowBtn = actions.querySelector('[data-list-add-row]');
+      if (aRowBtn) {
+        aRowBtn.addEventListener('click', function () {
+          listsAppendEmptyRow(L.id);
+        });
+      }
       var dBtn = actions.querySelector('[data-list-del]');
       if (dBtn)
         dBtn.addEventListener('click', function () {
@@ -19864,6 +19794,7 @@ var incomePowerState = {
     var hid = document.getElementById('list-cust-hidden-count');
     if (!inner || !tpl) return;
     var L = materializeListFromTemplateSelection(tpl, listsCustomizeState.enabledFeatures);
+    normalizeListForUi(L);
     L.activeTabId = listsCustomizeState.previewTab;
     var totalOpt = (tpl.columnDefs || []).filter(function (d) {
       return d.featureId;
@@ -19905,12 +19836,54 @@ var incomePowerState = {
     });
     var body = inner.querySelector('#list-cust-preview-body');
     if (!body) return;
-    if (listDetailTabToView(L, listsCustomizeState.previewTab) === 'calendar') body.innerHTML = listsCalendarHtml(L);
-    else if (listDetailTabToView(L, listsCustomizeState.previewTab) === 'board' && L.boardGroupColumnId) body.innerHTML = listsBoardHtml(L);
+    if (listDetailTabToView(L, listsCustomizeState.previewTab) === 'calendar') body.innerHTML = listsCalendarHtml(L, { previewStatic: true });
+    else if (listDetailTabToView(L, listsCustomizeState.previewTab) === 'board') body.innerHTML = listsBoardHtml(L, { previewStatic: true });
     else body.innerHTML = listsTableHtml(L);
   }
 
-  function renderTemplateCardInner(t) {
+  function listTemplateAccentClass(t) {
+    var c = String((t && t.category) || 'operations').toLowerCase();
+    if (c === 'content') return 'list-tmpl-accent-content';
+    if (c === 'sales') return 'list-tmpl-accent-sales';
+    return 'list-tmpl-accent-operations';
+  }
+
+  function listTemplateMiniPreviewHtml(t) {
+    var kind =
+      (t && t.previewKind) ||
+      (t && t.boardGroupColumnId ? 'board' : 'table');
+    if (kind === 'calendar') {
+      return (
+        '<div class="list-tmpl-mini list-tmpl-mini-cal" aria-hidden="true">' +
+        '<div class="list-tmpl-mini-cal-hd"><span></span><span></span><span></span><span></span><span></span><span></span><span></span></div>' +
+        '<div class="list-tmpl-mini-cal-grid">' +
+        '<span></span><span></span><span></span><span></span><span></span><span></span><span></span>' +
+        '<span></span><span></span><span class="dot"></span><span></span><span></span><span></span><span></span>' +
+        '<span></span><span></span><span></span><span></span><span></span><span class="dot alt"></span><span></span>' +
+        '</div></div>'
+      );
+    }
+    if (kind === 'board') {
+      return (
+        '<div class="list-tmpl-mini list-tmpl-mini-board">' +
+        '<div class="list-tmpl-mini-col"><div class="list-tmpl-mini-card"></div><div class="list-tmpl-mini-card sm"></div></div>' +
+        '<div class="list-tmpl-mini-col"><div class="list-tmpl-mini-card med"></div><div class="list-tmpl-mini-card sm"></div></div>' +
+        '<div class="list-tmpl-mini-col"><div class="list-tmpl-mini-card sm"></div></div>' +
+        '</div>'
+      );
+    }
+    return (
+      '<div class="list-tmpl-mini list-tmpl-mini-table">' +
+      '<div class="list-tmpl-mini-thead"><span></span><span></span><span></span></div>' +
+      '<div class="list-tmpl-mini-row"><span class="cw"></span><span class="cx"></span><span class="cp p1"></span></div>' +
+      '<div class="list-tmpl-mini-row"><span class="cw"></span><span class="cx short"></span><span class="cp p2"></span></div>' +
+      '<div class="list-tmpl-mini-row"><span class="cw"></span><span class="cx"></span><span class="cp p3"></span></div>' +
+      '</div>'
+    );
+  }
+
+  function renderTemplateCardInner(t, opts) {
+    opts = opts || {};
     var tags = (t.tags || [])
       .map(function (g) {
         var bg = '#93c5fd33';
@@ -19919,14 +19892,22 @@ var incomePowerState = {
         return '<span class="list-tmpl-tag" style="background:' + bg + ';color:#334155;">' + escList(g.label) + '</span>';
       })
       .join('');
+    var accent = listTemplateAccentClass(t);
+    var mini = listTemplateMiniPreviewHtml(t);
+    var compact = opts.compact ? ' list-tmpl-card-rich--compact' : '';
     return (
-      '<button type="button" class="list-tmpl-card list-tmpl-card-compact" data-tpl-open="' +
+      '<button type="button" class="list-tmpl-card list-tmpl-card-rich ' +
+      accent +
+      compact +
+      '" data-tpl-open="' +
       escList(t.id) +
-      '"><div class="list-tmpl-thumb" aria-hidden="true">' +
+      '"><div class="list-tmpl-preview-canvas" aria-hidden="true">' +
+      mini +
+      '</div><div class="list-tmpl-card-body"><div class="list-tmpl-card-title"><span class="list-tmpl-emoji">' +
       escList(t.emoji || '📋') +
-      '</div><div><div class="list-tmpl-card-title">' +
+      '</span><span class="list-tmpl-card-title-t">' +
       escList(t.title) +
-      '</div><p class="list-tmpl-desc">' +
+      '</span></div><p class="list-tmpl-desc">' +
       escList(t.desc) +
       '</p><div class="list-tmpl-tags">' +
       tags +
@@ -19993,7 +19974,11 @@ var incomePowerState = {
       host.innerHTML = '<p style="font-size:13px;color:#94a3b8;padding:12px;">No templates in this category.</p>';
       return;
     }
-    host.innerHTML = arr.map(renderTemplateCardInner).join('');
+    host.innerHTML = arr
+      .map(function (tpl) {
+        return renderTemplateCardInner(tpl, { compact: true });
+      })
+      .join('');
     host.querySelectorAll('[data-tpl-open]').forEach(function (btn) {
       btn.addEventListener('click', function () {
         openListCustomizeModal(btn.getAttribute('data-tpl-open'));
@@ -20022,6 +20007,8 @@ var incomePowerState = {
     bindNew('lists-btn-page-new');
     wireListsSelectGlobalOnce();
     wireListsInlineEditGlobalOnce();
+    wireListsRowActionsGlobalOnce();
+    wireListsBoardNewAndCalendarNavOnce();
 
     var browse = document.getElementById('lists-sb-browse');
     if (browse) {
@@ -20470,7 +20457,6 @@ var incomePowerState = {
       },
       { id: 'go-dash', label: 'Go to Dashboard', keys: '', kw: 'home performance kpi', run: function () { qaGo('dashboard'); } },
       { id: 'go-cust', label: 'Go to Customers', keys: '', kw: 'clients pipeline', run: function () { qaGo('customers'); } },
-      { id: 'go-tasks', label: 'Go to Tasks', keys: '', kw: 'todo workflow', run: function () { qaGo('tasks'); } },
       { id: 'go-eml', label: 'Go to Emails', keys: '', kw: 'mail inbox drafts gmail compose', run: function () { qaGo('emails'); } },
       { id: 'go-inc', label: 'Go to Income', keys: '', kw: 'revenue invoices ar', run: function () { qaGo('revenue'); } },
       { id: 'go-exp', label: 'Go to Expenses', keys: '', kw: 'spend budget vendors', run: function () { qaGo('expenses'); } },
@@ -20561,15 +20547,11 @@ var incomePowerState = {
       { id: 'add-tm', label: 'Add time entry', keys: '', kw: 'timesheet hours', run: function () { qaGo('timesheet'); window.setTimeout(function () { qaClickById('btn-add-time'); }, 100); } },
       {
         id: 'new-task',
-        label: 'New task',
+        label: 'New task (Advisor)',
         keys: '',
-        kw: 'workflow tasks',
+        kw: 'workflow tasks todo',
         run: function () {
-          qaGo('tasks');
-          window.setTimeout(function () {
-            var b = document.getElementById('btn-tasks-new') || document.getElementById('btn-tasks-new-empty');
-            if (b && !b.disabled) b.click();
-          }, 120);
+          qaGo('chat');
         },
       },
       {
@@ -21134,7 +21116,6 @@ var incomePowerState = {
     }
     wireTeamPage();
     wireWorkspaceSettingsPanel();
-    wireTasksTab();
     wireEmailsPage();
     wireListsFeature();
     if (typeof requestAnimationFrame !== 'undefined') {
@@ -21219,7 +21200,6 @@ var incomePowerState = {
         var titles = {
           dashboard: 'Business Performance',
           customers: 'Customers',
-          tasks: 'Tasks',
           scheduling: 'Scheduling',
           emails: 'Emails',
           revenue: 'Income',
@@ -21243,15 +21223,6 @@ var incomePowerState = {
         closeListDetailView();
         renderListsSidebar();
         renderListsPageGrid();
-      }
-      if (pageId === 'tasks') {
-        wfRefreshFromSupabase()
-          .then(function () {
-            return tasksTabRefreshMembers();
-          })
-          .then(function () {
-            renderTasksPage();
-          });
       }
       if (pageId === 'settings') {
         wfRefreshFromSupabase().then(function () {
@@ -21284,6 +21255,8 @@ var incomePowerState = {
   }
 
   window.bizDashCrmCustomersTableBuildPayload = crmBuildCustomersTableSyncPayload;
+  /** Re-apply thead/tbody column visibility after React commits CRM rows (avoids nth-child / display:none drift). */
+  window.bizDashApplyCustomersColumnVisibility = applyCustomersColumnVisibility;
 
   window.bizDashCrmTablePatchField = async function (clientId, fieldKey, val, colId) {
     var idx = crmFindClientIndex(clientId);

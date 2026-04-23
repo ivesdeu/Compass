@@ -2060,6 +2060,21 @@
     font-size: 0.875rem;
     white-space: pre-wrap;
   }
+  .chat-msg.asst .chat-asst-stream-meta {
+    font-size: 0.75rem;
+    font-weight: 500;
+    color: var(--text3);
+    margin-bottom: 6px;
+    letter-spacing: 0.02em;
+  }
+  .chat-msg.asst .chat-asst-stream-body {
+    font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+    font-size: 0.8125rem;
+    line-height: 1.45;
+    color: #3f3f46;
+    max-height: min(40vh, 320px);
+    overflow-y: auto;
+  }
   .chat-feedback-row {
     display: flex;
     flex-wrap: wrap;
@@ -2502,343 +2517,6 @@
     width: max-content;
     min-width: 100%;
   }
-  /* Tasks tab (Attio-style) */
-  #page-tasks.tasks-attio {
-    max-width: 1100px;
-    margin: 0 auto;
-    /* Match .pg vertical rhythm; do not zero top padding or the header sits under the chrome. */
-    padding: 36px 4px 32px;
-  }
-  #page-tasks .tasks-attio-hdr {
-    display: flex;
-    align-items: center;
-    justify-content: space-between;
-    gap: 16px;
-    margin-bottom: 8px;
-  }
-  #page-tasks .tasks-attio-title {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    font-size: 1.25rem;
-    font-weight: 600;
-    color: var(--text);
-  }
-  #page-tasks .tasks-attio-title svg {
-    width: 22px;
-    height: 22px;
-    color: var(--text3);
-    flex-shrink: 0;
-  }
-  #page-tasks .tasks-attio-hdr-actions {
-    display: flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-  }
-  #page-tasks .tasks-attio-hdr-actions a {
-    color: var(--text2);
-    text-decoration: none;
-    padding: 6px 10px;
-    border-radius: 6px;
-  }
-  #page-tasks .tasks-attio-hdr-actions a:hover {
-    background: var(--bg3);
-    color: var(--text);
-  }
-  #page-tasks .tasks-attio-toolbar {
-    display: flex;
-    flex-wrap: wrap;
-    align-items: center;
-    justify-content: space-between;
-    gap: 10px;
-    padding: 10px 0 16px;
-    border-bottom: 1px solid var(--border);
-    margin-bottom: 0;
-  }
-  #page-tasks .tasks-attio-toolbar-left,
-  #page-tasks .tasks-attio-toolbar-right {
-    display: flex;
-    align-items: center;
-    flex-wrap: wrap;
-    gap: 8px;
-  }
-  #page-tasks .tasks-sort-pill {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    color: var(--text2);
-    padding: 6px 10px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--bg2);
-  }
-  #page-tasks .tasks-sort-pill strong {
-    color: var(--text);
-    font-weight: 600;
-  }
-  #page-tasks .tasks-btn-ghost {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    font-size: 13px;
-    color: var(--text2);
-    padding: 6px 12px;
-    border: 1px solid var(--border);
-    border-radius: 8px;
-    background: var(--bg2);
-    cursor: pointer;
-  }
-  #page-tasks .tasks-btn-ghost:hover:not(:disabled) {
-    background: var(--bg3);
-    color: var(--text);
-  }
-  #page-tasks .tasks-btn-ghost:disabled {
-    opacity: 0.5;
-    cursor: not-allowed;
-  }
-  #page-tasks .tasks-filter-select {
-    min-width: 120px;
-    font-size: 13px;
-  }
-  #page-tasks .tasks-demo-hint {
-    font-size: 12px;
-    color: var(--text3);
-    margin: 10px 0 0;
-  }
-  #page-tasks .tasks-empty {
-    display: none;
-    flex-direction: column;
-    align-items: center;
-    justify-content: center;
-    text-align: center;
-    padding: 48px 24px 56px;
-    min-height: 320px;
-  }
-  #page-tasks .tasks-empty.on {
-    display: flex;
-  }
-  #page-tasks .tasks-empty-illus {
-    width: 120px;
-    height: 120px;
-    margin-bottom: 20px;
-    color: var(--text3);
-    opacity: 0.85;
-  }
-  #page-tasks .tasks-empty h2 {
-    font-size: 1.35rem;
-    font-weight: 600;
-    color: var(--text);
-    margin-bottom: 8px;
-  }
-  #page-tasks .tasks-empty p {
-    font-size: 14px;
-    color: var(--text2);
-    max-width: 360px;
-    line-height: 1.5;
-    margin-bottom: 20px;
-  }
-  #page-tasks .tasks-main {
-    display: none;
-    padding-top: 8px;
-  }
-  #page-tasks .tasks-main.on {
-    display: block;
-  }
-  #page-tasks .tasks-group-hdr {
-    display: flex;
-    align-items: center;
-    gap: 8px;
-    font-size: 12px;
-    font-weight: 600;
-    color: var(--text2);
-    text-transform: uppercase;
-    letter-spacing: 0.04em;
-    padding: 18px 0 8px;
-    border-bottom: 1px solid var(--border);
-  }
-  #page-tasks .tasks-group-count {
-    font-weight: 500;
-    color: var(--text3);
-  }
-  #page-tasks .tasks-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 14px;
-  }
-  #page-tasks .tasks-table th {
-    text-align: left;
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.05em;
-    color: var(--text3);
-    padding: 10px 12px;
-    border-bottom: 1px solid var(--border);
-    white-space: nowrap;
-  }
-  #page-tasks .tasks-table td {
-    padding: 12px;
-    border-bottom: 1px solid var(--border);
-    vertical-align: middle;
-    color: var(--text);
-  }
-  #page-tasks .tasks-table tr:hover td {
-    background: var(--bg3);
-  }
-  #page-tasks .tasks-col-task {
-    min-width: 200px;
-  }
-  #page-tasks .tasks-row-title {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-  }
-  #page-tasks .tasks-row-title input[type='checkbox'] {
-    width: 16px;
-    height: 16px;
-    accent-color: var(--coral);
-    flex-shrink: 0;
-  }
-  #page-tasks .tasks-due-today {
-    color: var(--warning);
-    font-weight: 500;
-    font-size: 13px;
-  }
-  #page-tasks .tasks-due-overdue {
-    color: var(--red);
-    font-weight: 500;
-    font-size: 13px;
-  }
-  #page-tasks .tasks-due-muted {
-    color: var(--text2);
-    font-size: 13px;
-  }
-  #page-tasks .tasks-assignee {
-    display: inline-flex;
-    align-items: center;
-    gap: 8px;
-    max-width: 220px;
-  }
-  #page-tasks .tasks-assignee-av {
-    width: 28px;
-    height: 28px;
-    border-radius: 50%;
-    background: var(--green);
-    color: #fff;
-    font-size: 11px;
-    font-weight: 600;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    flex-shrink: 0;
-  }
-  #page-tasks .tasks-assignee-em {
-    font-size: 13px;
-    color: var(--text2);
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-  #page-tasks .tasks-row-menu {
-    border: none;
-    background: transparent;
-    color: var(--text3);
-    cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 4px;
-    font-size: 18px;
-    line-height: 1;
-  }
-  #page-tasks .tasks-row-menu:hover {
-    background: var(--bg4);
-    color: var(--text);
-  }
-  #page-tasks .tasks-learn {
-    margin-top: 40px;
-    padding-top: 8px;
-  }
-  #page-tasks .tasks-learn-lbl {
-    font-size: 11px;
-    font-weight: 600;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    color: var(--text3);
-    margin-bottom: 10px;
-  }
-  #page-tasks .tasks-learn-cards {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-  @media (max-width: 720px) {
-    #page-tasks .tasks-learn-cards {
-      grid-template-columns: 1fr;
-    }
-  }
-  #page-tasks .tasks-learn-card {
-    border: 1px solid var(--border);
-    border-radius: 10px;
-    padding: 14px 16px;
-    background: var(--bg2);
-    font-size: 13px;
-    color: var(--text2);
-    display: flex;
-    align-items: flex-start;
-    gap: 10px;
-  }
-  #page-tasks .tasks-learn-card svg {
-    width: 18px;
-    height: 18px;
-    color: var(--text3);
-    flex-shrink: 0;
-    margin-top: 2px;
-  }
-  #page-tasks .tasks-modal-overlay {
-    display: none;
-    position: fixed;
-    inset: 0;
-    z-index: 200;
-    background: rgba(0, 0, 0, 0.35);
-    align-items: center;
-    justify-content: center;
-    padding: 20px;
-  }
-  #page-tasks .tasks-modal-overlay.on {
-    display: flex;
-  }
-  #page-tasks .tasks-modal {
-    background: var(--bg2);
-    border-radius: 12px;
-    border: 1px solid var(--border);
-    box-shadow: 0 16px 48px rgba(0, 0, 0, 0.15);
-    width: 100%;
-    max-width: 440px;
-    padding: 22px 24px 20px;
-  }
-  #page-tasks .tasks-modal h3 {
-    font-size: 1.05rem;
-    font-weight: 600;
-    margin-bottom: 16px;
-  }
-  #page-tasks .tasks-modal .fgp {
-    margin-bottom: 14px;
-  }
-  #page-tasks .tasks-modal .fl {
-    display: block;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--text2);
-    margin-bottom: 6px;
-  }
-  #page-tasks .tasks-modal-actions {
-    display: flex;
-    justify-content: flex-end;
-    gap: 8px;
-    margin-top: 20px;
-  }
-
   /* Emails hub (drafts / outbox / templates) — accent follows global --coral / --coral2 (branding). */
   #page-emails.emails-hub {
     background: #ffffff;
@@ -4241,38 +3919,60 @@
     overflow: hidden;
     display: flex;
     flex-direction: column;
-    border-radius: 14px;
+    border-radius: 16px;
     background: #fff;
     border: 1px solid var(--lt-border);
-    box-shadow: 0 24px 48px rgba(15, 23, 42, 0.12);
+    box-shadow: 0 25px 50px -12px rgba(15, 23, 42, 0.18);
   }
   .list-tmpl-mo .list-tmpl-head {
-    display: flex;
+    display: grid;
+    grid-template-columns: auto 1fr auto;
     align-items: center;
-    justify-content: space-between;
-    padding: 18px 22px;
+    gap: 10px 14px;
+    padding: 12px 16px 12px 12px;
     border-bottom: 1px solid var(--lt-border);
+    background: linear-gradient(180deg, #fff 0%, #fafbfc 100%);
   }
-  .list-tmpl-mo .list-tmpl-head h2 {
+  .list-tmpl-mo .list-tmpl-head-titles {
+    text-align: center;
+    min-width: 0;
+  }
+  .list-tmpl-mo .list-tmpl-head-titles h2 {
     margin: 0;
-    font-size: 1.125rem;
+    font-size: 1.05rem;
     font-weight: 700;
     color: #0f172a;
-    letter-spacing: -0.02em;
+    letter-spacing: -0.03em;
+  }
+  .list-tmpl-mo .list-tmpl-head-sub {
+    margin: 3px 0 0;
+    font-size: 12px;
+    font-weight: 500;
+    color: #64748b;
+    line-height: 1.35;
+  }
+  .list-tmpl-mo .list-tmpl-head-spacer {
+    width: 36px;
+    height: 1px;
   }
   .list-tmpl-mo .list-tmpl-close {
     border: none;
-    background: none;
-    font-size: 22px;
+    background: #f1f5f9;
+    font-size: 20px;
     line-height: 1;
-    color: #94a3b8;
+    color: #64748b;
     cursor: pointer;
-    padding: 4px 8px;
-    border-radius: 8px;
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: background 0.15s, color 0.15s;
   }
   .list-tmpl-mo .list-tmpl-close:hover {
-    background: var(--lt-surface);
-    color: #64748b;
+    background: #e2e8f0;
+    color: #0f172a;
   }
   .list-tmpl-mo .list-tmpl-body {
     display: grid;
@@ -4283,70 +3983,372 @@
   .list-tmpl-mo .list-tmpl-body-stack {
     display: flex;
     flex-direction: column;
-    gap: 14px;
-    padding: 18px 22px 22px;
-    max-height: calc(90vh - 88px);
-    overflow-y: auto;
-    min-height: 360px;
+    gap: 0;
+    padding: 0;
+    max-height: calc(90vh - 64px);
+    overflow: hidden;
+    min-height: 300px;
   }
   .list-tmpl-md-wide {
     width: min(960px, 96vw);
   }
-  .list-tmpl-topcards {
-    display: grid;
-    grid-template-columns: 1fr 1fr;
-    gap: 12px;
-  }
-  @media (max-width: 640px) {
-    .list-tmpl-topcards { grid-template-columns: 1fr; }
-  }
-  .list-tmpl-bigcard {
+  .list-tmpl-quick-row {
     display: flex;
-    flex-direction: column;
-    align-items: flex-start;
-    text-align: left;
-    gap: 6px;
-    padding: 16px 18px;
+    flex-wrap: wrap;
+    gap: 10px;
+    padding: 14px 20px 14px;
+    flex-shrink: 0;
+    border-bottom: 1px solid var(--lt-border);
+    background: #fff;
+  }
+  .list-tmpl-chip-action {
+    flex: 1;
+    min-width: min(220px, 100%);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 11px 14px;
     border-radius: 12px;
     border: 1px solid var(--lt-border);
-    background: #fff;
+    background: #fafbfc;
     cursor: pointer;
-    transition: border-color 0.15s, box-shadow 0.15s;
+    text-align: left;
+    transition: border-color 0.15s, box-shadow 0.15s, background 0.15s;
+    font: inherit;
   }
-  .list-tmpl-bigcard:hover {
+  .list-tmpl-chip-action:hover {
     border-color: var(--lt-blue);
+    background: #fff;
     box-shadow: 0 0 0 1px var(--lt-blue-soft);
   }
-  .list-tmpl-bigcard-ico { font-size: 20px; color: #64748b; }
-  .list-tmpl-bigcard-t { font-size: 15px; font-weight: 700; color: #0f172a; }
-  .list-tmpl-bigcard-d { font-size: 12px; color: #64748b; line-height: 1.4; }
-  .list-tmpl-sec-lbl {
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.06em;
-    color: #94a3b8;
-    margin: 4px 0 0;
+  .list-tmpl-chip-action-ai:hover {
+    border-color: #8b5cf6;
+    box-shadow: 0 0 0 1px rgba(139, 92, 246, 0.22);
   }
-  .list-tmpl-suggested,
-  .list-tmpl-grid {
+  .list-tmpl-chip-ico {
+    flex-shrink: 0;
+    width: 40px;
+    height: 40px;
+    border-radius: 10px;
+    background: #e2e8f0;
+    color: #475569;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 17px;
+  }
+  .list-tmpl-chip-action-ai .list-tmpl-chip-ico {
+    background: linear-gradient(135deg, #ede9fe 0%, #fce7f3 100%);
+    color: #7c3aed;
+  }
+  .list-tmpl-chip-text {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    min-width: 0;
+  }
+  .list-tmpl-chip-text strong {
+    font-size: 14px;
+    font-weight: 700;
+    color: #0f172a;
+    letter-spacing: -0.02em;
+  }
+  .list-tmpl-chip-d {
+    font-size: 12px;
+    color: #64748b;
+    line-height: 1.35;
+  }
+  .list-tmpl-sec {
+    display: flex;
+    flex-direction: column;
+    min-height: 0;
+  }
+  .list-tmpl-sec-suggested {
+    padding: 14px 20px 12px;
+    flex-shrink: 0;
+  }
+  .list-tmpl-sec-browse {
+    flex: 1;
+    min-height: 0;
+    padding: 12px 20px 16px;
+    border-top: 1px solid var(--lt-border);
+    background: linear-gradient(180deg, #f8fafc 0%, #fff 20px);
+    display: flex;
+    flex-direction: column;
+  }
+  .list-tmpl-mo .list-tmpl-sec-lbl {
+    font-size: 10px;
+    font-weight: 700;
+    letter-spacing: 0.1em;
+    color: #64748b;
+    text-transform: uppercase;
+    margin: 0 0 10px;
+  }
+  .list-tmpl-suggested {
     display: grid;
     grid-template-columns: repeat(2, 1fr);
-    gap: 10px;
+    gap: 12px;
   }
   @media (min-width: 900px) {
-    .list-tmpl-suggested,
-    .list-tmpl-grid { grid-template-columns: repeat(4, 1fr); }
+    .list-tmpl-suggested {
+      grid-template-columns: repeat(4, 1fr);
+    }
   }
-  .list-tmpl-card-compact {
-    grid-template-columns: 52px 1fr !important;
-    padding: 12px !important;
+  .list-tmpl-browse-toolbar {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 10px 12px;
+    margin-bottom: 12px;
   }
-  .list-tmpl-card-compact .list-tmpl-thumb { min-height: 52px; font-size: 18px; }
-  .list-tmpl-card-compact .list-tmpl-desc { -webkit-line-clamp: 2; }
+  .list-tmpl-browse-toolbar .list-tmpl-search {
+    flex: 1;
+    min-width: 200px;
+    margin-bottom: 0;
+  }
+  .list-tmpl-grid {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 10px;
+    overflow-y: auto;
+    padding-right: 4px;
+    flex: 1;
+    min-height: 0;
+    align-content: start;
+  }
+  @media (min-width: 620px) {
+    .list-tmpl-grid {
+      grid-template-columns: repeat(2, 1fr);
+    }
+  }
+  @media (min-width: 980px) {
+    .list-tmpl-grid {
+      grid-template-columns: repeat(3, 1fr);
+    }
+  }
+  .list-tmpl-preview-canvas {
+    position: relative;
+    height: 100px;
+    padding: 10px 12px 8px;
+    border-radius: 0;
+    overflow: hidden;
+  }
+  .list-tmpl-card-rich--compact .list-tmpl-preview-canvas {
+    height: 84px;
+    padding: 8px 10px 6px;
+  }
+  .list-tmpl-accent-operations .list-tmpl-preview-canvas {
+    background: linear-gradient(150deg, #ecfdf5 0%, #a7f3d0 55%, #6ee7b7 100%);
+  }
+  .list-tmpl-accent-content .list-tmpl-preview-canvas {
+    background: linear-gradient(150deg, #fff7ed 0%, #fed7aa 50%, #fdba74 100%);
+  }
+  .list-tmpl-accent-sales .list-tmpl-preview-canvas {
+    background: linear-gradient(150deg, #eff6ff 0%, #bfdbfe 55%, #93c5fd 100%);
+  }
+  .list-tmpl-mini {
+    width: 100%;
+    height: 100%;
+    pointer-events: none;
+  }
+  .list-tmpl-mini-table {
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    height: 100%;
+    justify-content: center;
+  }
+  .list-tmpl-mini-thead {
+    display: grid;
+    grid-template-columns: 1.35fr 1fr 0.85fr;
+    gap: 4px;
+    margin-bottom: 1px;
+    opacity: 0.4;
+  }
+  .list-tmpl-mini-thead span {
+    height: 4px;
+    border-radius: 2px;
+    background: rgba(15, 23, 42, 0.28);
+  }
+  .list-tmpl-mini-row {
+    display: grid;
+    grid-template-columns: 1.35fr 1fr 0.85fr;
+    gap: 4px;
+    align-items: center;
+  }
+  .list-tmpl-mini-row .cw {
+    height: 6px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.92);
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+  }
+  .list-tmpl-mini-row .cx {
+    height: 5px;
+    border-radius: 2px;
+    background: rgba(255, 255, 255, 0.55);
+  }
+  .list-tmpl-mini-row .cx.short {
+    width: 58%;
+  }
+  .list-tmpl-mini-row .cp {
+    height: 13px;
+    border-radius: 999px;
+    justify-self: start;
+    width: 70%;
+    max-width: 100%;
+  }
+  .list-tmpl-mini-row .cp.p1 {
+    background: rgba(16, 185, 129, 0.55);
+  }
+  .list-tmpl-mini-row .cp.p2 {
+    background: rgba(251, 191, 36, 0.7);
+  }
+  .list-tmpl-mini-row .cp.p3 {
+    background: rgba(148, 163, 184, 0.65);
+  }
+  .list-tmpl-mini-board {
+    display: flex;
+    gap: 6px;
+    height: 100%;
+    align-items: stretch;
+    justify-content: center;
+    padding: 2px 0;
+  }
+  .list-tmpl-mini-col {
+    flex: 1;
+    max-width: 30%;
+    display: flex;
+    flex-direction: column;
+    gap: 5px;
+    background: rgba(255, 255, 255, 0.38);
+    border-radius: 6px;
+    padding: 5px 4px;
+    border: 1px solid rgba(255, 255, 255, 0.55);
+  }
+  .list-tmpl-mini-card {
+    border-radius: 5px;
+    background: rgba(255, 255, 255, 0.95);
+    box-shadow: 0 1px 3px rgba(15, 23, 42, 0.08);
+    min-height: 18px;
+  }
+  .list-tmpl-mini-card.sm {
+    min-height: 13px;
+    opacity: 0.92;
+  }
+  .list-tmpl-mini-card.med {
+    min-height: 22px;
+    border-left: 3px solid rgba(59, 130, 246, 0.45);
+  }
+  .list-tmpl-mini-cal {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+    height: 100%;
+    justify-content: center;
+    padding: 0 2px;
+  }
+  .list-tmpl-mini-cal-hd {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 3px;
+    opacity: 0.45;
+  }
+  .list-tmpl-mini-cal-hd span {
+    height: 3px;
+    border-radius: 2px;
+    background: rgba(15, 23, 42, 0.25);
+  }
+  .list-tmpl-mini-cal-grid {
+    display: grid;
+    grid-template-columns: repeat(7, 1fr);
+    gap: 3px;
+  }
+  .list-tmpl-mini-cal-grid > span {
+    aspect-ratio: 1;
+    max-height: 14px;
+    border-radius: 3px;
+    background: rgba(255, 255, 255, 0.45);
+  }
+  .list-tmpl-mini-cal-grid span.dot {
+    background: rgba(59, 130, 246, 0.55);
+    box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.4);
+  }
+  .list-tmpl-mini-cal-grid span.dot.alt {
+    background: rgba(16, 185, 129, 0.5);
+  }
+  .list-tmpl-mo .list-tmpl-card.list-tmpl-card-rich {
+    display: flex;
+    flex-direction: column;
+    padding: 0;
+    overflow: hidden;
+    border-radius: 12px;
+    border: 1px solid var(--lt-border);
+    cursor: pointer;
+    text-align: left;
+    background: #fff;
+    font-family: inherit;
+    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04);
+    transition: border-color 0.15s, box-shadow 0.18s, transform 0.15s;
+  }
+  .list-tmpl-mo .list-tmpl-card-rich:hover {
+    border-color: #cbd5e1;
+    box-shadow: 0 10px 28px -8px rgba(15, 23, 42, 0.14);
+    transform: translateY(-1px);
+  }
+  .list-tmpl-mo .list-tmpl-card-rich:focus-visible {
+    outline: none;
+    border-color: var(--lt-blue);
+    box-shadow: 0 0 0 2px var(--lt-blue-soft);
+  }
+  .list-tmpl-mo .list-tmpl-card.on {
+    border-color: var(--lt-blue);
+    box-shadow: 0 0 0 2px var(--lt-blue-soft);
+  }
+  .list-tmpl-card-body {
+    padding: 11px 14px 13px;
+    display: flex;
+    flex-direction: column;
+    flex: 1;
+    min-height: 0;
+  }
+  .list-tmpl-card-rich--compact .list-tmpl-card-body {
+    padding: 9px 12px 11px;
+  }
+  .list-tmpl-mo .list-tmpl-card-rich .list-tmpl-card-title {
+    font-size: 14px;
+    font-weight: 700;
+    color: #0f172a;
+    margin: 0 0 5px;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    letter-spacing: -0.02em;
+  }
+  .list-tmpl-mo .list-tmpl-emoji {
+    font-size: 15px;
+    line-height: 1;
+  }
+  .list-tmpl-mo .list-tmpl-card-rich .list-tmpl-desc {
+    font-size: 12px;
+    color: #64748b;
+    line-height: 1.4;
+    margin: 0 0 8px;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
+    overflow: hidden;
+  }
+  .list-tmpl-mo .list-tmpl-card-rich .list-tmpl-tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 5px;
+    margin-top: auto;
+  }
   .list-tmpl-cats-row {
     display: flex;
     flex-wrap: wrap;
     gap: 6px;
+    align-items: center;
   }
   .lists-sb-row {
     display: flex;
@@ -4811,6 +4813,77 @@
     border-color: var(--text3);
   }
 
+  /* List rows — add (toolbar) + per-row delete */
+  .lists-th-rowact,
+  .lists-td-rowact {
+    width: 44px;
+    max-width: 48px;
+    padding-left: 4px !important;
+    padding-right: 4px !important;
+    text-align: center;
+    vertical-align: middle;
+  }
+  .lists-row-del-btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 32px;
+    height: 32px;
+    margin: 0 auto;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text3);
+    cursor: pointer;
+    padding: 0;
+    transition: background 0.12s ease, color 0.12s ease;
+  }
+  .lists-row-del-btn:hover {
+    background: var(--bg3);
+    color: var(--text);
+  }
+  .lists-row-del-btn:focus-visible {
+    outline: 2px solid var(--coral-border-focus, #f97316);
+    outline-offset: 1px;
+  }
+  .lists-row-del-ic {
+    display: block;
+    pointer-events: none;
+  }
+  .lists-board-card {
+    position: relative;
+    padding-right: 36px;
+  }
+  .lists-board-card > .lists-row-del-btn {
+    position: absolute;
+    top: 6px;
+    right: 6px;
+    margin: 0;
+    z-index: 1;
+  }
+  .lists-cal-item-row {
+    display: flex;
+    align-items: center;
+    gap: 2px;
+    margin-bottom: 2px;
+    min-width: 0;
+  }
+  .lists-cal-item-row .lists-cal-item {
+    flex: 1;
+    min-width: 0;
+    margin-bottom: 0;
+  }
+  .lists-cal-item-row .lists-row-del-btn {
+    flex-shrink: 0;
+    width: 22px;
+    height: 22px;
+    margin: 0;
+  }
+  .lists-cal-item-row .lists-row-del-ic {
+    width: 13px;
+    height: 13px;
+  }
+
   /* Workspace lists — select cells (rounded triggers + flyout; tones echo billable / non-billable pills) */
   .lists-dt td,
   .lists-notion-table td {
@@ -5017,6 +5090,8 @@
     min-height: 200px;
   }
   .lists-board-col {
+    display: flex;
+    flex-direction: column;
     flex: 0 0 220px;
     background: var(--bg2);
     border-radius: 10px;
@@ -5024,10 +5099,62 @@
     border: 1px solid var(--border);
   }
   .lists-board-col-hdr {
+    display: flex;
+    align-items: center;
+    gap: 8px;
     font-size: 12px;
     font-weight: 700;
-    margin-bottom: 8px;
+    margin: -4px -4px 8px -4px;
+    padding: 8px 10px;
+    border-radius: 8px;
     color: var(--text2);
+    border: 1px solid rgba(0, 0, 0, 0.06);
+  }
+  .lists-board-hdr-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+    background: currentColor;
+    opacity: 0.35;
+  }
+  .lists-board-col-hdr .lists-board-hdr-txt {
+    flex: 1;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .lists-board-col-body {
+    min-height: 24px;
+    flex: 1;
+  }
+  .lists-board-new-row {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    width: 100%;
+    margin-top: 8px;
+    padding: 6px 8px;
+    border: none;
+    border-radius: 6px;
+    background: transparent;
+    color: var(--text3);
+    font-size: 12px;
+    font-weight: 600;
+    cursor: pointer;
+    text-align: left;
+    transition: background 0.12s, color 0.12s;
+  }
+  .lists-board-new-row:hover {
+    background: rgba(0, 0, 0, 0.04);
+    color: var(--text);
+  }
+  .lists-board-new-plus {
+    font-size: 14px;
+    font-weight: 700;
+    line-height: 1;
+    opacity: 0.7;
   }
   .lists-board-card {
     background: #fff;
@@ -5038,7 +5165,35 @@
   }
   .lists-board-card-title { font-size: 13px; font-weight: 600; color: var(--text); }
   .lists-board-card-meta { font-size: 11px; color: var(--text3); margin-top: 4px; line-height: 1.35; }
-  .lists-cal-title { font-size: 13px; font-weight: 600; margin-bottom: 8px; color: var(--text2); }
+  .lists-cal-title-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    flex-wrap: wrap;
+    margin-bottom: 10px;
+  }
+  .lists-cal-title { font-size: 15px; font-weight: 700; color: var(--text); letter-spacing: -0.01em; }
+  .lists-cal-toolbar {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    flex-shrink: 0;
+  }
+  .lists-cal-nav {
+    font-size: 12px !important;
+    font-weight: 600 !important;
+    padding: 5px 10px !important;
+    min-height: 0 !important;
+    border-radius: 6px !important;
+    background: var(--bg3) !important;
+    color: var(--text2) !important;
+    border: 1px solid var(--border) !important;
+  }
+  .lists-cal-nav:hover {
+    background: var(--bg2) !important;
+    color: var(--text) !important;
+  }
   .lists-cal-grid {
     display: grid;
     grid-template-columns: repeat(7, 1fr);
@@ -5210,38 +5365,42 @@
     margin: 0 8px 10px;
   }
   .list-tmpl-mo .list-tmpl-cat {
-    display: flex;
+    display: inline-flex;
     align-items: center;
-    gap: 8px;
-    width: 100%;
-    padding: 9px 10px;
-    border: none;
-    border-radius: 8px;
-    background: transparent;
-    font-size: 13px;
-    color: #475569;
+    gap: 6px;
+    width: auto;
+    padding: 7px 13px;
+    border: 1px solid var(--lt-border);
+    border-radius: 999px;
+    background: #fff;
+    font-size: 12px;
+    font-weight: 600;
+    color: #64748b;
     cursor: pointer;
     text-align: left;
+    transition: background 0.12s, border-color 0.12s, color 0.12s;
   }
   .list-tmpl-mo .list-tmpl-cat:hover {
-    background: #fff;
+    background: #f8fafc;
+    border-color: #cbd5e1;
+    color: #334155;
   }
   .list-tmpl-mo .list-tmpl-cat.on {
-    background: #fff;
+    background: var(--lt-blue-soft);
+    border-color: rgba(59, 130, 246, 0.35);
     color: var(--lt-blue);
-    font-weight: 600;
-    box-shadow: 0 1px 2px rgba(15, 23, 42, 0.06);
+    box-shadow: none;
   }
   .list-tmpl-mo .list-tmpl-cat .dot {
-    width: 8px;
-    height: 8px;
+    width: 6px;
+    height: 6px;
     border-radius: 50%;
     border: 1.5px solid #cbd5e1;
     flex-shrink: 0;
   }
   .list-tmpl-mo .list-tmpl-cat.on .dot {
     border-color: var(--lt-blue);
-    background: var(--lt-blue-soft);
+    background: var(--lt-blue);
   }
   .list-tmpl-mo .list-tmpl-main {
     padding: 16px 20px;
@@ -5252,12 +5411,12 @@
   }
   .list-tmpl-mo .list-tmpl-search {
     width: 100%;
-    padding: 11px 14px;
+    padding: 9px 16px;
     border: 1px solid var(--lt-border);
-    border-radius: 10px;
-    font-size: 14px;
-    margin-bottom: 14px;
-    background: #fafbfc;
+    border-radius: 999px;
+    font-size: 13px;
+    margin-bottom: 0;
+    background: #fff;
     outline: none;
   }
   .list-tmpl-mo .list-tmpl-search:focus {
@@ -5272,34 +5431,6 @@
     flex-direction: column;
     gap: 10px;
     padding-right: 4px;
-  }
-  .list-tmpl-mo .list-tmpl-card {
-    display: grid;
-    grid-template-columns: 72px 1fr;
-    gap: 14px;
-    padding: 14px;
-    border: 1px solid var(--lt-border);
-    border-radius: 12px;
-    cursor: pointer;
-    text-align: left;
-    background: #fff;
-    transition: border-color 0.15s, box-shadow 0.15s;
-  }
-  .list-tmpl-mo .list-tmpl-card:hover {
-    border-color: #cbd5e1;
-  }
-  .list-tmpl-mo .list-tmpl-card.on {
-    border-color: var(--lt-blue);
-    box-shadow: 0 0 0 1px var(--lt-blue);
-  }
-  .list-tmpl-mo .list-tmpl-thumb {
-    border-radius: 8px;
-    background: linear-gradient(135deg, #e0e7ff 0%, #fae8ff 100%);
-    min-height: 72px;
-    display: flex;
-    align-items: center;
-    justify-content: center;
-    font-size: 22px;
   }
   .list-tmpl-mo .list-tmpl-card-title {
     font-size: 15px;
@@ -5905,9 +6036,6 @@
     }
 
     .pg { padding: 24px 16px 20px; }
-    #page-tasks.tasks-attio {
-      padding: 24px 16px 20px;
-    }
     .settings-appbar {
       padding: 10px 14px;
     }
@@ -6254,9 +6382,6 @@
     <div class="ni" data-nav="customers" onclick="nav('customers',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><path d="M16 3.128a4 4 0 0 1 0 7.744"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/></svg>Customers
     </div>
-    <div class="ni" data-nav="tasks" onclick="nav('tasks',this)">
-      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>Tasks
-    </div>
     <div class="ni" data-nav="scheduling" onclick="nav('scheduling',this)">
       <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/></svg>Scheduling
     </div>
@@ -6461,86 +6586,6 @@
       <div class="sh"><div class="st">Relationship timeline</div><div class="ss">Recent outreach and reminders</div></div>
       <div id="crm-reminders-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;"></div>
       <div id="crm-events-timeline" style="display:flex;flex-direction:column;gap:8px;"></div>
-    </div>
-  </div>
-
-  <!-- TASKS -->
-  <div class="pg tasks-attio" id="page-tasks">
-    <div class="tasks-attio-hdr">
-      <div class="tasks-attio-title">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
-        Tasks
-      </div>
-      <div class="tasks-attio-hdr-actions">
-        <a href="#" id="tasks-link-help" role="button">Help</a>
-        <a href="#" id="tasks-link-ask" role="button">Ask Advisor</a>
-      </div>
-    </div>
-    <div class="tasks-attio-toolbar">
-      <div class="tasks-attio-toolbar-left">
-        <span class="tasks-sort-pill" title="Sort order"><span>Sorted by</span> <strong>Due date</strong></span>
-        <select class="fi tasks-filter-select" id="tasks-filter" title="Show tasks">
-          <option value="open" selected>Open</option>
-          <option value="all">All</option>
-          <option value="done">Done</option>
-        </select>
-        <button type="button" class="tasks-btn-ghost" id="tasks-btn-filter" disabled title="Coming soon">Filter</button>
-      </div>
-      <div class="tasks-attio-toolbar-right">
-        <button type="button" class="tasks-btn-ghost" id="tasks-btn-view-settings" disabled title="Coming soon">View settings</button>
-        <button type="button" class="btn btn-p" id="btn-tasks-new">+ New task</button>
-      </div>
-    </div>
-    <p id="tasks-tab-demo" class="tasks-demo-hint" style="display:none;"></p>
-    <div id="tasks-tab-empty" class="tasks-empty">
-      <svg class="tasks-empty-illus" viewBox="0 0 120 120" fill="none" stroke="currentColor" stroke-width="1.2" aria-hidden="true">
-        <path d="M28 24h64a4 4 0 0 1 4 4v68a4 4 0 0 1-4 4H28a4 4 0 0 1-4-4V28a4 4 0 0 1 4-4z"/>
-        <path d="M36 40h48M36 52h36M36 64h40M36 76h28"/>
-        <circle cx="44" cy="40" r="3" fill="currentColor" stroke="none"/><circle cx="44" cy="52" r="3" fill="currentColor" stroke="none"/><circle cx="44" cy="64" r="3" fill="currentColor" stroke="none"/><circle cx="44" cy="76" r="3" fill="currentColor" stroke="none"/>
-      </svg>
-      <h2>Tasks</h2>
-      <p>No tasks yet! Create your first task to get started.</p>
-      <button type="button" class="btn btn-p" id="btn-tasks-new-empty">+ New task</button>
-    </div>
-    <div id="tasks-tab-main" class="tasks-main"></div>
-    <div class="tasks-learn">
-      <div class="tasks-learn-lbl">Learn more</div>
-      <div class="tasks-learn-cards">
-        <div class="tasks-learn-card">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
-          <span>Workspace tasks help you track follow-ups. Assign work to teammates from the new-task dialog.</span>
-        </div>
-        <div class="tasks-learn-card">
-          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 10v6M2 10l10-5 10 5-10 5z"/><path d="M6 12v5c3 3 9 3 12 0v-5"/></svg>
-          <span>Use <strong>Record</strong> to link a task to a customer. Open tasks are grouped by due date.</span>
-        </div>
-      </div>
-    </div>
-    <div class="tasks-modal-overlay" id="tasks-modal-overlay" aria-hidden="true">
-      <div class="tasks-modal" role="dialog" aria-labelledby="tasks-modal-title-label" onclick="event.stopPropagation();">
-        <h3 id="tasks-modal-title-label">New task</h3>
-        <div class="fgp">
-          <label class="fl" for="tasks-modal-title">Title</label>
-          <input class="fi" id="tasks-modal-title" type="text" placeholder="What needs to be done?" maxlength="500" autocomplete="off" />
-        </div>
-        <div class="fgp">
-          <label class="fl" for="tasks-modal-due">Due date</label>
-          <input class="fi" id="tasks-modal-due" type="date" />
-        </div>
-        <div class="fgp">
-          <label class="fl" for="tasks-modal-assignee">Assigned to</label>
-          <select class="fi" id="tasks-modal-assignee"></select>
-        </div>
-        <div class="fgp">
-          <label class="fl" for="tasks-modal-client">Record (optional)</label>
-          <select class="fi" id="tasks-modal-client"><option value="">— None —</option></select>
-        </div>
-        <p id="tasks-modal-error" style="display:none;font-size:12px;color:var(--red);margin-top:4px;"></p>
-        <div class="tasks-modal-actions">
-          <button type="button" class="btn" id="tasks-modal-cancel">Cancel</button>
-          <button type="button" class="btn btn-p" id="tasks-modal-save">Create task</button>
-        </div>
-      </div>
     </div>
   </div>
 
@@ -7243,6 +7288,10 @@
             <button type="button" class="settings-nav-item" id="settings-nav-data" data-settings-panel="data" data-settings-kicker="Workspace" data-settings-title="Data" data-settings-desc="CSV import, journal export, and undo for the transaction log.">
               <span class="settings-nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg></span>
               <span class="settings-nav-txt">Data</span>
+            </button>
+            <button type="button" class="settings-nav-item" id="settings-nav-advisor" data-settings-panel="advisor" data-settings-kicker="Workspace" data-settings-title="Advisor" data-settings-desc="Remove saved Advisor chat threads stored on this device for this workspace.">
+              <span class="settings-nav-ic" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"/></svg></span>
+              <span class="settings-nav-txt">Advisor</span>
             </button>
             </div>
           </div>
@@ -8008,6 +8057,18 @@
               </div>
             </div>
           </div>
+          <div id="settings-panel-advisor" class="settings-panel" role="tabpanel" aria-labelledby="settings-nav-advisor" data-settings-panel-id="advisor">
+            <div class="settings-stack">
+              <div class="card">
+                <div class="fst">Saved Advisor chats</div>
+                <p style="font-size:12px;color:var(--text3);line-height:1.5;margin-bottom:12px;">Advisor threads are saved in this browser per workspace so you can reopen them from the Advisor sidebar. Delete any you no longer need, or clear everything below.</p>
+                <div class="settings-acct-rows" id="settings-advisor-chats-rows"></div>
+                <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border);">
+                  <button type="button" class="btn btn-danger-outline" id="settings-btn-advisor-delete-all-chats" disabled>Delete all saved chats</button>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
       </section>
     </div>
@@ -8688,28 +8749,42 @@
 <div class="mo list-tmpl-mo" id="listTemplatesModal" aria-hidden="true">
   <div class="md list-tmpl-md list-tmpl-md-wide">
     <div class="list-tmpl-head">
-      <h2>New list</h2>
       <button type="button" class="list-tmpl-close" id="list-tmpl-close" aria-label="Close">×</button>
+      <div class="list-tmpl-head-titles">
+        <h2>New list</h2>
+        <p class="list-tmpl-head-sub">Blank table, AI draft, or a starter template</p>
+      </div>
+      <span class="list-tmpl-head-spacer" aria-hidden="true"></span>
     </div>
     <div class="list-tmpl-body list-tmpl-body-stack">
-      <div class="list-tmpl-topcards">
-        <button type="button" class="list-tmpl-bigcard" id="list-tmpl-empty-db">
-          <span class="list-tmpl-bigcard-ico" aria-hidden="true">▦</span>
-          <span class="list-tmpl-bigcard-t">Empty database</span>
-          <span class="list-tmpl-bigcard-d">Start with a blank Notion-style table</span>
+      <div class="list-tmpl-quick-row">
+        <button type="button" class="list-tmpl-chip-action" id="list-tmpl-empty-db">
+          <span class="list-tmpl-chip-ico" aria-hidden="true">▦</span>
+          <span class="list-tmpl-chip-text">
+            <strong>Empty database</strong>
+            <span class="list-tmpl-chip-d">Blank Notion-style table</span>
+          </span>
         </button>
-        <button type="button" class="list-tmpl-bigcard" id="list-tmpl-ai-build">
-          <span class="list-tmpl-bigcard-ico" aria-hidden="true">✦</span>
-          <span class="list-tmpl-bigcard-t">Build with AI</span>
-          <span class="list-tmpl-bigcard-d">Describe the list in Advisor and apply the draft</span>
+        <button type="button" class="list-tmpl-chip-action list-tmpl-chip-action-ai" id="list-tmpl-ai-build">
+          <span class="list-tmpl-chip-ico" aria-hidden="true">✦</span>
+          <span class="list-tmpl-chip-text">
+            <strong>Build with AI</strong>
+            <span class="list-tmpl-chip-d">Describe it in Advisor, apply the draft</span>
+          </span>
         </button>
       </div>
-      <p class="list-tmpl-sec-lbl">Suggested</p>
-      <div class="list-tmpl-suggested" id="list-tmpl-suggested"></div>
-      <p class="list-tmpl-sec-lbl">More templates</p>
-      <div class="list-tmpl-cats-row" id="list-tmpl-cats"></div>
-      <input type="search" class="list-tmpl-search" id="list-tmpl-search" placeholder="Search templates…" autocomplete="off" />
-      <div class="list-tmpl-scroll list-tmpl-grid" id="list-tmpl-cards"></div>
+      <section class="list-tmpl-sec list-tmpl-sec-suggested">
+        <h3 class="list-tmpl-sec-lbl">Suggested</h3>
+        <div class="list-tmpl-suggested" id="list-tmpl-suggested"></div>
+      </section>
+      <section class="list-tmpl-sec list-tmpl-sec-browse">
+        <h3 class="list-tmpl-sec-lbl">Browse templates</h3>
+        <div class="list-tmpl-browse-toolbar">
+          <div class="list-tmpl-cats-row" id="list-tmpl-cats" role="tablist" aria-label="Template categories"></div>
+          <input type="search" class="list-tmpl-search" id="list-tmpl-search" placeholder="Search templates…" autocomplete="off" />
+        </div>
+        <div class="list-tmpl-grid" id="list-tmpl-cards"></div>
+      </section>
     </div>
   </div>
 </div>

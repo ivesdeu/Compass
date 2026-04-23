@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
   CUSTOMERS_COLUMN_DEFS,
@@ -146,6 +146,10 @@ export function CrmCustomersTable({
     lastClickKeyRef.current = null;
     closePortal();
   }, [closePortal]);
+
+  useLayoutEffect(() => {
+    window.bizDashApplyCustomersColumnVisibility?.();
+  }, [rows, columnPrefs]);
 
   useEffect(() => {
     if (!focusRequest) return;

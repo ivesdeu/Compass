@@ -608,10 +608,106 @@
   }
 
   /**
+   * Parse ai-assistant SSE (`delta` text chunks, then `done` with payload or `error`).
+   * @param {ReadableStream<Uint8Array>|null|undefined} body
+   * @param {(chunk: string) => void} [onDelta]
+   * @returns {Promise<{ payload: object | null, err: string | null }>}
+   */
+  function consumeAdvisorSseBody(body, onDelta) {
+    return new Promise(function (resolve) {
+      if (!body || typeof body.getReader !== 'function') {
+        resolve({ payload: null, err: 'No response body.' });
+        return;
+      }
+      var reader = body.getReader();
+      var dec = new TextDecoder();
+      var carry = '';
+      var finalPayload = null;
+      var streamErr = null;
+      var settled = false;
+
+      function settle() {
+        if (settled) return;
+        settled = true;
+        resolve({ payload: finalPayload, err: streamErr });
+      }
+
+      function onDataLine(jsonStr) {
+        if (settled) return;
+        try {
+          var ev = JSON.parse(jsonStr);
+          if (ev.type === 'delta' && typeof ev.text === 'string' && ev.text && typeof onDelta === 'function') {
+            onDelta(ev.text);
+          } else if (ev.type === 'done' && ev.payload) {
+            finalPayload = ev.payload;
+          } else if (ev.type === 'error') {
+            streamErr = ev.message ? String(ev.message) : 'Stream error';
+            reader.cancel().catch(function () {});
+            settle();
+          }
+        } catch (_) {
+          /* ignore malformed line */
+        }
+      }
+
+      function processBlock(block) {
+        var lines = block.split('\n');
+        for (var i = 0; i < lines.length; i++) {
+          var line = lines[i].replace(/\r$/, '');
+          if (line.indexOf('data:') !== 0) continue;
+          onDataLine(line.slice(5).trim());
+          if (settled) return;
+        }
+      }
+
+      function pump() {
+        if (settled) return;
+        reader.read().then(
+          function (chunk) {
+            if (settled) return;
+            if (chunk.done) {
+              if (carry.trim()) {
+                var tailParts = carry.split('\n\n');
+                for (var ti = 0; ti < tailParts.length; ti++) {
+                  if (!tailParts[ti].trim()) continue;
+                  processBlock(tailParts[ti]);
+                  if (settled) return;
+                }
+              }
+              if (!finalPayload && !streamErr) {
+                streamErr = 'Stream ended without a response.';
+              }
+              settle();
+              return;
+            }
+            carry += dec.decode(chunk.value, { stream: true });
+            var idx;
+            while ((idx = carry.indexOf('\n\n')) !== -1) {
+              var block = carry.slice(0, idx);
+              carry = carry.slice(idx + 2);
+              processBlock(block);
+              if (settled) return;
+            }
+            pump();
+          },
+          function () {
+            if (!settled) {
+              streamErr = 'Stream read failed.';
+              settle();
+            }
+          },
+        );
+      }
+      pump();
+    });
+  }
+
+  /**
    * Avoid supabase.functions.invoke for ai-assistant: bundled client fetch can omit Authorization
    * (gateway UNAUTHORIZED_NO_AUTH_HEADER). Raw fetch + explicit Bearer matches organization-team.
+   * @param {{ onDelta?: (s: string) => void }} [streamHandlers] When `onDelta` is set, sends `stream: true` and reads SSE if the function returns event-stream.
    */
-  async function invokeAiAssistantRaw(supabase, body, accessToken) {
+  async function invokeAiAssistantRaw(supabase, body, accessToken, streamHandlers) {
     var base = (
       (supabase && supabase.supabaseUrl ? String(supabase.supabaseUrl) : '') ||
       (typeof window.__bizdashSupabaseUrl === 'string' ? window.__bizdashSupabaseUrl : '')
@@ -620,9 +716,12 @@
       (supabase && supabase.supabaseKey ? String(supabase.supabaseKey) : '') ||
       (typeof window.__bizdashSupabaseAnonKey === 'string' ? window.__bizdashSupabaseAnonKey : '');
     if (!base || !anon) {
-      return { ok: false, status: 0, data: null, errText: 'Missing Supabase URL or key on client.' };
+      return { ok: false, status: 0, data: null, errText: 'Missing Supabase URL or key on client.', streamed: false };
     }
     var url = base + '/functions/v1/ai-assistant';
+    var wantStream = !!(streamHandlers && typeof streamHandlers.onDelta === 'function');
+    var bodyPayload = Object.assign({}, body || {});
+    if (wantStream) bodyPayload.stream = true;
     var res = await fetch(url, {
       method: 'POST',
       headers: {
@@ -630,8 +729,16 @@
         Authorization: 'Bearer ' + accessToken,
         apikey: anon,
       },
-      body: JSON.stringify(body || {}),
+      body: JSON.stringify(bodyPayload),
     });
+    var ct = (res.headers.get('content-type') || '').toLowerCase();
+    if (res.ok && wantStream && ct.indexOf('text/event-stream') !== -1) {
+      var sse = await consumeAdvisorSseBody(res.body, streamHandlers.onDelta);
+      if (sse.err) {
+        return { ok: false, status: res.status, data: null, errText: sse.err, streamed: true };
+      }
+      return { ok: true, status: res.status, data: sse.payload, errText: '', streamed: true };
+    }
     var text = await res.text();
     var data = null;
     try {
@@ -639,10 +746,10 @@
     } catch (_) {
       data = { error: text || 'Invalid JSON from server.' };
     }
-    return { ok: res.ok, status: res.status, data: data, errText: text };
+    return { ok: res.ok, status: res.status, data: data, errText: text, streamed: false };
   }
 
-  async function invokeAdvisorTask(req) {
+  async function invokeAdvisorTask(req, streamHandlers) {
     var supabase = window.supabaseClient;
     var user = window.currentUser;
     if (!supabase || !user) {
@@ -677,28 +784,11 @@
           response: { title: 'Sign in required', bullets: ['Your session expired or demo mode is active. Sign in to use Advisor.'] },
         };
       }
-      var raw = await invokeAiAssistantRaw(supabase, req, token);
+      var raw = await invokeAiAssistantRaw(supabase, req, token, streamHandlers);
       if (!raw.ok && raw.status === 401) {
         token = await bearerForAdvisorEdge(supabase);
-        if (token) raw = await invokeAiAssistantRaw(supabase, req, token);
+        if (token) raw = await invokeAiAssistantRaw(supabase, req, token, streamHandlers);
       }
-      // #region agent log
-      try {
-        fetch('http://127.0.0.1:7914/ingest/507d12bf-babb-4204-8816-34a6e29c9b5b', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '65e8fd' },
-          body: JSON.stringify({
-            sessionId: '65e8fd',
-            runId: 'post-fix',
-            hypothesisId: raw.ok ? 'verify-ok' : 'verify-err',
-            location: 'dashboard-assistant.js:invokeAdvisorTask',
-            message: 'ai-assistant raw fetch result',
-            data: { httpStatus: raw.status, ok: !!raw.ok },
-            timestamp: Date.now(),
-          }),
-        }).catch(function () {});
-      } catch (_) {}
-      // #endregion
       if (!raw.ok) {
         var apiErr =
           raw.data && typeof raw.data === 'object'
@@ -713,27 +803,15 @@
           ok: false,
           error: errLine,
           response: { title: 'Advisor unavailable', bullets: [errLine] },
+          streamed: !!raw.streamed,
         };
       }
-      return { ok: true, response: raw.data || { title: 'No data', bullets: [] } };
+      return {
+        ok: true,
+        response: raw.data || { title: 'No data', bullets: [] },
+        streamed: !!raw.streamed,
+      };
     } catch (err) {
-      // #region agent log
-      try {
-        fetch('http://127.0.0.1:7914/ingest/507d12bf-babb-4204-8816-34a6e29c9b5b', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', 'X-Debug-Session-Id': '65e8fd' },
-          body: JSON.stringify({
-            sessionId: '65e8fd',
-            runId: 'post-fix',
-            hypothesisId: 'H-net',
-            location: 'dashboard-assistant.js:invokeAdvisorTask',
-            message: 'invokeAdvisorTask threw',
-            data: { errMessage: String(err && err.message ? err.message : err) },
-            timestamp: Date.now(),
-          }),
-        }).catch(function () {});
-      } catch (_) {}
-      // #endregion
       return { ok: false, error: String(err && err.message ? err.message : err), response: { title: 'Stub call failed', bullets: ['Advisor function could not be reached.'] } };
     }
   }
@@ -769,8 +847,15 @@
 
     function syncAdvisorComposerLayout() {
       if (!pageChat) return;
-      /* Empty log: CSS centers composer + greeting in viewport; once #chat-log has rows, transcript grows and composer docks to bottom. */
-      pageChat.classList.add('chat-advisor-centered');
+      /* Empty log: CSS centers composer + greeting. With messages: drop centered so the transcript flexes open.
+         Do not rely on :has(#chat-log:empty) alone — some engines lag recalc after appendChild, which hid the thread until re-navigation. */
+      var log = logEl || document.getElementById('chat-log');
+      var hasThread = !!(log && log.firstElementChild);
+      if (hasThread) {
+        pageChat.classList.remove('chat-advisor-centered');
+      } else {
+        pageChat.classList.add('chat-advisor-centered');
+      }
       pageChat.classList.remove('chat-compose-docked');
     }
 
@@ -991,7 +1076,7 @@
             details: { error: result && result.error ? result.error : null },
             created_at: new Date().toISOString(),
           });
-          if (result && result.ok && typeof window.nav === 'function') window.nav('tasks', null);
+          if (result && result.ok && typeof window.nav === 'function') window.nav('chat', null);
           else if (!result || !result.ok) window.alert((result && result.error) || 'Could not create task.');
         } finally {
           if (!result || !result.ok) addBtn.disabled = false;
@@ -1225,6 +1310,25 @@
       var out;
       var usageMeta = null;
       var contactSnapshot = null;
+      var streamDraft = null;
+      var streamMeta = null;
+      function ensureStreamDraft() {
+        if (streamDraft) return;
+        thinkingEl.className = 'chat-msg asst';
+        thinkingEl.removeAttribute('aria-busy');
+        thinkingEl.removeAttribute('aria-label');
+        while (thinkingEl.firstChild) {
+          thinkingEl.removeChild(thinkingEl.firstChild);
+        }
+        streamMeta = document.createElement('div');
+        streamMeta.className = 'chat-asst-stream-meta';
+        streamMeta.textContent = 'Advisor is writing…';
+        streamDraft = document.createElement('div');
+        streamDraft.className = 'chat-asst-draft chat-asst-stream-body';
+        streamDraft.setAttribute('aria-live', 'polite');
+        thinkingEl.appendChild(streamMeta);
+        thinkingEl.appendChild(streamDraft);
+      }
       try {
         var task = normalizeTask(pendingTask, t);
         contactSnapshot =
@@ -1247,7 +1351,13 @@
           },
           constraints: { maxBullets: 5, tone: 'concise' },
         };
-        out = await invokeAdvisorTask(request);
+        out = await invokeAdvisorTask(request, {
+          onStreamDelta: function (chunk) {
+            ensureStreamDraft();
+            streamDraft.textContent += chunk;
+            logEl.scrollTop = logEl.scrollHeight;
+          },
+        });
         var t1req = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
         usageMeta = { usageEventId: mkUuid(), task: task };
         await logAdvisorUsage({
@@ -1267,7 +1377,7 @@
       }
       var t1 = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
       var elapsed = t1 - t0;
-      if (elapsed < THINKING_MIN_MS) {
+      if (!(out && out.streamed) && elapsed < THINKING_MIN_MS) {
         await delay(THINKING_MIN_MS - elapsed);
       }
 

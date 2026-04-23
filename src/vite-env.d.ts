@@ -13,6 +13,7 @@ declare global {
     bizDashCrmCustomersTableBuildPayload?: () => Record<string, unknown>;
     bizDashCrmCustomersTableApplyPayload?: (p: Record<string, unknown>) => void;
     bizDashSyncCrmCustomersTable?: () => void;
+    bizDashApplyCustomersColumnVisibility?: () => void;
     bizDashCrmCustomersTableFocus?: (o: { rowId: string; colId: string; activate?: boolean }) => void;
     bizDashCrmTablePatchField?: (
       clientId: string,

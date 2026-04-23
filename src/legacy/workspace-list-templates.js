@@ -214,10 +214,13 @@
       desc: 'Set team goals, achieve together.',
       tags: [{ label: 'Operations', tone: 'blue' }],
       suggested: false,
-      supportsCalendarView: false,
+      supportsCalendarView: true,
+      calendarDateColumnId: 'c4',
+      boardGroupColumnId: 'c3',
       previewKind: 'table',
       previewTabs: [
         { id: 'all', label: 'All goals' },
+        { id: 'cal', label: 'Calendar' },
         { id: 'status', label: 'By status' },
         { id: 'mine', label: 'My goals' },
       ],
@@ -281,6 +284,7 @@
       suggested: false,
       supportsCalendarView: true,
       calendarDateColumnId: 'c2',
+      boardGroupColumnId: 'c8',
       previewKind: 'calendar',
       previewTabs: [
         { id: 'cal', label: 'Calendar' },
@@ -295,11 +299,12 @@
         { id: 'c5', name: 'Owner', featureId: 'owner', defaultOn: true },
         { id: 'c6', name: 'Post URL', featureId: 'url', defaultOn: true },
         { id: 'c7', name: 'Accounts', featureId: 'accounts', defaultOn: false },
+        { id: 'c8', name: 'Status', featureId: 'status', required: true },
       ],
       rows: [
-        { c1: 'April product tips', c2: '2025-04-18', c3: 'LinkedIn', c4: 'Carousel', c5: 'Mark', c6: '', c7: '' },
-        { c1: 'Customer story', c2: '2025-04-22', c3: 'Blog', c4: 'Article', c5: 'Sam', c6: '', c7: '' },
-        { c1: 'Webinar promo', c2: '2025-04-25', c3: 'Email', c4: 'Newsletter', c5: 'Mark', c6: '', c7: '' },
+        { c1: 'April product tips', c2: '2025-04-18', c3: 'LinkedIn', c4: 'Carousel', c5: 'Mark', c6: '', c7: '', c8: 'Scheduled' },
+        { c1: 'Customer story', c2: '2025-04-22', c3: 'Blog', c4: 'Article', c5: 'Sam', c6: '', c7: '', c8: 'Draft' },
+        { c1: 'Webinar promo', c2: '2025-04-25', c3: 'Email', c4: 'Newsletter', c5: 'Mark', c6: '', c7: '', c8: 'Published' },
       ],
     },
     {
@@ -311,6 +316,7 @@
       desc: 'Plan and manage your events.',
       tags: [{ label: 'Operations', tone: 'blue' }],
       suggested: false,
+      boardGroupColumnId: 'c3',
       supportsCalendarView: false,
       previewKind: 'table',
       previewTabs: [

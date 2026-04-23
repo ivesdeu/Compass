@@ -209,7 +209,7 @@ export const PromptBox = React.forwardRef<HTMLTextAreaElement, Props>(({ compose
         What can I do for you?
       </h2>
       <div
-        className="flex w-full cursor-text flex-col rounded-xl border border-border bg-background px-3 py-2.5 shadow-[0_1px_2px_rgba(15,23,42,0.06)] transition-[border-color,box-shadow] focus-within:border-neutral-300/90 focus-within:shadow-[0_2px_12px_rgba(15,23,42,0.08)]"
+        className="flex w-full cursor-text flex-col rounded-xl border-2 border-neutral-300 bg-background px-3 py-2.5 shadow-[0_4px_20px_rgba(15,23,42,0.12),0_0_0_1px_rgba(15,23,42,0.04)] transition-[border-color,box-shadow] focus-within:border-neutral-400 focus-within:shadow-[0_6px_28px_rgba(15,23,42,0.16),0_0_0_1px_rgba(15,23,42,0.06)]"
         data-advisor-composer
       >
       <input type="file" ref={fileInputRef} onChange={handleFileChange} className="hidden" accept="image/*" />
