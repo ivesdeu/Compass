@@ -1926,8 +1926,9 @@
     gap: 8px;
     box-sizing: border-box;
   }
-  /* Advisor — no messages yet: fill space below header and center composer + greeting */
-  #page-chat.chat-advisor-centered.pg.on:has(#chat-log:empty) > .chat-shell > .chat-transcript {
+  /* Advisor — no messages yet: fill space below header and center composer + greeting.
+     data-advisor-thread is set by JS (syncAdvisorComposerLayout); avoid :has(#chat-log:empty) which can lag after appendChild. */
+  #page-chat.chat-advisor-centered.pg.on[data-advisor-thread="0"] > .chat-shell > .chat-transcript {
     flex: 0 0 0;
     min-height: 0;
     max-height: 0;
@@ -1935,7 +1936,7 @@
     opacity: 0;
     pointer-events: none;
   }
-  #page-chat.chat-advisor-centered.pg.on:has(#chat-log:empty) > .chat-shell > .chat-composer-dock {
+  #page-chat.chat-advisor-centered.pg.on[data-advisor-thread="0"] > .chat-shell > .chat-composer-dock {
     flex: 1 1 auto;
     display: flex;
     flex-direction: column;
@@ -1946,13 +1947,16 @@
     padding-top: max(16px, 5vh);
     padding-bottom: max(28px, 10vh);
   }
-  #page-chat.chat-advisor-centered.pg.on:has(#chat-log:empty) > .chat-shell > .chat-composer-dock .chat-composer-inner {
+  #page-chat.chat-advisor-centered.pg.on[data-advisor-thread="0"] > .chat-shell > .chat-composer-dock .chat-composer-inner {
     flex: 0 1 auto;
     width: 100%;
   }
-  /* Hide hero greeting once the thread has content (user message, reply, or thinking row) */
-  #page-chat.chat-advisor-centered.pg.on:not(:has(#chat-log:empty)) .advisor-composer-greeting {
+  /* Once there is thread content, hide greeting + composer top border (centered class is removed, so match on data-advisor-thread only). */
+  #page-chat.pg.on[data-advisor-thread="1"] .advisor-composer-greeting {
     display: none;
+  }
+  #page-chat.pg.on[data-advisor-thread="1"] > .chat-shell > .chat-composer-dock {
+    border-top: none;
   }
   .advisor-chat-aux {
     width: 100%;
@@ -3903,6 +3907,40 @@
     background: var(--coral-bg);
     border-radius: var(--rs);
   }
+  .chats-sb-item-row {
+    display: flex;
+    align-items: stretch;
+    gap: 0;
+    min-height: 40px;
+  }
+  .chats-sb-item-row .lists-sb-item.chats-sb-item-main {
+    flex: 1;
+    min-width: 0;
+    border-radius: var(--rs) 0 0 var(--rs);
+  }
+  .chats-sb-del {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 40px;
+    min-height: 40px;
+    padding: 0;
+    border: none;
+    border-radius: 0 var(--rs) var(--rs) 0;
+    background: transparent;
+    color: var(--text3);
+    cursor: pointer;
+    transition: background 0.15s, color 0.15s;
+  }
+  .chats-sb-del:hover {
+    background: var(--bg3);
+    color: var(--coral, #f97316);
+  }
+  .chats-sb-item-row:hover .lists-sb-item.chats-sb-item-main {
+    background: var(--bg3);
+    color: var(--text);
+  }
 
   /* Lists page + template modals (blue accent, scoped) */
   .list-tmpl-mo {
@@ -4626,6 +4664,162 @@
   }
   .lists-sb-ctx-sw.on::after {
     transform: translateX(16px);
+  }
+
+  /* Lists library page — table + filter + selection bar */
+  .lists-lib-chrome {
+    flex-direction: column;
+    gap: 10px;
+    margin-top: 4px;
+  }
+  .lists-lib-filter {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 6px;
+  }
+  .lists-lib-tab {
+    border: 1px solid var(--border);
+    background: var(--bg2);
+    color: var(--text2);
+    font-size: 12px;
+    font-weight: 500;
+    padding: 6px 12px;
+    border-radius: 999px;
+    cursor: pointer;
+  }
+  .lists-lib-tab:hover {
+    background: var(--bg3);
+    color: var(--text);
+  }
+  .lists-lib-tab.on {
+    background: var(--bg3);
+    color: var(--text);
+    border-color: var(--border);
+    font-weight: 600;
+  }
+  .lists-lib-selection-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 12px;
+    border-radius: var(--rl, 8px);
+    border: 1px solid var(--border);
+    background: var(--bg3);
+    font-size: 13px;
+    color: var(--text2);
+  }
+  .lists-lib-selection-count {
+    font-weight: 600;
+    color: var(--text);
+  }
+  .lists-lib-bulk-del {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 36px;
+    height: 36px;
+    margin-left: auto;
+    border: none;
+    border-radius: 8px;
+    background: transparent;
+    color: var(--text2);
+    cursor: pointer;
+  }
+  .lists-lib-bulk-del:hover {
+    background: var(--bg2);
+    color: var(--coral, #f97316);
+  }
+  .lists-lib-wrap {
+    width: 100%;
+    min-width: 0;
+  }
+  .lists-lib-scroll {
+    width: 100%;
+    overflow-x: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--rl, 10px);
+    background: #fff;
+  }
+  .lists-lib-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 13px;
+    min-width: 560px;
+  }
+  .lists-lib-table thead th {
+    position: sticky;
+    top: 0;
+    z-index: 1;
+    text-align: left;
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: 0.02em;
+    color: var(--text3);
+    background: var(--bg3);
+    border-bottom: 1px solid var(--border);
+    padding: 10px 12px;
+    white-space: nowrap;
+  }
+  .lists-lib-th-check {
+    width: 40px;
+    padding-left: 14px !important;
+    vertical-align: middle;
+  }
+  .lists-lib-th-more {
+    width: 44px;
+    padding-right: 8px !important;
+  }
+  .lists-lib-table tbody td {
+    padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+    vertical-align: middle;
+  }
+  .lists-lib-row:hover td {
+    background: var(--bg2);
+  }
+  .lists-lib-td-check {
+    width: 40px;
+    padding-left: 14px !important;
+  }
+  .lists-lib-check {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: var(--coral, #f97316);
+  }
+  .lists-lib-name-btn {
+    border: none;
+    background: none;
+    padding: 0;
+    font: inherit;
+    font-weight: 600;
+    color: var(--text);
+    text-align: left;
+    cursor: pointer;
+    max-width: 100%;
+  }
+  .lists-lib-name-btn:hover {
+    text-decoration: underline;
+  }
+  .lists-lib-muted {
+    color: var(--text2);
+    font-size: 12px;
+  }
+  .lists-lib-num {
+    font-variant-numeric: tabular-nums;
+    color: var(--text2);
+  }
+  .lists-lib-td-more {
+    width: 44px;
+    text-align: right;
+    padding-right: 8px !important;
+  }
+  .lists-lib-empty {
+    padding: 28px 16px !important;
+    text-align: center;
+    color: var(--text3);
+    font-size: 13px;
   }
 
   /* New list page modal (Notion-style) */
@@ -7107,7 +7301,20 @@
       <div id="lists-empty-hint" class="card" style="padding:24px;font-size:14px;color:var(--text2);line-height:1.55;">
         No lists yet. Use <strong>+ New list</strong> in the sidebar or here to pick a template or start from scratch.
       </div>
-      <div id="lists-grid" class="g3" style="display:none;margin-top:12px;"></div>
+      <div id="lists-lib-chrome" class="lists-lib-chrome" style="display:none;">
+        <div id="lists-lib-filter" class="lists-lib-filter" role="tablist" aria-label="List views">
+          <button type="button" class="lists-lib-tab on" data-lists-filter="all" role="tab" aria-selected="true">All</button>
+          <button type="button" class="lists-lib-tab" data-lists-filter="recents" role="tab" aria-selected="false">Recents</button>
+          <button type="button" class="lists-lib-tab" data-lists-filter="favorites" role="tab" aria-selected="false">Favorites</button>
+        </div>
+        <div id="lists-lib-selection-bar" class="lists-lib-selection-bar" hidden>
+          <span id="lists-lib-selection-count" class="lists-lib-selection-count">0 selected</span>
+          <button type="button" class="lists-lib-bulk-del" data-lists-lib-bulk-del="1" aria-label="Delete selected lists" title="Delete selected">
+            <svg class="lists-lib-bulk-del-ic" viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path><line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>
+          </button>
+        </div>
+      </div>
+      <div id="lists-grid" class="lists-lib-wrap" style="display:none;margin-top:12px;"></div>
     </div>
     <div id="lists-view-detail" style="display:none;">
       <div class="ph" style="margin-bottom:12px;">
@@ -8869,8 +9076,8 @@
 </div>
 
 <!-- Lists sidebar database menu (⋯) -->
-<div id="listsSbContextMenu" class="lists-sb-ctx" aria-hidden="true" role="menu">
-  <div class="lists-sb-ctx-h">Database</div>
+  <div id="listsSbContextMenu" class="lists-sb-ctx" aria-hidden="true" role="menu">
+  <div class="lists-sb-ctx-h">List</div>
   <button type="button" class="lists-sb-ctx-item" data-ctx="fav" role="menuitem"><span data-ctx-fav-lbl>Add to Favorites</span></button>
   <button type="button" class="lists-sb-ctx-item" data-ctx="offline" role="menuitem">
     <span>Available offline</span>

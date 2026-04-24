@@ -848,9 +848,10 @@
     function syncAdvisorComposerLayout() {
       if (!pageChat) return;
       /* Empty log: CSS centers composer + greeting. With messages: drop centered so the transcript flexes open.
-         Do not rely on :has(#chat-log:empty) alone — some engines lag recalc after appendChild, which hid the thread until re-navigation. */
+         data-advisor-thread drives CSS (see index.html); do not rely on :has(#chat-log:empty) — it can lag after appendChild. */
       var log = logEl || document.getElementById('chat-log');
       var hasThread = !!(log && log.firstElementChild);
+      pageChat.setAttribute('data-advisor-thread', hasThread ? '1' : '0');
       if (hasThread) {
         pageChat.classList.remove('chat-advisor-centered');
       } else {
@@ -943,13 +944,13 @@
     var pendingTask = null;
     function seedWelcome() {
       if (seeded) return;
-      seeded = true;
       var isMobile = false;
       try {
         isMobile = !!(window.matchMedia && window.matchMedia('(max-width: 960px)').matches);
       } catch (_) {}
       var msg = (isMobile ? WELCOME_MOBILE : WELCOME).trim();
       if (!msg) return;
+      seeded = true;
       appendBubble(logEl, 'asst', isMobile ? WELCOME_MOBILE : WELCOME);
     }
 
@@ -1290,6 +1291,11 @@
       var userLine = t || '(Image attached)';
       appendBubble(logEl, 'user', userLine);
       syncAdvisorComposerLayout();
+      if (typeof requestAnimationFrame !== 'undefined') {
+        requestAnimationFrame(function () {
+          syncAdvisorComposerLayout();
+        });
+      }
       if (typeof window.bizDashAdvisorChatOnUserMessage === 'function') {
         try {
           window.bizDashAdvisorChatOnUserMessage(userLine);
@@ -1305,6 +1311,12 @@
 
       isThinking = true;
       var thinkingEl = appendThinkingBubble(logEl);
+      syncAdvisorComposerLayout();
+      if (typeof requestAnimationFrame !== 'undefined') {
+        requestAnimationFrame(function () {
+          syncAdvisorComposerLayout();
+        });
+      }
 
       var t0 = typeof performance !== 'undefined' && performance.now ? performance.now() : Date.now();
       var out;

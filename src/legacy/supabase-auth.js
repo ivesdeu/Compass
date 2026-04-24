@@ -102,10 +102,11 @@
   /**
    * Ceilings for org / onboarding resolution (not session read — that is driven by INITIAL_SESSION).
    * These are UX timeouts only; the auth session itself has no artificial cap.
-   * Too long feels “stuck”; these stay in the few-second band for perceived snappiness.
+   * Keep the workspace gate snappy; brief network issues are retried inside
+   * `callResolveSessionWorkspaceWithRetries` / `resolveOrgContextWithRetry` instead of a long outer wait.
    */
-  /** UX ceiling for workspace RPC + invite handling (not data sync). */
-  var ORG_RESOLVE_MS = 4500;
+  /** UX ceiling for one full workspace resolve (invite + RPC + fallbacks). */
+  var ORG_RESOLVE_MS = 6000;
   /** Onboarding prefill (org row + optional storage); keep bounded so login never “hangs”. */
   var ONBOARDING_GATE_MS = 8000;
   /** Avatar signed URL during prefill — do not block first paint on slow storage. */
@@ -133,7 +134,24 @@
     if (err && err.message) msg = String(err.message);
     if (!msg && err) msg = String(err);
     msg = msg.toLowerCase();
-    return msg.indexOf('lock was stolen by another request') !== -1 || msg.indexOf('aborterror') !== -1;
+    /* Only Supabase auth lock contention — do not treat generic AbortError / fetch timeouts as "lock". */
+    return msg.indexOf('lock was stolen by another request') !== -1;
+  }
+
+  /** PostgREST / fetch-style failures worth a short backoff retry (Safari: "Load failed"). */
+  function isTransientSupabaseNetworkError(err) {
+    if (!err) return false;
+    var msg = String(err.message || err.details || err.hint || err || '').toLowerCase();
+    if (!msg) return false;
+    return (
+      msg.indexOf('load failed') !== -1 ||
+      msg.indexOf('failed to fetch') !== -1 ||
+      msg.indexOf('networkerror') !== -1 ||
+      msg.indexOf('network request failed') !== -1 ||
+      msg.indexOf('fetch failed') !== -1 ||
+      msg.indexOf('connection refused') !== -1 ||
+      msg.indexOf('err_connection') !== -1
+    );
   }
 
   function isOrgResolveTimeoutError(err) {
@@ -142,14 +160,14 @@
   }
 
   async function retryOnAuthLock(task) {
-    var maxAttempts = 3;
+    var maxAttempts = 5;
     for (var attempt = 1; attempt <= maxAttempts; attempt++) {
       try {
         return await task();
       } catch (err) {
         if (!isLockStolenError(err) || attempt === maxAttempts) throw err;
         // Tiny jitter gives the competing request time to release the lock.
-        await sleep(120 * attempt);
+        await sleep(140 * attempt);
       }
     }
     return await task();
@@ -528,6 +546,25 @@
   }
 
   /**
+   * `resolve_session_workspace` can return { error } with "TypeError: Load failed" on flaky networks
+   * without throwing — retry a few times before surfacing to the user.
+   */
+  async function callResolveSessionWorkspaceWithRetries(slug) {
+    var delays = [0, 400, 1000];
+    var lastRes = null;
+    for (var i = 0; i < delays.length; i++) {
+      if (delays[i] > 0) await sleep(delays[i]);
+      lastRes = await retryOnAuthLock(function () {
+        return supabase.rpc('resolve_session_workspace', { p_slug: slug || null });
+      });
+      if (!lastRes.error) return lastRes;
+      if (isResolveSessionWorkspaceUnavailableError(lastRes.error)) return lastRes;
+      if (!isTransientSupabaseNetworkError(lastRes.error)) return lastRes;
+    }
+    return lastRes;
+  }
+
+  /**
    * Legacy path (slug RPC + membership + my_organizations) when resolve_session_workspace is missing.
    * Invite flow must already have run in the caller.
    * @param {function(string): void} gateErr
@@ -633,9 +670,7 @@
     }
 
     var slug = parseTenantSlug();
-    var wsRes = await retryOnAuthLock(function () {
-      return supabase.rpc('resolve_session_workspace', { p_slug: slug || null });
-    });
+    var wsRes = await callResolveSessionWorkspaceWithRetries(slug);
     if (wsRes.error && isResolveSessionWorkspaceUnavailableError(wsRes.error)) {
       console.warn('resolve_session_workspace unavailable; using legacy workspace resolution', wsRes.error);
       return ensureOrganizationContextWithoutResolveRpc(user, authSession, gateErr);
@@ -696,6 +731,11 @@
       // Transient slowness (cold Supabase connection, flaky network, tab backgrounded): one full retry.
       if (isOrgResolveTimeoutError(err)) {
         await sleep(50);
+        return await withTimeout(ensureOrganizationContext(user, authSession), ORG_RESOLVE_MS, timedOutMsg);
+      }
+      /* Thrown network errors from invite flow or rare client throws — one backoff retry. */
+      if (isTransientSupabaseNetworkError(err)) {
+        await sleep(200);
         return await withTimeout(ensureOrganizationContext(user, authSession), ORG_RESOLVE_MS, timedOutMsg);
       }
       throw err;
@@ -2342,7 +2382,14 @@
         });
         if (res.error) {
           setGateAuthError(res.error.message || label + ' sign-in failed.');
+          return;
         }
+        var oauthUrl = res.data && res.data.url ? String(res.data.url) : '';
+        if (oauthUrl) {
+          window.location.href = oauthUrl;
+          return;
+        }
+        setGateAuthError('Could not start ' + label + ' sign-in (missing redirect URL).');
       } catch (err) {
         console.error(provider + ' auth error', err);
         setGateAuthError('Unexpected error starting ' + label + ' sign-in.');
