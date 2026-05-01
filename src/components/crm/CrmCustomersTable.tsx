@@ -414,6 +414,7 @@ function CrmSelectPortalMenu({
 }: CrmSelectPortalMenuProps) {
   const [q, setQ] = useState('');
   const [pillEditor, setPillEditor] = useState<{ opt: string; left: number; top: number } | null>(null);
+  const [hoveredRowKey, setHoveredRowKey] = useState<string | null>(null);
   const filtered = useMemo(() => {
     const t = q.trim().toLowerCase();
     if (!t) return opts;
@@ -477,13 +478,17 @@ function CrmSelectPortalMenu({
                   </div>
                 ) : null}
                 <div className="space-y-0.5">
-                  {sec.items.map((opt) => (
+                  {sec.items.map((opt, optIdx) => {
+                    const rowKey = `${si}:${optIdx}:${opt}`;
+                    return (
                     <div
-                      key={opt}
+                      key={rowKey}
                       className={cn(
                         'flex items-center gap-0.5 rounded-lg pr-1 transition-colors hover:bg-black/[0.04]',
                         String(opt) === String(currentValue) && 'bg-black/[0.04]',
                       )}
+                      onMouseEnter={() => setHoveredRowKey(rowKey)}
+                      onMouseLeave={() => setHoveredRowKey((cur) => (cur === rowKey ? null : cur))}
                     >
                       <button
                         type="button"
@@ -503,7 +508,10 @@ function CrmSelectPortalMenu({
                       </button>
                       <button
                         type="button"
-                        className="flex h-8 w-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent text-neutral-500 outline-none hover:bg-black/[0.06] hover:text-neutral-800"
+                        className={cn(
+                          'flex h-8 w-8 shrink-0 items-center justify-center rounded-md border-0 bg-transparent text-neutral-500 outline-none transition-opacity hover:bg-black/[0.06] hover:text-neutral-800 focus-visible:opacity-100',
+                          hoveredRowKey === rowKey ? 'opacity-100' : 'opacity-0',
+                        )}
                         aria-label={`Edit ${opt}`}
                         onMouseDown={(e) => {
                           e.preventDefault();
@@ -528,7 +536,8 @@ function CrmSelectPortalMenu({
                         <MoreHorizontal className="h-4 w-4" strokeWidth={2} aria-hidden />
                       </button>
                     </div>
-                  ))}
+                    );
+                  })}
                 </div>
                 {si < sections.length - 1 ? <div className="mx-1 my-2 h-px bg-neutral-100" /> : null}
               </div>
@@ -887,6 +896,15 @@ export function CrmCustomersTable({
           key={row.id}
           data-client-id={row.id}
           className={cn('crm-row', selectedRowId === row.id && 'bg-gray-50')}
+          onDoubleClickCapture={(ev) => {
+            const t = ev.target as HTMLElement | null;
+            if (!t) return;
+            if (t.closest('button, input, textarea, select, a, label')) return;
+            const editBtn = (ev.currentTarget as HTMLElement).querySelector<HTMLButtonElement>(
+              `[data-client-edit="${row.id}"]`,
+            );
+            if (editBtn) editBtn.click();
+          }}
           onBlur={(ev) => {
             const rel = ev.relatedTarget as Node | null;
             if (rel && (ev.currentTarget as HTMLElement).contains(rel)) return;

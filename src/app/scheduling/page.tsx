@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { Calendar as CalendarIcon, LayoutList, PlusCircle } from 'lucide-react';
 import { AppointmentDetailDrawer } from '@/components/scheduling/AppointmentDetailDrawer';
@@ -36,6 +36,7 @@ function uid (): string {
 
 export function SchedulingPage () {
   const demoMode = isDemoMode ();
+  const hasLoadedOnceRef = useRef (false);
   const [subView, setSubView] = useState<SubView> ('calendar');
   const [appointments, setAppointments] = useState<SchedulingAppointment[]> ([]);
   const [clientOptions, setClientOptions] = useState<ClientOption[]> ([]);
@@ -113,14 +114,16 @@ export function SchedulingPage () {
         ),
       );
       setLoading (false);
+      hasLoadedOnceRef.current = true;
       return;
     }
 
     let cancelled = false;
-    setLoading (true);
+    if (!hasLoadedOnceRef.current) setLoading (true);
     void (async () => {
       await reloadLive ();
       if (cancelled) return;
+      hasLoadedOnceRef.current = true;
     })();
     return () => {
       cancelled = true;
@@ -160,7 +163,10 @@ export function SchedulingPage () {
     const onShow = () => {
       clearTimers ();
       bump ();
-      timerIds = [150, 600, 2000].map ((ms) => window.setTimeout (bump, ms));
+      // Retry only when org context is still initializing; otherwise avoid redundant refetch bursts.
+      if (!getOrgId ()) {
+        timerIds = [200, 800, 2200].map ((ms) => window.setTimeout (bump, ms));
+      }
     };
     const obs = new MutationObserver (() => {
       if (page.classList.contains ('on')) onShow ();

@@ -3956,6 +3956,10 @@
   /* Lists page + template modals (blue accent, scoped) */
   .list-tmpl-mo {
     z-index: 115;
+    align-items: flex-start;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    padding: 10px 0;
     --lt-blue: #3b82f6;
     --lt-blue-soft: rgba(59, 130, 246, 0.12);
     --lt-surface: #f8fafc;
@@ -3963,11 +3967,12 @@
   }
   .list-tmpl-mo .list-tmpl-md {
     width: min(920px, 96vw);
-    max-height: 90vh;
+    max-height: calc(100vh - 20px);
     padding: 0;
     overflow: hidden;
     display: flex;
     flex-direction: column;
+    margin: auto;
     border-radius: 16px;
     background: #fff;
     border: 1px solid var(--lt-border);
@@ -4034,8 +4039,11 @@
     flex-direction: column;
     gap: 0;
     padding: 0;
-    max-height: calc(90vh - 64px);
-    overflow: hidden;
+    flex: 1;
+    min-height: 0;
+    max-height: calc(100vh - 94px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
     min-height: 300px;
   }
   .list-tmpl-md-wide {
@@ -4170,10 +4178,10 @@
     display: grid;
     grid-template-columns: 1fr;
     gap: 10px;
-    overflow-y: auto;
+    overflow: visible;
     padding-right: 4px;
-    flex: 1;
-    min-height: 0;
+    flex: 0 0 auto;
+    min-height: auto;
     align-content: start;
   }
   @media (min-width: 620px) {
@@ -5370,6 +5378,28 @@
     flex: 1;
     min-width: 0;
   }
+  .lists-select-row-more {
+    margin-left: auto;
+    border: none;
+    background: transparent;
+    color: inherit;
+    opacity: 0;
+    font-size: 16px;
+    line-height: 1;
+    letter-spacing: 1px;
+    padding: 0 2px;
+    cursor: pointer;
+    flex-shrink: 0;
+    transition: opacity .14s ease;
+  }
+  .lists-select-menu-row:hover .lists-select-row-more,
+  .lists-select-menu-row:focus-visible .lists-select-row-more,
+  .lists-select-row-more:focus-visible {
+    opacity: 0.95;
+  }
+  .lists-select-row-more:hover {
+    opacity: 0.95;
+  }
 
   /* Workspace lists — inline text edit (Notion-style) */
   .lists-cell-edit {
@@ -5447,6 +5477,21 @@
     color: var(--text2);
     border: 1px solid rgba(0, 0, 0, 0.06);
   }
+  .lists-board-hdr-more {
+    margin-left: auto;
+    border: none;
+    background: transparent;
+    color: currentColor;
+    opacity: 0.55;
+    font-size: 18px;
+    line-height: 1;
+    letter-spacing: 1px;
+    padding: 0 2px;
+    cursor: pointer;
+  }
+  .lists-board-hdr-more:hover {
+    opacity: 0.95;
+  }
   .lists-board-hdr-dot {
     width: 8px;
     height: 8px;
@@ -5502,6 +5547,143 @@
   }
   .lists-board-card-title { font-size: 13px; font-weight: 600; color: var(--text); }
   .lists-board-card-meta { font-size: 11px; color: var(--text3); margin-top: 4px; line-height: 1.35; }
+  .lists-status-edit-pop {
+    position: fixed;
+    z-index: 145;
+    width: min(320px, calc(100vw - 16px));
+    max-height: min(74vh, 560px);
+    overflow-y: auto;
+    background: #fff;
+    border: 1px solid var(--border2);
+    border-radius: 12px;
+    box-shadow: 0 18px 44px rgba(15, 23, 42, 0.2);
+    padding: 10px 10px 12px;
+  }
+  .lists-status-edit-head {
+    margin-bottom: 8px;
+  }
+  .lists-status-edit-input {
+    width: 100%;
+    font-size: 13px;
+    border-radius: 10px;
+    border-color: var(--coral);
+    background: var(--bg2);
+  }
+  .lists-status-edit-del {
+    width: 100%;
+    border: none;
+    background: transparent;
+    text-align: left;
+    font-size: 13px;
+    color: var(--text2);
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+  }
+  .lists-status-edit-del:hover {
+    background: var(--bg3);
+    color: var(--text);
+  }
+  .lists-status-edit-rule {
+    height: 1px;
+    background: var(--border);
+    margin: 6px 0 8px;
+  }
+  .lists-status-edit-lbl {
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--text3);
+    padding: 2px 10px 6px;
+  }
+  .lists-status-edit-colors {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+  }
+  .lists-status-edit-color-row {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    width: 100%;
+    border: none;
+    background: transparent;
+    text-align: left;
+    padding: 8px 10px;
+    border-radius: 8px;
+    cursor: pointer;
+    color: var(--text);
+    font-size: 13px;
+    font-weight: 500;
+  }
+  .lists-status-edit-color-row:hover {
+    background: var(--bg3);
+  }
+  .lists-status-edit-swatch {
+    width: 20px;
+    height: 20px;
+    border-radius: 6px;
+    border: 1px solid var(--border2);
+    flex-shrink: 0;
+  }
+  .lists-status-edit-color-txt {
+    flex: 1;
+    min-width: 0;
+  }
+  .lists-status-edit-check {
+    flex-shrink: 0;
+    color: var(--text);
+    font-size: 18px;
+    line-height: 1;
+  }
+  .lists-status-edit-swatch.lists-sel-tone-neutral {
+    background: var(--bg3);
+    border-color: var(--border2);
+  }
+  .lists-status-edit-swatch.lists-sel-tone-slate {
+    background: var(--neutral-bg);
+    border-color: rgba(113, 113, 122, 0.25);
+  }
+  .lists-status-edit-swatch.lists-sel-tone-amber {
+    background: var(--amber-bg);
+    border-color: rgba(234, 88, 12, 0.28);
+  }
+  .lists-status-edit-swatch.lists-sel-tone-green {
+    background: var(--green-bg);
+    border-color: rgba(22, 163, 74, 0.28);
+  }
+  .lists-status-edit-swatch.lists-sel-tone-blue {
+    background: rgba(59, 130, 246, 0.12);
+    border-color: rgba(59, 130, 246, 0.28);
+  }
+  .lists-status-edit-swatch.lists-sel-tone-violet {
+    background: rgba(139, 92, 246, 0.12);
+    border-color: rgba(139, 92, 246, 0.28);
+  }
+  .lists-status-edit-swatch.lists-sel-tone-rose {
+    background: var(--red-bg);
+    border-color: rgba(220, 38, 38, 0.28);
+  }
+  .lists-status-edit-swatch.lists-sel-tone-teal {
+    background: rgba(13, 148, 136, 0.12);
+    border-color: rgba(13, 148, 136, 0.28);
+  }
+  .lists-status-edit-done {
+    width: 100%;
+    margin-top: 10px;
+    border: none;
+    border-radius: 10px;
+    background: #0f172a;
+    color: #fff;
+    font-size: 14px;
+    font-weight: 600;
+    padding: 10px 12px;
+    cursor: pointer;
+  }
+  .lists-status-edit-done:hover {
+    background: #111827;
+  }
   .lists-cal-title-row {
     display: flex;
     align-items: center;
@@ -5666,7 +5848,36 @@
     overflow: auto;
     min-height: 360px;
   }
-  .list-cust-phdr { font-size: 16px; margin-bottom: 10px; color: #0f172a; }
+  .list-cust-phdr {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    font-size: 16px;
+    margin-bottom: 10px;
+    color: #0f172a;
+  }
+  /* Template card + customize preview: stroke icons (no CSS → circles fill black). */
+  .list-tmpl-card-ico {
+    flex-shrink: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #64748b;
+  }
+  .list-tmpl-mo .list-tmpl-card-rich .list-tmpl-card-ico {
+    color: #475569;
+  }
+  .list-tmpl-card-ico .list-tmpl-svg {
+    display: block;
+    width: 22px;
+    height: 22px;
+    flex-shrink: 0;
+    fill: none;
+    stroke: currentColor;
+    stroke-width: 2;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
   .list-cust-preview-tabs { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
   .list-cust-ptab {
     border: 1px solid #e2e8f0;
@@ -8940,6 +9151,19 @@
       <div class="fgp" style="grid-column:1/-1;"><label class="fl">Description</label><textarea class="fi" id="client-description" rows="2" style="min-height:56px;resize:vertical;"></textarea></div>
       <div class="fgp" style="grid-column:1/-1;"><label class="fl">Notes</label><textarea class="fi" id="client-notes" rows="2" style="min-height:56px;resize:vertical;"></textarea></div>
       <div class="fgp" style="grid-column:1/-1;"><label class="fl">Relationship notes</label><textarea class="fi" id="client-relationship-notes" rows="2" style="min-height:56px;resize:vertical;"></textarea></div>
+      <div class="fgp" style="grid-column:1/-1;padding-top:12px;border-top:1px solid var(--border);">
+        <div class="fl" style="margin-bottom:4px;">Email client</div>
+        <p style="font-size:12px;color:var(--text3);margin:0 0 12px;line-height:1.45;">
+          Draft an email from this full record, then send via your connected Gmail account.
+        </p>
+        <div class="fg" style="grid-template-columns:1fr;gap:10px;">
+          <div class="fgp"><label class="fl">Subject</label><input class="fi" id="client-email-subject" placeholder="Subject line" /></div>
+          <div class="fgp"><label class="fl">Message</label><textarea class="fi" id="client-email-body" rows="3" style="min-height:84px;resize:vertical;" placeholder="Write your message…"></textarea></div>
+          <div class="fgp" style="display:flex;justify-content:flex-end;">
+            <button type="button" class="btn" id="btn-client-send-email">Open email composer</button>
+          </div>
+        </div>
+      </div>
       <div class="fgp" style="grid-column:1/-1;padding-top:12px;border-top:1px solid var(--border);">
         <div class="fl" style="margin-bottom:4px;">Customers tab (optional)</div>
         <p style="font-size:12px;color:var(--text3);margin:0 0 12px;line-height:1.45;">Leave blank to use income and expenses linked to this client. Enter amounts to show fixed revenue and/or allocated cost in the Customers table; profit and margin update automatically.</p>

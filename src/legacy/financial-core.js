@@ -4384,6 +4384,111 @@ import {
     var selTpl = document.getElementById('eml-compose-template');
     var composeTemplateById = {};
 
+    function outboxStorageKey() {
+      var org = getCurrentOrgId();
+      return 'bizdash:emails:outbox:' + String(org || 'default');
+    }
+    function loadOutboxEntries() {
+      try {
+        var raw = localStorage.getItem(outboxStorageKey());
+        var arr = raw ? JSON.parse(raw) : [];
+        return Array.isArray(arr) ? arr : [];
+      } catch (_) {
+        return [];
+      }
+    }
+    function saveOutboxEntries(entries) {
+      try {
+        localStorage.setItem(outboxStorageKey(), JSON.stringify(Array.isArray(entries) ? entries : []));
+      } catch (_) {}
+    }
+    function outboxWhenLabel(iso) {
+      var d = iso ? new Date(iso) : null;
+      if (!d || isNaN(d.getTime())) return 'Just now';
+      return d.toLocaleString([], { dateStyle: 'medium', timeStyle: 'short' });
+    }
+    function animateEmailsPanelContent(panel) {
+      if (!panel || prefersReducedMotion()) return;
+      var nodes = panel.querySelectorAll(
+        '.eml-empty > .eml-empty-illus-wrap, .eml-empty > .eml-empty-title, .eml-empty > .eml-empty-sub, .eml-empty > .eml-btn-compose, .eml-empty > .bizdash-advisor-cta-wrap, .eml-list > article',
+      );
+      var cap = Math.min(nodes.length, 14);
+      for (var i = 0; i < cap; i += 1) {
+        var node = nodes[i];
+        node.classList.remove('motion-in');
+        node.classList.add('motion-item');
+        node.style.setProperty('--motion-delay', String(Math.min(i * 28, 220)) + 'ms');
+        void node.offsetWidth;
+        node.classList.add('motion-in');
+      }
+    }
+    function renderOutboxPanel() {
+      var panel = root.querySelector('[data-eml-panel="outbox"]');
+      if (!panel) return;
+      var countEl = root.querySelector('[data-eml-count="outbox"]');
+      var entries = loadOutboxEntries();
+      if (countEl) countEl.textContent = String(entries.length);
+      if (!entries.length) {
+        panel.innerHTML =
+          '<div class="eml-empty">' +
+          '<div class="eml-empty-illus-wrap" aria-hidden="true">' +
+          '<svg class="eml-empty-illus" viewBox="0 0 64 64" fill="none" xmlns="http://www.w3.org/2000/svg">' +
+          '<path d="M12 40 L32 22 L52 40 L52 52 L12 52 Z" stroke="currentColor" stroke-width="1.4" stroke-linejoin="round"/>' +
+          '<path d="M32 22 L32 52" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.45"/>' +
+          '<path d="M22 36 L42 36" stroke="currentColor" stroke-width="1.2" stroke-linecap="round" opacity="0.45"/>' +
+          '</svg>' +
+          '</div>' +
+          '<h2 class="eml-empty-title">Outbox</h2>' +
+          '<p class="eml-empty-sub">Nothing in your outbox yet. Sent messages will appear here.</p>' +
+          '<button type="button" class="eml-btn-compose" data-eml-compose>Compose email</button>' +
+          '<p class="bizdash-advisor-cta-wrap"><button type="button" class="btn bizdash-advisor-cta" data-bizdash-advisor-cta="1" data-advisor-prefill="Suggest subject lines and a short email I can send after a meeting.">Draft with Advisor</button></p>' +
+          '</div>';
+        panel.querySelectorAll('[data-eml-compose]').forEach(function (btn) {
+          btn.addEventListener('click', openComposeModal);
+        });
+        return;
+      }
+      panel.innerHTML =
+        '<div class="eml-list" style="display:flex;flex-direction:column;gap:10px;">' +
+        entries
+          .map(function (m) {
+            var to = esc(String(m.to || ''));
+            var subject = esc(String(m.subject || '(No subject)'));
+            var body = esc(String(m.body || ''));
+            var when = esc(outboxWhenLabel(m.sentAt));
+            var link = m.gmailUrl
+              ? '<a href="' +
+                esc(String(m.gmailUrl)) +
+                '" target="_blank" rel="noopener noreferrer" style="font-size:12px;text-decoration:underline;color:inherit;">Open in Gmail</a>'
+              : '';
+            return (
+              '<article style="border:1px solid var(--border);border-radius:10px;padding:12px;background:var(--bg2);">' +
+              '<div style="display:flex;justify-content:space-between;gap:10px;align-items:flex-start;">' +
+              '<div style="min-width:0;">' +
+              '<div style="font-size:13px;font-weight:600;line-height:1.35;word-break:break-word;">' +
+              subject +
+              '</div>' +
+              '<div style="font-size:12px;color:var(--text3);margin-top:3px;word-break:break-word;">To: ' +
+              to +
+              '</div>' +
+              '</div>' +
+              '<div style="font-size:11px;color:var(--text3);white-space:nowrap;">' +
+              when +
+              '</div>' +
+              '</div>' +
+              (body
+                ? '<div style="font-size:12px;color:var(--text2);margin-top:8px;line-height:1.45;white-space:pre-wrap;word-break:break-word;">' +
+                  body +
+                  '</div>'
+                : '') +
+              (link ? '<div style="margin-top:8px;">' + link + '</div>' : '') +
+              '</article>'
+            );
+          })
+          .join('') +
+        '</div>';
+    }
+
     function showComposeErr(msg) {
       if (!errEl) return;
       if (msg) {
@@ -4445,6 +4550,16 @@ import {
       void refreshComposeTemplateSelect();
       if (inpTo) inpTo.focus();
     }
+    function openComposeModalWithPrefill(prefill) {
+      openComposeModal();
+      var p = prefill && typeof prefill === 'object' ? prefill : {};
+      if (inpTo && p.to != null) inpTo.value = String(p.to || '');
+      if (inpSub && p.subject != null) inpSub.value = String(p.subject || '');
+      if (inpBody && p.body != null) inpBody.value = String(p.body || '');
+      if (inpTo && String(inpTo.value || '').trim()) inpTo.focus();
+      else if (inpSub) inpSub.focus();
+    }
+    window.bizDashOpenEmailComposer = openComposeModalWithPrefill;
 
     if (selTpl && selTpl.getAttribute('data-eml-template-wired') !== '1') {
       selTpl.setAttribute('data-eml-template-wired', '1');
@@ -4461,6 +4576,7 @@ import {
     root.querySelectorAll('[data-eml-compose]').forEach(function (btn) {
       btn.addEventListener('click', openComposeModal);
     });
+    renderOutboxPanel();
 
     if (btnCancel) {
       btnCancel.addEventListener('click', closeComposeModal);
@@ -4473,7 +4589,7 @@ import {
         var sessRes = supa ? await supa.auth.getSession() : null;
         var sess = sessRes && sessRes.data ? sessRes.data.session : null;
         if (!sess || !sess.access_token) {
-          alert('Sign in first.');
+          showComposeErr('Sorry, we could not complete your request.');
           return;
         }
         if (!getCurrentOrgId() || isDemoDashboardUser()) {
@@ -4562,12 +4678,12 @@ import {
         var base = typeof window.__bizdashSupabaseUrl === 'string' ? window.__bizdashSupabaseUrl.trim().replace(/\/$/, '') : '';
         var anon = typeof window.__bizdashSupabaseAnonKey === 'string' ? window.__bizdashSupabaseAnonKey.trim() : '';
         if (!base || !anon) {
-          alert('Supabase URL or anon key is not configured in this app.');
+          showComposeErr('Sorry, we could not complete your request.');
           return;
         }
         var orgId = getCurrentOrgId();
         if (!orgId || !String(orgId).trim()) {
-          alert('Open a workspace first.');
+          showComposeErr('Sorry, we could not complete your request.');
           return;
         }
         var to = inpTo ? String(inpTo.value || '').trim() : '';
@@ -4600,13 +4716,13 @@ import {
           try {
             j = await res.json();
           } catch (_) {}
-          if (!res.ok) {
+          if (!res.ok || (j && j.error)) {
             var err = j.error ? String(j.error) : 'send_failed';
             var det = j.detail ? String(j.detail) : '';
             if (err === 'not_connected') {
               showComposeErr('Connect Gmail first: open Settings → Connections, then use Get started.');
             } else {
-              showComposeErr(det || err || 'Could not send. Try again or reconnect Google.');
+              showComposeErr(det || 'Sorry, we could not complete your request.');
             }
             btnSend.disabled = false;
             btnSend.textContent = origLabel;
@@ -4616,6 +4732,20 @@ import {
           var gurl = tid
             ? 'https://mail.google.com/mail/u/0/#all/' + encodeURIComponent(tid)
             : 'https://mail.google.com/mail/u/0/#sent';
+          var sent = {
+            id: 'msg_' + Date.now().toString(36) + '_' + Math.random().toString(36).slice(2, 8),
+            to: to,
+            subject: subject,
+            body: body,
+            sentAt: new Date().toISOString(),
+            threadId: tid,
+            gmailUrl: gurl,
+          };
+          var outbox = loadOutboxEntries();
+          outbox.unshift(sent);
+          while (outbox.length > 200) outbox.pop();
+          saveOutboxEntries(outbox);
+          renderOutboxPanel();
           closeComposeModal();
           var bar = document.getElementById('app-invite-flash');
           if (bar) {
@@ -4633,7 +4763,7 @@ import {
           }
         } catch (e) {
           console.warn('gmail-send', e);
-          showComposeErr('Network error. Check your connection and try again.');
+          showComposeErr('Sorry, we could not complete your request.');
         }
         btnSend.disabled = false;
         btnSend.textContent = origLabel;
@@ -4658,6 +4788,7 @@ import {
         if (activePanel) {
           window.requestAnimationFrame(function () {
             stagePageMotion(activePanel);
+            animateEmailsPanelContent(activePanel);
           });
         }
       });
@@ -10253,10 +10384,15 @@ var incomePowerState = {
   function computeClientKpis() {
     var total = clients.length;
     var activeRetainers = clients.filter(clientIsRetainer).length;
-    var totalRevenue = clients.reduce(function (sum, c) {
+    function isClientActiveOrComplete(c) {
+      var s = String((c && c.status) || '').trim().toLowerCase();
+      return s === 'active' || s === 'complete' || s === 'completed';
+    }
+    var eligibleClients = clients.filter(isClientActiveOrComplete);
+    var totalRevenue = eligibleClients.reduce(function (sum, c) {
       return sum + effectiveClientRevenue(c);
     }, 0);
-    var avgValue = total ? totalRevenue / total : 0;
+    var avgValue = eligibleClients.length ? totalRevenue / eligibleClients.length : 0;
     return {
       total: total,
       activeRetainers: activeRetainers,
@@ -13764,6 +13900,10 @@ var incomePowerState = {
             $('client-status').value = client.status || '';
             $('client-industry').value = client.industry || '';
             $('client-email').value = client.email || '';
+            if ($('client-email-subject')) {
+              $('client-email-subject').value = client.companyName ? 'Quick update for ' + client.companyName : '';
+            }
+            if ($('client-email-body')) $('client-email-body').value = '';
             $('client-phone').value = client.phone || '';
             $('client-notes').value = client.notes || '';
             if ($('client-salutation')) $('client-salutation').value = client.salutation || '';
@@ -15020,6 +15160,7 @@ var incomePowerState = {
     var btnAddClient = $('btn-add-client');
     var btnClientSave = $('btn-client-save');
     var btnClientCancel = $('btn-client-cancel');
+    var btnClientSendEmail = $('btn-client-send-email');
 
     function openClientModal() {
       var m = $('clientModal');
@@ -15031,6 +15172,8 @@ var incomePowerState = {
       $('client-status').value = '';
       $('client-industry').value = '';
       $('client-email').value = '';
+      if ($('client-email-subject')) $('client-email-subject').value = '';
+      if ($('client-email-body')) $('client-email-body').value = '';
       $('client-phone').value = '';
       $('client-notes').value = '';
       if ($('client-salutation')) $('client-salutation').value = '';
@@ -15076,6 +15219,36 @@ var incomePowerState = {
       });
     }
     if (btnClientCancel) btnClientCancel.addEventListener('click', closeClientModal);
+    if (btnClientSendEmail) {
+      btnClientSendEmail.addEventListener('click', function () {
+        wireEmailsPage();
+        var to = $('client-email') ? String($('client-email').value || '').trim() : '';
+        if (!to) {
+          alert('Add a client email first.');
+          return;
+        }
+        var optOut = $('client-email-opt-out');
+        if (optOut && optOut.checked) {
+          alert('This client is marked Email opt out. Uncheck it before sending.');
+          return;
+        }
+        var company = $('client-company') ? String($('client-company').value || '').trim() : '';
+        var subject = $('client-email-subject') ? String($('client-email-subject').value || '').trim() : '';
+        var body = $('client-email-body') ? String($('client-email-body').value || '').trim() : '';
+        var prefill = {
+          to: to,
+          subject: subject || (company ? 'Quick update for ' + company : ''),
+          body: body || '',
+        };
+        if (typeof window.bizDashOpenEmailComposer === 'function') {
+          var clientModal = $('clientModal');
+          if (clientModal) clientModal.classList.remove('on');
+          window.bizDashOpenEmailComposer(prefill);
+        } else {
+          alert('Email composer is not ready yet. Open the Emails page once and try again.');
+        }
+      });
+    }
     if (btnClientSave) {
       btnClientSave.addEventListener('click', async function () {
         var company = $('client-company').value.trim();
@@ -15285,6 +15458,8 @@ var incomePowerState = {
       setv('client-status', d.status || 'Lead');
       setv('client-industry', d.industry);
       setv('client-email', d.email);
+      setv('client-email-subject', d.emailSubject || (d.companyName ? 'Quick update for ' + d.companyName : ''));
+      setv('client-email-body', d.emailBody || '');
       setv('client-phone', d.phone);
       setv('client-notes', d.notes);
       setv('client-salutation', d.salutation);
@@ -18739,6 +18914,8 @@ var incomePowerState = {
 
   var listsSelectFlyout = null;
   var listsSelectFlyoutDown = null;
+  var listsStatusEditPopover = null;
+  var listsStatusEditPopoverDown = null;
   var listsSelectGlobalWired = false;
 
   function listsColumnSelectRole(col) {
@@ -18799,10 +18976,11 @@ var incomePowerState = {
     return o2;
   }
 
-  function listsSelectToneClass(role, label) {
+  function listsSelectToneClass(role, label, toneMap) {
     var raw = String(label || '').trim();
     var v = raw.toLowerCase();
     if (!raw) return 'lists-sel-tone-neutral';
+    if (toneMap && raw && toneMap[raw]) return String(toneMap[raw]);
     if (role === 'priority') {
       if (v === 'high') return 'lists-sel-tone-rose';
       if (v === 'medium') return 'lists-sel-tone-amber';
@@ -18828,6 +19006,35 @@ var incomePowerState = {
     return 'lists-sel-tone-slate';
   }
 
+  function listsStatusTonePalette() {
+    return [
+      { key: 'lists-sel-tone-neutral', label: 'Default' },
+      { key: 'lists-sel-tone-slate', label: 'Gray' },
+      { key: 'lists-sel-tone-amber', label: 'Orange' },
+      { key: 'lists-sel-tone-green', label: 'Green' },
+      { key: 'lists-sel-tone-blue', label: 'Blue' },
+      { key: 'lists-sel-tone-violet', label: 'Purple' },
+      { key: 'lists-sel-tone-rose', label: 'Red' },
+      { key: 'lists-sel-tone-teal', label: 'Teal' },
+    ];
+  }
+
+  function listsStatusToneMapForColumn(L, colId) {
+    if (!L || !colId) return null;
+    var root = L.statusOptionColors;
+    if (!root || typeof root !== 'object') return null;
+    var byCol = root[colId];
+    if (!byCol || typeof byCol !== 'object') return null;
+    return byCol;
+  }
+
+  function listsMutateStatusToneMap(L, colId, mutator) {
+    if (!L || !colId || !mutator) return;
+    if (!L.statusOptionColors || typeof L.statusOptionColors !== 'object') L.statusOptionColors = {};
+    if (!L.statusOptionColors[colId] || typeof L.statusOptionColors[colId] !== 'object') L.statusOptionColors[colId] = {};
+    mutator(L.statusOptionColors[colId]);
+  }
+
   function listsSelectDisplayLabel(val) {
     var s = String(val != null ? val : '').trim();
     return s ? s : '— None —';
@@ -18835,7 +19042,7 @@ var incomePowerState = {
 
   function listsRenderSelectTriggerHtml(L, listId, rowIdx, col, rawVal, role) {
     var lab = listsSelectDisplayLabel(rawVal);
-    var tone = listsSelectToneClass(role, rawVal);
+    var tone = listsSelectToneClass(role, rawVal, role === 'status' ? listsStatusToneMapForColumn(L, col.id) : null);
     return (
       '<button type="button" class="lists-select-trigger ' +
       tone +
@@ -19041,6 +19248,7 @@ var incomePowerState = {
     });
     if (!col) return;
     var opts = listsSelectOptionsForColumn(L, col, role);
+    var toneMap = listsStatusToneMapForColumn(L, col.id);
     var fly = document.createElement('div');
     fly.className = 'lists-select-flyout';
     fly.setAttribute('role', 'listbox');
@@ -19065,7 +19273,7 @@ var incomePowerState = {
         if (!arr.length) return '';
         var body = arr
           .map(function (opt) {
-            return listsSelectMenuRowHtml(opt, role, anchorBtn);
+            return listsSelectMenuRowHtml(opt, role, toneMap, true);
           })
           .join('');
         return '<div class="lists-select-sec"><div class="lists-select-sec-h">' + escList(title) + '</div>' + body + '</div>';
@@ -19077,16 +19285,37 @@ var incomePowerState = {
         (other.length ? chunk('Other', other) : '');
     } else {
       fly.innerHTML = opts.map(function (opt) {
-        return listsSelectMenuRowHtml(opt, role, anchorBtn);
+        return listsSelectMenuRowHtml(opt, role, toneMap, true);
       }).join('');
     }
     document.body.appendChild(fly);
     listsSelectFlyout = fly;
     fly._anchor = anchorBtn;
     var r = anchorBtn.getBoundingClientRect();
-    fly.style.left = Math.max(8, r.left) + 'px';
-    fly.style.top = Math.min(window.innerHeight - 8, r.bottom + 6) + 'px';
-    fly.style.minWidth = Math.max(200, r.width) + 'px';
+    var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    var margin = 8;
+    var gap = 6;
+    var minW = Math.max(200, r.width);
+    fly.style.minWidth = minW + 'px';
+    fly.style.maxHeight = '';
+    fly.style.overflowY = '';
+    var flyRect = fly.getBoundingClientRect();
+    var left = Math.max(margin, r.left);
+    if (left + flyRect.width > vw - margin) left = Math.max(margin, vw - margin - flyRect.width);
+    var roomBelow = vh - (r.bottom + gap) - margin;
+    var roomAbove = r.top - gap - margin;
+    var openAbove = roomBelow < Math.min(220, flyRect.height) && roomAbove > roomBelow;
+    var top = openAbove ? r.top - gap - flyRect.height : r.bottom + gap;
+    if (top < margin) top = margin;
+    if (top + flyRect.height > vh - margin) top = Math.max(margin, vh - margin - flyRect.height);
+    var avail = openAbove ? r.top - gap - top : vh - margin - top;
+    if (avail > 0 && flyRect.height > avail) {
+      fly.style.maxHeight = Math.max(120, Math.floor(avail)) + 'px';
+      fly.style.overflowY = 'auto';
+    }
+    fly.style.left = left + 'px';
+    fly.style.top = top + 'px';
     anchorBtn.setAttribute('aria-expanded', 'true');
     listsSelectFlyoutDown = function (ev) {
       if (fly.contains(ev.target) || anchorBtn.contains(ev.target)) return;
@@ -19094,6 +19323,26 @@ var incomePowerState = {
     };
     document.addEventListener('mousedown', listsSelectFlyoutDown, true);
     fly.addEventListener('click', function (ev) {
+      var editBtn = ev.target.closest && ev.target.closest('[data-status-edit]');
+      if (editBtn) {
+        ev.preventDefault();
+        ev.stopPropagation();
+        var ownerRow = editBtn.closest('.lists-select-menu-row');
+        if (!ownerRow) return;
+        var enc2 = ownerRow.getAttribute('data-opt-value');
+        if (enc2 == null) return;
+        var statusVal = '';
+        try {
+          statusVal = decodeURIComponent(enc2);
+        } catch (_) {
+          statusVal = String(enc2 || '');
+        }
+        statusVal = String(statusVal || '').trim();
+        if (!statusVal) return;
+        listsOpenStatusEditPopover(editBtn, L, col, statusVal);
+        listsCloseSelectFlyout();
+        return;
+      }
       var row = ev.target.closest && ev.target.closest('.lists-select-menu-row');
       if (!row) return;
       ev.preventDefault();
@@ -19110,9 +19359,13 @@ var incomePowerState = {
     });
   }
 
-  function listsSelectMenuRowHtml(opt, role, anchorBtn) {
-    var tone = listsSelectToneClass(role, opt);
+  function listsSelectMenuRowHtml(opt, role, toneMap, showStatusEdit) {
+    var tone = listsSelectToneClass(role, opt, toneMap);
     var show = listsSelectDisplayLabel(opt);
+    var canEdit = !!showStatusEdit && String(opt || '').trim() !== '';
+    var moreBtn = canEdit
+      ? '<button type="button" class="lists-select-row-more" data-status-edit="1" aria-label="Edit option">...</button>'
+      : '';
     return (
       '<button type="button" class="lists-select-menu-row ' +
       tone +
@@ -19122,7 +19375,9 @@ var incomePowerState = {
       '<span class="lists-select-dot" aria-hidden="true"></span>' +
       '<span class="lists-select-menu-label">' +
       escList(show) +
-      '</span></button>'
+      '</span>' +
+      moreBtn +
+      '</button>'
     );
   }
 
@@ -19132,6 +19387,155 @@ var incomePowerState = {
       '<polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>' +
       '<line x1="10" y1="11" x2="10" y2="17"></line><line x1="14" y1="11" x2="14" y2="17"></line></svg>'
     );
+  }
+
+  function listsCloseStatusEditPopover() {
+    if (listsStatusEditPopoverDown) {
+      try {
+        document.removeEventListener('mousedown', listsStatusEditPopoverDown, true);
+      } catch (_) {}
+      listsStatusEditPopoverDown = null;
+    }
+    if (listsStatusEditPopover && listsStatusEditPopover.parentNode) {
+      listsStatusEditPopover.parentNode.removeChild(listsStatusEditPopover);
+    }
+    listsStatusEditPopover = null;
+  }
+
+  function listsOpenStatusEditPopover(anchorBtn, L, col, stage) {
+    listsCloseStatusEditPopover();
+    if (!anchorBtn || !L || !col) return;
+    var original = String(stage || '').trim();
+    if (!original) return;
+    var toneMap = listsStatusToneMapForColumn(L, col.id) || {};
+    var activeTone = toneMap[original] || 'lists-sel-tone-blue';
+    var fly = document.createElement('div');
+    fly.className = 'lists-status-edit-pop';
+    fly.setAttribute('role', 'dialog');
+    fly.setAttribute('aria-label', 'Edit status');
+    var palette = listsStatusTonePalette();
+    fly.innerHTML =
+      '<div class="lists-status-edit-head">' +
+      '<input type="text" class="fi lists-status-edit-input" value="' +
+      escList(original) +
+      '" maxlength="120" />' +
+      '</div>' +
+      '<button type="button" class="lists-status-edit-del">Delete</button>' +
+      '<div class="lists-status-edit-rule"></div>' +
+      '<div class="lists-status-edit-lbl">Colors</div>' +
+      '<div class="lists-status-edit-colors">' +
+      palette
+        .map(function (p) {
+          var on = p.key === activeTone;
+          return (
+            '<button type="button" class="lists-status-edit-color-row" data-tone="' +
+            escList(p.key) +
+            '">' +
+            '<span class="lists-status-edit-swatch ' +
+            escList(p.key) +
+            '" aria-hidden="true"></span>' +
+            '<span class="lists-status-edit-color-txt">' +
+            escList(p.label) +
+            '</span>' +
+            (on ? '<span class="lists-status-edit-check">✓</span>' : '') +
+            '</button>'
+          );
+        })
+        .join('') +
+      '</div>' +
+      '<button type="button" class="lists-status-edit-done">Done</button>';
+    document.body.appendChild(fly);
+    listsStatusEditPopover = fly;
+    var r = anchorBtn.getBoundingClientRect();
+    var fr = fly.getBoundingClientRect();
+    var vw = window.innerWidth || document.documentElement.clientWidth || 0;
+    var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+    var margin = 8;
+    var gap = 8;
+    var left = r.right - fr.width;
+    if (left < margin) left = margin;
+    if (left + fr.width > vw - margin) left = Math.max(margin, vw - margin - fr.width);
+    var top = r.bottom + gap;
+    if (top + fr.height > vh - margin) top = Math.max(margin, r.top - fr.height - gap);
+    fly.style.left = left + 'px';
+    fly.style.top = top + 'px';
+
+    var input = fly.querySelector('.lists-status-edit-input');
+    var done = fly.querySelector('.lists-status-edit-done');
+    var del = fly.querySelector('.lists-status-edit-del');
+
+    function commitRenameAndClose() {
+      var next = input ? String(input.value || '').trim() : original;
+      if (!next) return;
+      if (next !== original) {
+        updateWorkspaceListById(L.id, function (X) {
+          var rows = X.rows || [];
+          rows.forEach(function (row) {
+            if (String(row[col.id] != null ? row[col.id] : '').trim() === original) row[col.id] = next;
+          });
+          listsMutateStatusToneMap(X, col.id, function (m) {
+            if (m[original] && !m[next]) m[next] = m[original];
+            if (original !== next) delete m[original];
+          });
+        });
+      }
+      listsCloseStatusEditPopover();
+    }
+
+    if (input) {
+      input.addEventListener('keydown', function (ev) {
+        if (ev.key === 'Enter') {
+          ev.preventDefault();
+          commitRenameAndClose();
+        } else if (ev.key === 'Escape') {
+          ev.preventDefault();
+          listsCloseStatusEditPopover();
+        }
+      });
+    }
+    if (done) {
+      done.addEventListener('click', function () {
+        commitRenameAndClose();
+      });
+    }
+    if (del) {
+      del.addEventListener('click', function () {
+        if (!window.confirm('Delete status "' + original + '"? Items in this stage move to no status.')) return;
+        updateWorkspaceListById(L.id, function (X) {
+          (X.rows || []).forEach(function (row) {
+            if (String(row[col.id] != null ? row[col.id] : '').trim() === original) row[col.id] = '';
+          });
+          listsMutateStatusToneMap(X, col.id, function (m) {
+            delete m[original];
+          });
+        });
+        listsCloseStatusEditPopover();
+      });
+    }
+    fly.querySelectorAll('[data-tone]').forEach(function (b) {
+      b.addEventListener('click', function () {
+        var tone = b.getAttribute('data-tone') || 'lists-sel-tone-blue';
+        updateWorkspaceListById(L.id, function (X) {
+          listsMutateStatusToneMap(X, col.id, function (m) {
+            m[original] = tone;
+          });
+        });
+        listsCloseStatusEditPopover();
+      });
+    });
+    listsStatusEditPopoverDown = function (ev) {
+      if (fly.contains(ev.target) || anchorBtn.contains(ev.target)) return;
+      listsCloseStatusEditPopover();
+    };
+    document.addEventListener('mousedown', listsStatusEditPopoverDown, true);
+    if (input && typeof input.focus === 'function') {
+      window.setTimeout(function () {
+        input.focus();
+        try {
+          input.select();
+        } catch (_) {}
+      }, 0);
+    }
   }
 
   function listsRowDeleteButtonHtml(listId, rowIdx) {
@@ -19157,6 +19561,271 @@ var incomePowerState = {
   function listsAppendEmptyRow(listId) {
     updateWorkspaceListById(listId, function (X) {
       X.rows = (X.rows || []).concat([listsEmptyRowObject(X)]);
+    });
+  }
+
+  function listsNextColumnId(cols) {
+    var maxN = 0;
+    (cols || []).forEach(function (c) {
+      var id = c && c.id != null ? String(c.id) : '';
+      var m = id.match(/^c(\d+)$/i);
+      if (m) {
+        var n = parseInt(m[1], 10);
+        if (!isNaN(n) && n > maxN) maxN = n;
+      }
+    });
+    return 'c' + (maxN + 1);
+  }
+
+  function listsResolveColumnIndex(cols, raw) {
+    var t = String(raw || '').trim();
+    if (!t) return -1;
+    if (/^\d+$/.test(t)) {
+      var i = parseInt(t, 10) - 1;
+      if (i >= 0 && i < cols.length) return i;
+    }
+    var low = t.toLowerCase();
+    for (var j = 0; j < cols.length; j++) {
+      var nm = String(cols[j] && cols[j].name != null ? cols[j].name : '').trim().toLowerCase();
+      if (nm === low) return j;
+    }
+    return -1;
+  }
+
+  var listsColsModal = null;
+  var listsColsDraft = [];
+  var listsColsTempSeq = 0;
+
+  function listsColsRenderRows() {
+    if (!listsColsModal) return;
+    var host = listsColsModal.querySelector('[data-cols-rows]');
+    if (!host) return;
+    host.innerHTML = '';
+    listsColsDraft.forEach(function (row, idx) {
+      var item = document.createElement('div');
+      item.setAttribute('data-cols-row', '1');
+      item.setAttribute('data-col-id', String(row.id || ''));
+      item.style.display = 'flex';
+      item.style.alignItems = 'center';
+      item.style.gap = '8px';
+      item.style.marginBottom = '8px';
+
+      var idxTag = document.createElement('span');
+      idxTag.textContent = String(idx + 1);
+      idxTag.style.width = '18px';
+      idxTag.style.fontSize = '12px';
+      idxTag.style.color = 'var(--text3)';
+      idxTag.style.flexShrink = '0';
+
+      var input = document.createElement('input');
+      input.type = 'text';
+      input.value = String(row.name || '');
+      input.setAttribute('data-col-input', '1');
+      input.className = 'fi';
+      input.style.flex = '1';
+      input.style.minWidth = '0';
+      input.placeholder = 'Column title';
+      input.addEventListener('input', function () {
+        var i = parseInt(item.getAttribute('data-row-i') || '-1', 10);
+        if (!isNaN(i) && i >= 0 && i < listsColsDraft.length) listsColsDraft[i].name = input.value;
+      });
+      item.setAttribute('data-row-i', String(idx));
+
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'btn';
+      del.setAttribute('data-col-remove', String(row.id || ''));
+      del.textContent = 'Remove';
+      del.style.color = 'var(--red)';
+      del.disabled = listsColsDraft.length <= 1;
+
+      item.appendChild(idxTag);
+      item.appendChild(input);
+      item.appendChild(del);
+      host.appendChild(item);
+    });
+  }
+
+  function listsColsEnsureModal() {
+    if (listsColsModal) return listsColsModal;
+    var m = document.createElement('div');
+    m.className = 'mo';
+    m.id = 'lists-cols-settings-modal';
+    m.innerHTML =
+      '<div class="md" role="dialog" aria-modal="true" aria-labelledby="lists-cols-settings-title" style="width:min(640px,calc(100vw - 24px));">' +
+      '<div class="mt" id="lists-cols-settings-title">Column settings</div>' +
+      '<div class="ms" style="margin-bottom:10px;">Rename, add, or remove column titles.</div>' +
+      '<label style="display:block;font-size:12px;color:var(--text3);margin-bottom:6px;">List name</label>' +
+      '<input type="text" class="fi" data-list-name-input="1" placeholder="List name" style="margin-bottom:12px;" />' +
+      '<div data-cols-rows style="max-height:min(52vh,420px);overflow:auto;padding-right:2px;"></div>' +
+      '<div style="display:flex;justify-content:space-between;align-items:center;gap:10px;margin-top:12px;">' +
+      '<button type="button" class="btn" data-cols-add="1">+ Add column</button>' +
+      '<div style="display:flex;gap:8px;">' +
+      '<button type="button" class="btn" data-cols-cancel="1">Cancel</button>' +
+      '<button type="button" class="btn btn-p" data-cols-save="1">Save changes</button>' +
+      '</div>' +
+      '</div>' +
+      '</div>';
+    m.addEventListener('click', function (ev) {
+      if (ev.target === m) m.classList.remove('on');
+    });
+    document.body.appendChild(m);
+    listsColsModal = m;
+
+    var addBtn = m.querySelector('[data-cols-add]');
+    if (addBtn) {
+      addBtn.addEventListener('click', function () {
+        listsColsDraft.push({ id: '__new__' + (++listsColsTempSeq), name: '' });
+        listsColsRenderRows();
+        var inputs = m.querySelectorAll('[data-col-input]');
+        if (inputs && inputs.length) {
+          var last = inputs[inputs.length - 1];
+          if (last && typeof last.focus === 'function') last.focus();
+        }
+      });
+    }
+    m.addEventListener('click', function (ev) {
+      var rm = ev.target && ev.target.closest ? ev.target.closest('[data-col-remove]') : null;
+      if (!rm) return;
+      var id = rm.getAttribute('data-col-remove');
+      if (!id) return;
+      if (listsColsDraft.length <= 1) {
+        window.alert('At least one column is required.');
+        return;
+      }
+      listsColsDraft = listsColsDraft.filter(function (r) { return String(r.id) !== String(id); });
+      listsColsRenderRows();
+    });
+
+    var cancelBtn = m.querySelector('[data-cols-cancel]');
+    if (cancelBtn) {
+      cancelBtn.addEventListener('click', function () {
+        m.classList.remove('on');
+      });
+    }
+
+    var saveBtn = m.querySelector('[data-cols-save]');
+    if (saveBtn) {
+      saveBtn.addEventListener('click', function () {
+        var listId = m.getAttribute('data-list-id');
+        if (!listId) return;
+        var nameInput = m.querySelector('[data-list-name-input]');
+        var nextListName = nameInput ? String(nameInput.value || '').trim() : '';
+        if (!nextListName) {
+          window.alert('List name is required.');
+          return;
+        }
+        var cleaned = listsColsDraft
+          .map(function (r) {
+            return { id: String(r.id || ''), name: String(r.name || '').trim() };
+          })
+          .filter(function (r) {
+            return !!r.name;
+          });
+        if (!cleaned.length) {
+          window.alert('At least one column title is required.');
+          return;
+        }
+        updateWorkspaceListById(listId, function (X) {
+          X.title = nextListName;
+          var existing = Array.isArray(X.columns) && X.columns.length ? X.columns : [{ id: 'c1', name: 'Name' }];
+          var byId = {};
+          existing.forEach(function (c) {
+            if (c && c.id) byId[String(c.id)] = c;
+          });
+          var nextCols = [];
+          var maxN = 0;
+          existing.forEach(function (c) {
+            var id = c && c.id != null ? String(c.id) : '';
+            var mm = id.match(/^c(\d+)$/i);
+            if (mm) {
+              var nn = parseInt(mm[1], 10);
+              if (!isNaN(nn) && nn > maxN) maxN = nn;
+            }
+          });
+          cleaned.forEach(function (r) {
+            var id = r.id;
+            var base = byId[id] || null;
+            var finalId = id;
+            if (!base) {
+              maxN += 1;
+              finalId = 'c' + maxN;
+            }
+            if (base) nextCols.push(Object.assign({}, base, { name: r.name }));
+            else nextCols.push({ id: finalId, name: r.name });
+          });
+          if (!nextCols.length) nextCols = [{ id: 'c1', name: 'Name' }];
+          var nextRows = (Array.isArray(X.rows) ? X.rows : []).map(function (row) {
+            var out = {};
+            nextCols.forEach(function (c) {
+              var cid = String(c.id || '');
+              out[cid] = row && Object.prototype.hasOwnProperty.call(row, cid) ? row[cid] : '';
+            });
+            return out;
+          });
+          X.columns = nextCols;
+          X.rows = nextRows;
+          var hasBoard = nextCols.some(function (c) {
+            return String(c.id) === String(X.boardGroupColumnId || '');
+          });
+          if (!hasBoard) X.boardGroupColumnId = inferBoardGroupColumnId(X);
+          var hasCal = nextCols.some(function (c) {
+            return String(c.id) === String(X.calendarDateColumnId || '');
+          });
+          if (!hasCal) X.calendarDateColumnId = nextCols[1] ? nextCols[1].id : nextCols[0].id;
+        });
+        m.classList.remove('on');
+      });
+    }
+    return m;
+  }
+
+  function listsOpenColumnSettings(listId) {
+    var L = listsSbGetListById(listId);
+    if (!L) return;
+    var cols = Array.isArray(L.columns) && L.columns.length ? L.columns : [{ id: 'c1', name: 'Name' }];
+    listsColsDraft = cols.map(function (c) {
+      return {
+        id: c && c.id != null ? String(c.id) : '__new__' + (++listsColsTempSeq),
+        name: String(c && c.name != null ? c.name : ''),
+      };
+    });
+    var m = listsColsEnsureModal();
+    m.setAttribute('data-list-id', String(listId));
+    var nameInput = m.querySelector('[data-list-name-input]');
+    if (nameInput) nameInput.value = String(L.title || '');
+    listsColsRenderRows();
+    m.classList.add('on');
+  }
+
+  function wireListDetailActionsOnce() {
+    var actions = document.getElementById('lists-detail-actions');
+    if (!actions) return;
+    if (actions.getAttribute('data-wired') === '1') return;
+    actions.setAttribute('data-wired', '1');
+    actions.addEventListener('click', function (ev) {
+      var t = ev.target;
+      if (!t || !t.closest) return;
+      var host = actions;
+      var listId = host.getAttribute('data-list-id') || '';
+      if (!listId) return;
+
+      var colsBtn = t.closest('[data-list-cols-settings]');
+      if (colsBtn) {
+        listsOpenColumnSettings(listId);
+        return;
+      }
+
+      var addBtn = t.closest('[data-list-add-row]');
+      if (addBtn) {
+        listsAppendEmptyRow(listId);
+        return;
+      }
+
+      var delBtn = t.closest('[data-list-del]');
+      if (delBtn) {
+        if (window.confirm('Delete this list?')) deleteWorkspaceList(listId);
+      }
     });
   }
 
@@ -19215,6 +19884,32 @@ var incomePowerState = {
     document.addEventListener(
       'click',
       function (ev) {
+        var hdrMore = ev.target.closest && ev.target.closest('.lists-board-hdr-more');
+        if (hdrMore) {
+          var det2 = document.getElementById('lists-view-detail');
+          if (!det2 || det2.style.display === 'none') return;
+          var listId2 = det2.getAttribute('data-active-list');
+          var L2 = listId2 ? listsSbGetListById(listId2) : null;
+          if (!L2) return;
+          var colId2 = hdrMore.getAttribute('data-col-id');
+          var stageValEnc = hdrMore.getAttribute('data-stage-value');
+          var stageVal = '';
+          try {
+            stageVal = decodeURIComponent(stageValEnc || '');
+          } catch (_) {
+            stageVal = stageValEnc || '';
+          }
+          if (!colId2 || !stageVal) return;
+          var col2 = null;
+          (L2.columns || []).forEach(function (c) {
+            if (String(c.id) === String(colId2)) col2 = c;
+          });
+          if (!col2) return;
+          ev.preventDefault();
+          ev.stopPropagation();
+          listsOpenStatusEditPopover(hdrMore, L2, col2, stageVal);
+          return;
+        }
         var btn = ev.target.closest && ev.target.closest('.lists-select-trigger');
         if (!btn) return;
         var det = document.getElementById('lists-view-detail');
@@ -19407,7 +20102,11 @@ var incomePowerState = {
     var colHtml = order
       .map(function (stage) {
         var displayHdr = stage === '—' ? 'No status' : stage;
-        var hdrTone = listsSelectToneClass(hdrRole, stage === '—' ? '' : stage);
+        var hdrTone = listsSelectToneClass(
+          hdrRole,
+          stage === '—' ? '' : stage,
+          hdrRole === 'status' && gCol ? listsStatusToneMapForColumn(L, gCol.id) : null,
+        );
         var cards = buckets[stage]
           .map(function (r) {
             var rowIdx = (L.rows || []).indexOf(r);
@@ -19444,6 +20143,16 @@ var incomePowerState = {
             '" data-board-val="' +
             encodeURIComponent(newVal) +
             '"><span class="lists-board-new-plus">+</span> New row</button>';
+        var hdrEdit =
+          !previewStatic && hdrRole === 'status' && stage !== '—'
+            ? '<button type="button" class="lists-board-hdr-more" data-list-id="' +
+              escList(L.id) +
+              '" data-col-id="' +
+              escList(gid) +
+              '" data-stage-value="' +
+              encodeURIComponent(String(stage)) +
+              '" aria-label="Edit status">...</button>'
+            : '';
         return (
           '<div class="lists-board-col">' +
           '<div class="lists-board-col-hdr ' +
@@ -19452,7 +20161,9 @@ var incomePowerState = {
           '<span class="lists-board-hdr-dot" aria-hidden="true"></span>' +
           '<span class="lists-board-hdr-txt">' +
           escList(displayHdr) +
-          '</span></div>' +
+          '</span>' +
+          hdrEdit +
+          '</div>' +
           '<div class="lists-board-col-body">' +
           cards +
           '</div>' +
@@ -19667,6 +20378,7 @@ var incomePowerState = {
   function normalizeListForUi(L) {
     if (!L) return;
     if (!L.iconStyle) L.iconStyle = 'filled';
+    if (!L.statusOptionColors || typeof L.statusOptionColors !== 'object') L.statusOptionColors = {};
     (L.columns || []).forEach(function (c) {
       if (!c.iconStyle) c.iconStyle = 'filled';
     });
@@ -19803,36 +20515,18 @@ var incomePowerState = {
     if (title) title.textContent = L.title;
     if (sub) sub.textContent = (L.dataType || 'List') + (L.templateId ? ' · template' : '');
     if (actions) {
+      wireListDetailActionsOnce();
       actions.innerHTML =
-        '<button type="button" class="btn" data-list-rename="' +
+        '<button type="button" class="btn" data-list-cols-settings="' +
         escList(L.id) +
-        '">Rename</button>' +
+        '" aria-label="Column settings" title="Column settings" style="font-size:18px;line-height:1;padding-left:10px;padding-right:10px;">⚙</button>' +
         (L.layout === 'notion'
           ? ''
           : '<button type="button" class="btn btn-p" data-list-add-row="' + escList(L.id) + '">Add row</button>') +
         '<button type="button" class="btn" data-list-del="' +
         escList(L.id) +
         '">Delete</button>';
-      var rBtn = actions.querySelector('[data-list-rename]');
-      if (rBtn)
-        rBtn.addEventListener('click', function () {
-          var nm = window.prompt('List name', L.title);
-          if (nm != null && String(nm).trim()) {
-            renameWorkspaceList(L.id, nm);
-            if (title) title.textContent = String(nm).trim();
-          }
-        });
-      var aRowBtn = actions.querySelector('[data-list-add-row]');
-      if (aRowBtn) {
-        aRowBtn.addEventListener('click', function () {
-          listsAppendEmptyRow(L.id);
-        });
-      }
-      var dBtn = actions.querySelector('[data-list-del]');
-      if (dBtn)
-        dBtn.addEventListener('click', function () {
-          if (window.confirm('Delete this list?')) deleteWorkspaceList(L.id);
-        });
+      actions.setAttribute('data-list-id', String(L.id));
     }
     var effTabs = listDetailEffectiveTabs(L);
     if (!L.activeTabId || !effTabs.some(function (t) { return t.id === L.activeTabId; })) {
@@ -20303,7 +20997,11 @@ var incomePowerState = {
         body =
           '<rect x="3" y="3" width="18" height="18" rx="2"/><line x1="3" y1="9" x2="21" y2="9"/><line x1="3" y1="15" x2="21" y2="15"/><line x1="9" y1="3" x2="9" y2="21"/><line x1="15" y1="3" x2="15" y2="21"/>';
     }
-    return '<svg class="list-tmpl-svg" viewBox="0 0 24 24" aria-hidden="true">' + body + '</svg>';
+    return (
+      '<svg class="list-tmpl-svg" viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      body +
+      '</svg>'
+    );
   }
 
   function listTemplateCardIconMarkup(t) {
@@ -21391,7 +22089,7 @@ var incomePowerState = {
     }
 
     function compassReferralUrl() {
-      return 'https://compass.com/?r=' + encodeURIComponent(compassReferralToken());
+      return 'https://compass.idm.com/?r=' + encodeURIComponent(compassReferralToken());
     }
 
     function compassReferralMessage(url) {

@@ -1309,20 +1309,34 @@
       var sess = sessRes && sessRes.data ? sessRes.data.session : null;
       var token = sess && sess.access_token ? sess.access_token : '';
       if (!orgId || !base || !anon || !token) return { ok: false, error: 'Session or workspace missing.' };
-      var res = await fetch(base + '/functions/v1/organization-team', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: 'Bearer ' + token,
-          apikey: anon,
-        },
-        body: JSON.stringify({
-          organizationId: orgId,
-          action: 'invite',
-          email: String(email || '').trim().toLowerCase(),
-          role: role || 'member',
-        }),
-      });
+      // #region agent log
+      fetch('http://127.0.0.1:7914/ingest/507d12bf-babb-4204-8816-34a6e29c9b5b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ae8d26'},body:JSON.stringify({sessionId:'ae8d26',runId:'pre-fix',hypothesisId:'H1',location:'src/legacy/supabase-auth.js:invokeOrganizationTeamInvite:pre-fetch',message:'about to call organization-team edge function',data:{origin:(window.location&&window.location.origin)||'',base,hasOrgId:!!orgId,hasAnon:!!anon,hasToken:!!token},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      var res;
+      try {
+        res = await fetch(base + '/functions/v1/organization-team', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            Authorization: 'Bearer ' + token,
+            apikey: anon,
+          },
+          body: JSON.stringify({
+            organizationId: orgId,
+            action: 'invite',
+            email: String(email || '').trim().toLowerCase(),
+            role: role || 'member',
+          }),
+        });
+      } catch (fetchErr) {
+        // #region agent log
+        fetch('http://127.0.0.1:7914/ingest/507d12bf-babb-4204-8816-34a6e29c9b5b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ae8d26'},body:JSON.stringify({sessionId:'ae8d26',runId:'pre-fix',hypothesisId:'H2',location:'src/legacy/supabase-auth.js:invokeOrganizationTeamInvite:fetch-catch',message:'organization-team fetch threw before response available',data:{error:String((fetchErr&&fetchErr.message)||fetchErr||'unknown'),origin:(window.location&&window.location.origin)||'',base},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        throw fetchErr;
+      }
+      // #region agent log
+      fetch('http://127.0.0.1:7914/ingest/507d12bf-babb-4204-8816-34a6e29c9b5b',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'ae8d26'},body:JSON.stringify({sessionId:'ae8d26',runId:'pre-fix',hypothesisId:'H3',location:'src/legacy/supabase-auth.js:invokeOrganizationTeamInvite:post-fetch',message:'organization-team fetch completed',data:{status:res.status,ok:res.ok,acao:res.headers.get('access-control-allow-origin')||''},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       var j = {};
       try {
         j = await res.json();
